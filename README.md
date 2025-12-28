@@ -1,7 +1,7 @@
 # google-play-scraper
 
 [![Tests](https://github.com/kryuchenko/google-play-scraper/actions/workflows/test.yml/badge.svg)](https://github.com/kryuchenko/google-play-scraper/actions/workflows/test.yml)
-![Coverage](https://img.shields.io/badge/coverage-83.3%25-brightgreen)
+![Coverage](https://img.shields.io/badge/coverage-85.0%25-brightgreen)
 [![Go Report Card](https://goreportcard.com/badge/github.com/kryuchenko/google-play-scraper)](https://goreportcard.com/report/github.com/kryuchenko/google-play-scraper)
 [![Go Reference](https://pkg.go.dev/badge/github.com/kryuchenko/google-play-scraper.svg)](https://pkg.go.dev/github.com/kryuchenko/google-play-scraper)
 
