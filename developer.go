@@ -11,10 +11,11 @@ import (
 
 // DeveloperOptions configures the developer apps request
 type DeveloperOptions struct {
-	DevID   string // Developer ID or name
-	Lang    string
-	Country string
-	Num     int
+	DevID      string // Developer ID or name
+	Lang       string
+	Country    string
+	Num        int
+	FullDetail bool // Fetch full details for each app
 }
 
 // Developer fetches all apps by a developer
@@ -51,7 +52,17 @@ func (c *Client) Developer(ctx context.Context, opts DeveloperOptions) ([]Search
 		return nil, fmt.Errorf("request failed: %w", err)
 	}
 
-	return parseDeveloperPage(body, isNumeric == nil, opts.Num)
+	results, err := parseDeveloperPage(body, isNumeric == nil, opts.Num)
+	if err != nil {
+		return nil, err
+	}
+
+	// Fetch full details if requested
+	if opts.FullDetail {
+		return c.enrichSearchResults(ctx, results, opts.Lang, opts.Country)
+	}
+
+	return results, nil
 }
 
 func parseDeveloperPage(body []byte, isNumericID bool, num int) ([]SearchResult, error) {

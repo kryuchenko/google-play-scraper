@@ -9,9 +9,10 @@ import (
 
 // SimilarOptions configures the similar apps request
 type SimilarOptions struct {
-	AppID   string
-	Lang    string
-	Country string
+	AppID      string
+	Lang       string
+	Country    string
+	FullDetail bool // Fetch full details for each app
 }
 
 // Similar fetches apps similar to the given app
@@ -54,7 +55,17 @@ func (c *Client) Similar(ctx context.Context, opts SimilarOptions) ([]SearchResu
 		return nil, fmt.Errorf("cluster request failed: %w", err)
 	}
 
-	return parseSimilarPage(clusterBody)
+	results, err := parseSimilarPage(clusterBody)
+	if err != nil {
+		return nil, err
+	}
+
+	// Fetch full details if requested
+	if opts.FullDetail {
+		return c.enrichSearchResults(ctx, results, opts.Lang, opts.Country)
+	}
+
+	return results, nil
 }
 
 func findSimilarCluster(body []byte) (string, error) {

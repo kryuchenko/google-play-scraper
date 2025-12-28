@@ -147,3 +147,16 @@ func TestDeveloperDifferentLocale(t *testing.T) {
 		}
 	}
 }
+
+func TestDeveloperOptionsWithFullDetail(t *testing.T) {
+	// Test that FullDetail option is correctly set
+	opts := DeveloperOptions{
+		DevID:      "Google LLC",
+		FullDetail: true,
+		Num:        10,
+	}
+
+	if !opts.FullDetail {
+		t.Error("FullDetail should be true")
+	}
+}

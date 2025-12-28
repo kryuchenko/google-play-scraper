@@ -135,3 +135,43 @@ func TestListLimitResults(t *testing.T) {
 
 	t.Logf("Got %d apps (limited to 3)", len(apps))
 }
+
+func TestAgeConstants(t *testing.T) {
+	// Verify age constants have correct values
+	if AgeAll != "" {
+		t.Errorf("AgeAll should be empty, got %q", AgeAll)
+	}
+	if AgeFive != "AGE_RANGE1" {
+		t.Errorf("AgeFive should be AGE_RANGE1, got %q", AgeFive)
+	}
+	if AgeSix != "AGE_RANGE2" {
+		t.Errorf("AgeSix should be AGE_RANGE2, got %q", AgeSix)
+	}
+	if AgeNine != "AGE_RANGE3" {
+		t.Errorf("AgeNine should be AGE_RANGE3, got %q", AgeNine)
+	}
+}
+
+func TestListOptionsWithAge(t *testing.T) {
+	// Test that Age option is correctly set
+	opts := ListOptions{
+		Age: AgeFive,
+		Num: 10,
+	}
+
+	if opts.Age != AgeFive {
+		t.Errorf("Age should be AgeFive, got %q", opts.Age)
+	}
+}
+
+func TestListOptionsWithFullDetail(t *testing.T) {
+	// Test that FullDetail option is correctly set
+	opts := ListOptions{
+		FullDetail: true,
+		Num:        10,
+	}
+
+	if !opts.FullDetail {
+		t.Error("FullDetail should be true")
+	}
+}

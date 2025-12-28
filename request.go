@@ -6,13 +6,17 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 )
 
 // Client handles HTTP requests to Google Play
 type Client struct {
-	httpClient *http.Client
-	userAgent  string
+	httpClient   *http.Client
+	userAgent    string
+	throttle     time.Duration
+	lastRequest  time.Time
+	throttleLock sync.Mutex
 }
 
 // ClientOption configures the client
@@ -32,6 +36,13 @@ func WithUserAgent(ua string) ClientOption {
 	}
 }
 
+// WithThrottle sets minimum delay between requests (rate limiting)
+func WithThrottle(d time.Duration) ClientOption {
+	return func(c *Client) {
+		c.throttle = d
+	}
+}
+
 // NewClient creates a new Google Play scraper client
 func NewClient(opts ...ClientOption) *Client {
 	c := &Client{
@@ -48,8 +59,26 @@ func NewClient(opts ...ClientOption) *Client {
 	return c
 }
 
+// waitThrottle waits for throttle duration if needed
+func (c *Client) waitThrottle() {
+	if c.throttle == 0 {
+		return
+	}
+
+	c.throttleLock.Lock()
+	defer c.throttleLock.Unlock()
+
+	elapsed := time.Since(c.lastRequest)
+	if elapsed < c.throttle {
+		time.Sleep(c.throttle - elapsed)
+	}
+	c.lastRequest = time.Now()
+}
+
 // get performs a GET request
 func (c *Client) get(ctx context.Context, url string) ([]byte, error) {
+	c.waitThrottle()
+
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, fmt.Errorf("create request: %w", err)
@@ -79,6 +108,8 @@ func (c *Client) get(ctx context.Context, url string) ([]byte, error) {
 
 // post performs a POST request
 func (c *Client) post(ctx context.Context, url string, contentType string, body string) ([]byte, error) {
+	c.waitThrottle()
+
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, strings.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("create request: %w", err)

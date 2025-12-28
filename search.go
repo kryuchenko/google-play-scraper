@@ -85,7 +85,7 @@ func (c *Client) Search(ctx context.Context, opts SearchOptions) ([]SearchResult
 
 	// Fetch full details if requested
 	if opts.FullDetail {
-		return c.enrichSearchResults(ctx, results, opts)
+		return c.enrichSearchResults(ctx, results, opts.Lang, opts.Country)
 	}
 
 	return results, nil
@@ -471,8 +471,33 @@ func parseSearchBatchResponse(body []byte) ([]SearchResult, string, error) {
 	return results, nextToken, nil
 }
 
-func (c *Client) enrichSearchResults(ctx context.Context, results []SearchResult, opts SearchOptions) ([]SearchResult, error) {
-	// This would fetch full app details for each result
-	// For now, return as-is to avoid too many requests
-	return results, nil
+func (c *Client) enrichSearchResults(ctx context.Context, results []SearchResult, lang, country string) ([]SearchResult, error) {
+	enriched := make([]SearchResult, len(results))
+	for i, r := range results {
+		app, err := c.App(ctx, r.AppID, AppOptions{
+			Lang:    lang,
+			Country: country,
+		})
+		if err != nil {
+			// Keep original result if enrichment fails
+			enriched[i] = r
+			continue
+		}
+		// Convert App to SearchResult with full details
+		enriched[i] = SearchResult{
+			AppID:       app.AppID,
+			Title:       app.Title,
+			URL:         app.URL,
+			Icon:        app.Icon,
+			Developer:   app.Developer,
+			DeveloperID: app.DeveloperID,
+			Currency:    app.Currency,
+			Price:       app.Price,
+			Free:        app.Free,
+			Summary:     app.Summary,
+			ScoreText:   app.ScoreText,
+			Score:       app.Score,
+		}
+	}
+	return enriched, nil
 }

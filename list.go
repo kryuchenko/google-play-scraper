@@ -7,13 +7,25 @@ import (
 	"strings"
 )
 
+// Age represents age rating filter for app lists
+type Age string
+
+const (
+	AgeAll    Age = ""           // All ages (default)
+	AgeFive   Age = "AGE_RANGE1" // Ages 5 and under
+	AgeSix    Age = "AGE_RANGE2" // Ages 6-8
+	AgeNine   Age = "AGE_RANGE3" // Ages 9-12
+)
+
 // ListOptions configures the app list request
 type ListOptions struct {
 	Collection Collection // TOP_FREE, TOP_PAID, GROSSING
 	Category   Category   // APPLICATION, GAME, etc.
+	Age        Age        // Age rating filter
 	Lang       string
 	Country    string
 	Num        int
+	FullDetail bool // Fetch full details for each app
 }
 
 // List fetches a list of apps from a specific collection/category
@@ -46,12 +58,27 @@ func (c *Client) List(ctx context.Context, opts ListOptions) ([]SearchResult, er
 			BaseURL, opts.Category, opts.Lang, opts.Country)
 	}
 
+	// Add age filter if specified
+	if opts.Age != "" {
+		reqURL += "&age=" + string(opts.Age)
+	}
+
 	body, err := c.get(ctx, reqURL)
 	if err != nil {
 		return nil, fmt.Errorf("request failed: %w", err)
 	}
 
-	return parseListPage(body, opts)
+	results, err := parseListPage(body, opts)
+	if err != nil {
+		return nil, err
+	}
+
+	// Fetch full details if requested
+	if opts.FullDetail {
+		return c.enrichSearchResults(ctx, results, opts.Lang, opts.Country)
+	}
+
+	return results, nil
 }
 
 func parseListPage(body []byte, opts ListOptions) ([]SearchResult, error) {

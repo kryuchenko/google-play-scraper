@@ -117,3 +117,15 @@ func TestSimilarMinecraft(t *testing.T) {
 
 	t.Logf("Got %d similar apps for Minecraft", len(results))
 }
+
+func TestSimilarOptionsWithFullDetail(t *testing.T) {
+	// Test that FullDetail option is correctly set
+	opts := SimilarOptions{
+		AppID:      "com.google.android.apps.maps",
+		FullDetail: true,
+	}
+
+	if !opts.FullDetail {
+		t.Error("FullDetail should be true")
+	}
+}

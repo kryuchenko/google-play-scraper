@@ -27,6 +27,16 @@ app, _ := client.App(ctx, "com.spotify.music", googleplayscraper.AppOptions{})
 fmt.Println(app.Title, app.Score) // "Spotify" 4.3
 ```
 
+## Client Options
+
+```go
+client := googleplayscraper.NewClient(
+    googleplayscraper.WithThrottle(500 * time.Millisecond), // Rate limiting
+    googleplayscraper.WithTimeout(60 * time.Second),        // Request timeout
+    googleplayscraper.WithUserAgent("MyApp/1.0"),           // Custom User-Agent
+)
+```
+
 ## API
 
 ### App
@@ -130,6 +140,7 @@ List apps by a developer.
 | num | int | `60` | Number of results |
 | lang | string | `"en"` | Language code |
 | country | string | `"us"` | Country code |
+| fullDetail | bool | `false` | Fetch full details for each app |
 
 ```go
 apps, err := client.Developer(ctx, googleplayscraper.DeveloperOptions{
@@ -149,6 +160,7 @@ Find similar apps.
 | appId | string | *required* | App ID |
 | lang | string | `"en"` | Language code |
 | country | string | `"us"` | Country code |
+| fullDetail | bool | `false` | Fetch full details for each app |
 
 ```go
 similar, err := client.Similar(ctx, googleplayscraper.SimilarOptions{
@@ -211,19 +223,24 @@ Get top apps by collection and category.
 |-----------|------|---------|-------------|
 | collection | Collection | `CollectionTopFree` | App collection |
 | category | Category | `""` | App category |
+| age | Age | `""` | Age rating filter |
 | num | int | `50` | Number of results |
 | lang | string | `"en"` | Language code |
 | country | string | `"us"` | Country code |
+| fullDetail | bool | `false` | Fetch full details for each app |
 
 ```go
 apps, err := client.List(ctx, googleplayscraper.ListOptions{
     Collection: googleplayscraper.CollectionTopFree,
     Category:   googleplayscraper.CategoryGame,
+    Age:        googleplayscraper.AgeFive, // Ages 5 and under
     Num:        50,
 })
 ```
 
 **Collections:** `CollectionTopFree`, `CollectionTopPaid`, `CollectionGrossing`, `CollectionTrending`, `CollectionNewFree`, `CollectionNewPaid`
+
+**Age ratings:** `AgeFive` (5 and under), `AgeSix` (6-8), `AgeNine` (9-12)
 
 ---
 

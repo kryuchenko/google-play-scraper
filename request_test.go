@@ -94,6 +94,42 @@ func TestClientPost(t *testing.T) {
 	}
 }
 
+func TestClientWithThrottle(t *testing.T) {
+	c := NewClient(WithThrottle(100 * time.Millisecond))
+
+	if c.throttle != 100*time.Millisecond {
+		t.Errorf("Throttle: got %v, want %v", c.throttle, 100*time.Millisecond)
+	}
+}
+
+func TestThrottleDelay(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`ok`))
+	}))
+	defer server.Close()
+
+	throttleTime := 50 * time.Millisecond
+	c := NewClient(WithThrottle(throttleTime))
+
+	// First request
+	start := time.Now()
+	_, _ = c.get(context.Background(), server.URL)
+	firstDuration := time.Since(start)
+
+	// Second request should be throttled
+	start = time.Now()
+	_, _ = c.get(context.Background(), server.URL)
+	secondDuration := time.Since(start)
+
+	// Second request should take at least throttleTime minus some tolerance
+	if secondDuration < throttleTime-10*time.Millisecond {
+		t.Errorf("Second request too fast: %v, expected at least %v", secondDuration, throttleTime)
+	}
+
+	t.Logf("First: %v, Second: %v (throttle: %v)", firstDuration, secondDuration, throttleTime)
+}
+
 func TestBuildURL(t *testing.T) {
 	tests := []struct {
 		path   string
