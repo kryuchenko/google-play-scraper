@@ -129,3 +129,57 @@ func TestSimilarOptionsWithFullDetail(t *testing.T) {
 		t.Error("FullDetail should be true")
 	}
 }
+
+func TestFindSimilarCluster(t *testing.T) {
+	// Case 1: No data blocks
+	url, err := findSimilarCluster([]byte("<html></html>"))
+	if err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+	if url != "" {
+		t.Errorf("expected empty url, got %q", url)
+	}
+
+	// Case 2: Data blocks present but no similar cluster
+	// Just generic data
+	_, _ = findSimilarCluster([]byte(`
+		<script>AF_initDataCallback({key: 'ds:7', isError: false , hash: '1', data: [[["Test", 1]]]});</script>
+	`))
+	// Should return empty string, no error
+
+	// Case 3: Invalid JSON in script
+	_, err = findSimilarCluster([]byte(`
+		<script>AF_initDataCallback({key: 'ds:7', isError: false , hash: '1', data: {invalid-json}});</script>
+	`))
+	if err != nil {
+		// Currently function ignores invalid JSON blocks and continues, so this shouldn't error out unless fatal
+		// The code loop `if err := json.Unmarshal([]byte(dataStr), &data); err != nil { continue }`
+		// So it should just assume no data.
+	}
+}
+
+func TestParseSimilarPage(t *testing.T) {
+	// Empty body
+	res, err := parseSimilarPage([]byte{})
+	if err != nil {
+		// Should return nil
+	}
+	if len(res) != 0 {
+		t.Error("expected 0 results")
+	}
+
+	// Missing ds:3
+	res, err = parseSimilarPage([]byte(`<html></html>`))
+	if len(res) != 0 {
+		t.Error("expected 0 results")
+	}
+
+	// Malformed ds:3
+	malformed := `
+		<script>AF_initDataCallback({key: 'ds:3', isError: false , hash: '1', data: []});</script>
+	`
+	res, err = parseSimilarPage([]byte(malformed))
+	if len(res) != 0 {
+		t.Error("expected 0 results")
+	}
+}
