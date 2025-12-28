@@ -160,6 +160,9 @@ func extractReviews(data []interface{}, appID string) (*ReviewsResult, error) {
 		if err != nil {
 			continue // Skip malformed reviews
 		}
+		if review.ID == "" {
+			continue // Skip empty reviews
+		}
 		result.Reviews = append(result.Reviews, review)
 	}
 

@@ -2,6 +2,9 @@ package googleplayscraper
 
 import (
 	"context"
+	"io"
+	"net/http"
+	"strings"
 	"testing"
 )
 
@@ -388,4 +391,61 @@ func TestHasAppIdPattern(t *testing.T) {
 			t.Errorf("hasAppIdPattern(%v) = %v, want %v", tt.input, got, tt.want)
 		}
 	}
+}
+
+// MockTransport allows mocking HTTP responses
+type MockTransport struct {
+	RoundTripFunc func(req *http.Request) (*http.Response, error)
+}
+
+func (m *MockTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	return m.RoundTripFunc(req)
+}
+
+func TestFetchMoreSearchResults(t *testing.T) {
+	// Mock response for batchexecute
+	mockResponseBody := `)]}'
+[["wrb.fr","[[null,[[10,[10,50]],true,null,[96,27,4,8,57,30,110,79,11,16,49,1,3,9,12,104,55,56,51,10,34,77]],[null,\"token\"]]",null,"generic"]]`
+
+	// Create client with mock transport
+	mockTransport := &MockTransport{
+		RoundTripFunc: func(req *http.Request) (*http.Response, error) {
+			return &http.Response{
+				StatusCode: 200,
+				Body:       io.NopCloser(strings.NewReader(mockResponseBody)),
+				Header:     make(http.Header),
+			}, nil
+		},
+	}
+
+	// Create a new client and inject the transport
+	// Note: Client struct in request.go uses *http.Client.
+	// We need to ensure we can modify it. NewClient() creates a standard http.Client.
+	// Since we are in the same package, and if Client.client is unexported, we can access it.
+	c := NewClient()
+
+	// Overwrite the transport of the internal http client
+	if c.httpClient == nil {
+		c.httpClient = &http.Client{}
+	}
+	c.httpClient.Transport = mockTransport
+
+	results, token, err := c.fetchMoreSearchResults(context.Background(), "token", SearchOptions{
+		Lang:    "en",
+		Country: "us",
+	})
+
+	// We expect NO error, even if parsing fails to find meaningful data (empty results)
+	// gracefully handled by parseSearchBatchResponse
+	if err != nil {
+		t.Fatalf("fetchMoreSearchResults failed: %v", err)
+	}
+
+	// In this mock, we don't have real app data, so results should be empty
+	if len(results) != 0 {
+		t.Errorf("expected 0 results from mock garbage, got %d", len(results))
+	}
+
+	// Token might be empty or not depending on parser internals on garbage
+	_ = token
 }

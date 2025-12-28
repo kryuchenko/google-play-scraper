@@ -175,3 +175,56 @@ func TestListOptionsWithFullDetail(t *testing.T) {
 		t.Error("FullDetail should be true")
 	}
 }
+
+func TestParseListPage(t *testing.T) {
+	// Case 1: Empty body
+	res, err := parseListPage([]byte{}, ListOptions{Num: 10})
+	// Expect nil, nil because regex won't match keys, loops finish, returns empty slice, no error
+	if err != nil {
+		t.Errorf("unexpected error for empty body: %v", err)
+	}
+	if len(res) != 0 {
+		t.Error("expected 0 results")
+	}
+
+	// Case 2: Invalid JSON in data blocks
+	// Should be ignored
+	body := `<script>AF_initDataCallback({key: 'ds:3', isError: false , hash: '1', data: {invalid}});</script>`
+	res, err = parseListPage([]byte(body), ListOptions{Num: 10})
+	if err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+	if len(res) != 0 {
+		t.Error("expected 0 results")
+	}
+}
+
+func TestParseListApp(t *testing.T) {
+	// Case 1: Valid app structure
+	// format: [0,"AppID",... "Title",... ] - indices vary based on implementation
+
+	// Real structure based on list.go:
+	// AppID: [0][0]  <-- list.go:192: getPath(arr, 0, 0)
+	// Title: [3]     <-- list.go:197: getPath(arr, 3)
+	// Developer: [14] <-- list.go:207: getPath(arr, 14)
+
+	// Constructing array
+	item := make([]interface{}, 15) // need at least index 14
+	item[3] = "Test Title"
+	item[14] = "Dev Name"
+	item[0] = []interface{}{"com.test.app"}
+
+	res := parseListApp(item)
+	if res.AppID != "com.test.app" {
+		t.Errorf("expected com.test.app, got %q", res.AppID)
+	}
+	if res.Title != "Test Title" {
+		t.Errorf("expected Test Title, got %q", res.Title)
+	}
+
+	// Case 2: Malformed input
+	res2 := parseListApp("not-array")
+	if res2.AppID != "" {
+		t.Error("expected empty result for malformed input")
+	}
+}

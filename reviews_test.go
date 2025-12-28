@@ -89,14 +89,14 @@ func TestParseTimestamp(t *testing.T) {
 func TestParseReview(t *testing.T) {
 	// Simulate review data structure from Google Play
 	reviewData := []interface{}{
-		"review-id-123",                            // [0] ID
+		"review-id-123", // [0] ID
 		[]interface{}{"John Doe", []interface{}{}}, // [1] User data
-		float64(5),                                 // [2] Score
-		nil,                                        // [3]
-		"Great app, love it!",                      // [4] Text
-		[]interface{}{float64(1704067200)},         // [5] Date
-		float64(42),                                // [6] ThumbsUp
-		nil,                                        // [7] Reply
+		float64(5),                         // [2] Score
+		nil,                                // [3]
+		"Great app, love it!",              // [4] Text
+		[]interface{}{float64(1704067200)}, // [5] Date
+		float64(42),                        // [6] ThumbsUp
+		nil,                                // [7] Reply
 	}
 
 	review, err := parseReview(reviewData, "com.example.app")
@@ -135,6 +135,53 @@ func TestReviewsWithMockServer(t *testing.T) {
 
 	// We can't easily override BaseURL, so this test validates parsing logic
 	// For real integration test, see TestReviewsIntegration
+}
+
+func TestParseReviewsResponse(t *testing.T) {
+	// Case 1: Empty response (should error or return empty)
+	res, err := parseReviewsResponse([]byte{}, "com.example")
+	// Expect error because it tries to find JSON array or specific prefix
+	if err == nil {
+		t.Error("expected error for empty response")
+	}
+	_ = res
+
+	// Case 2: Invalid JSON prefix handling
+	// parseReviewsResponse looks for `)]}'` prefix or tries to parse directly.
+	// If garbage, json unmarshal fails.
+	_, err = parseReviewsResponse([]byte("invalid json"), "com.example")
+	if err == nil {
+		t.Error("expected error for invalid JSON")
+	}
+
+	// Case 3: Valid outer JSON but missing internal structure
+	// reviews.go expects: [0][2] as string with inner JSON
+	validOuter := `)]}'
+[["wrb.fr","bad-structure",null,"generic"]]`
+	_, err = parseReviewsResponse([]byte(validOuter), "com.example")
+	// string assertion for [0][2] should fail or inner uncharshal fails
+	if err == nil {
+		// Actually if outer[0][2] is null, assertion to string fails, returns error.
+		t.Error("expected error for missing data string")
+	}
+
+	// Case 4: Valid internal structure but empty data
+	validOuter2 := `)]}'
+[["wrb.fr","rpcId","[[null,[],null]]","generic"]]`
+	res2, err2 := parseReviewsResponse([]byte(validOuter2), "com.example")
+	if err2 != nil {
+		t.Errorf("unexpected error: %v", err2)
+	}
+	if res2 == nil {
+		// If implementation returns nil for empty valid structure, that's fine too, just return
+		return
+	}
+	if len(res2.Reviews) != 0 {
+		t.Error("expected 0 reviews")
+	}
+	if res2.NextToken != "" {
+		t.Error("expected empty token")
+	}
 }
 
 // TestReviewsIntegration is a real integration test
