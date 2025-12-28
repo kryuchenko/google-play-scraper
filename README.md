@@ -9,6 +9,21 @@ Go library for scraping Google Play Store app data — **no external dependencie
 
 Inspired by [facundoolano/google-play-scraper](https://github.com/facundoolano/google-play-scraper) (Node.js).
 
+## Features
+
+- **App Details** — full app info: description, rating, reviews count, screenshots, version, etc.
+- **Search** — search apps with price filtering (free/paid) and full details
+- **Reviews** — fetch reviews with sorting, filtering by rating, and pagination
+- **Developer Apps** — list all apps by a developer (by name or ID)
+- **Similar Apps** — find apps similar to a given app
+- **Permissions** — get app permissions list
+- **Data Safety** — get privacy/data collection info
+- **Suggestions** — get search autocomplete suggestions
+- **Top Charts** — get top free/paid/grossing apps by category
+- **Categories** — list all Play Store categories
+- **Localization** — support for 50+ languages and countries
+- **Rate Limiting** — built-in throttling to avoid blocks
+
 ## Installation
 
 ```bash
