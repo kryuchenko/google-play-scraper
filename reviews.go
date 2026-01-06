@@ -8,6 +8,41 @@ import (
 	"time"
 )
 
+// ReviewsComprehensive fetches reviews by querying each rating separately to maximize unique results.
+// This works around Google Play's tendency to return duplicate reviews across different queries.
+// Returns up to opts.Count reviews per rating (5 ratings), so total can be up to 5x opts.Count.
+func (c *Client) ReviewsComprehensive(ctx context.Context, appID string, opts ReviewOptions) ([]Review, error) {
+	seen := make(map[string]bool)
+	var allReviews []Review
+
+	countPerRating := opts.Count
+	if countPerRating == 0 {
+		countPerRating = 200 // default per rating
+	}
+
+	for score := 1; score <= 5; score++ {
+		scoreOpts := opts
+		scoreOpts.FilterScore = score
+		scoreOpts.Count = countPerRating
+		scoreOpts.NextToken = "" // Reset pagination for each rating
+
+		reviews, err := c.ReviewsAll(ctx, appID, scoreOpts)
+		if err != nil {
+			// Continue with other ratings on error
+			continue
+		}
+
+		for _, r := range reviews {
+			if !seen[r.ID] {
+				seen[r.ID] = true
+				allReviews = append(allReviews, r)
+			}
+		}
+	}
+
+	return allReviews, nil
+}
+
 // ReviewsAll fetches reviews with auto-pagination up to opts.Count total
 func (c *Client) ReviewsAll(ctx context.Context, appID string, opts ReviewOptions) ([]Review, error) {
 	var allReviews []Review
