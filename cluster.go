@@ -36,7 +36,8 @@ type ClusterOptions struct {
 	Lang    string
 	Country string
 	// Num caps the number of apps returned. Zero means "as many as Google
-	// will paginate", bounded by clusterPaginationGuard.
+	// will paginate", bounded by clusterPaginationGuard. Values above 5000
+	// (clusterPaginationGuard) are clamped to 5000.
 	Num int
 }
 

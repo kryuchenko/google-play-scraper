@@ -70,6 +70,26 @@ func TestParseListBatchFixture(t *testing.T) {
 	}
 }
 
+func TestParseListPageFixture(t *testing.T) {
+	// The HTML fallback (listViaHTML -> parseListPage) is exercised here against
+	// a captured /store/apps top-charts page so it stays verifiably alive: a
+	// silent drift in Google's markup would surface as zero results here rather
+	// than as a masked empty list in production.
+	body := readFixture(t, "top_charts_page.html")
+	results, err := parseListPage(body, ListOptions{Collection: CollectionTopFree, Num: 50})
+	if err != nil {
+		t.Fatalf("parseListPage: %v", err)
+	}
+	if len(results) < 10 {
+		t.Fatalf("got %d apps, want >= 10", len(results))
+	}
+	for i, r := range results {
+		if r.AppID == "" {
+			t.Errorf("result %d has empty AppID", i)
+		}
+	}
+}
+
 func TestParseClusterURLsFixture(t *testing.T) {
 	clusters := parseClusterURLs(readFixture(t, "category_page.html"))
 	if len(clusters) < 1 {

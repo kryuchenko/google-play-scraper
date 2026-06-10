@@ -49,8 +49,15 @@ client := googleplayscraper.NewClient(
     googleplayscraper.WithThrottle(500 * time.Millisecond), // Rate limiting
     googleplayscraper.WithTimeout(60 * time.Second),        // Request timeout
     googleplayscraper.WithUserAgent("MyApp/1.0"),           // Custom User-Agent
+    googleplayscraper.WithConcurrency(5),                   // Parallel FullDetail fetches (default 1)
 )
 ```
+
+`WithConcurrency(n)` controls how many `App()` detail lookups run in parallel
+when a listing is requested with `FullDetail: true` (Search, List, Developer,
+Similar). The default is `1` (sequential), so parallelism is opt-in;
+the configured `WithThrottle` interval still bounds the request rate across
+workers. Result order is always preserved.
 
 ## API
 
@@ -87,7 +94,7 @@ Search for apps on Google Play.
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | term | string | *required* | Search term |
-| num | int | `20` | Number of results (max 250) |
+| num | int | `20` | Number of results; values above 250 are clamped to 250 |
 | lang | string | `"en"` | Language code |
 | country | string | `"us"` | Country code |
 | price | string | `"all"` | `"free"`, `"paid"`, or `"all"` |

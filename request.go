@@ -40,6 +40,7 @@ type Client struct {
 	userAgent    string
 	throttle     time.Duration
 	timeout      time.Duration
+	concurrency  int
 	lastRequest  time.Time
 	throttleLock sync.Mutex
 }
@@ -72,6 +73,22 @@ func WithThrottle(d time.Duration) ClientOption {
 	}
 }
 
+// WithConcurrency sets how many App() detail fetches run in parallel when a
+// listing is requested with FullDetail. The default is 1 (sequential), so
+// parallelism is opt-in and does not surprise callers relying on WithThrottle
+// for rate limiting; the throttle still bounds the request rate across workers.
+//
+// Values below 1 are treated as 1. The effective worker count is capped at the
+// number of results being enriched.
+func WithConcurrency(n int) ClientOption {
+	return func(c *Client) {
+		if n < 1 {
+			n = 1
+		}
+		c.concurrency = n
+	}
+}
+
 // WithHTTPClient replaces the underlying *http.Client used for all requests.
 //
 // The supplied client must follow redirects and persist cookies the way the
@@ -98,7 +115,8 @@ func NewClient(opts ...ClientOption) *Client {
 		httpClient: &http.Client{
 			Timeout: 30 * time.Second,
 		},
-		userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+		userAgent:   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+		concurrency: 1,
 	}
 
 	for _, opt := range opts {
@@ -114,29 +132,42 @@ func NewClient(opts ...ClientOption) *Client {
 	return c
 }
 
-// waitThrottle waits for the throttle interval to elapse since the previous
-// request, returning early with ctx.Err() if the context is cancelled while
-// waiting.
+// waitThrottle enforces a minimum interval between the *starts* of consecutive
+// requests. It reserves the next start slot under a short lock, then sleeps
+// without holding the lock so concurrent callers serialize on their slot
+// reservations rather than on the sleep itself. It returns ctx.Err() if the
+// context is cancelled before the reserved slot arrives.
+//
+// Slots are reserved on a monotonic schedule: each caller claims max(now,
+// lastSlot+throttle), so N concurrent callers spread out to one start per
+// throttle interval instead of all firing at once after a shared sleep.
 func (c *Client) waitThrottle(ctx context.Context) error {
 	if c.throttle == 0 {
 		return nil
 	}
 
 	c.throttleLock.Lock()
-	defer c.throttleLock.Unlock()
-
-	elapsed := time.Since(c.lastRequest)
-	if wait := c.throttle - elapsed; wait > 0 {
-		timer := time.NewTimer(wait)
-		defer timer.Stop()
-		select {
-		case <-timer.C:
-		case <-ctx.Done():
-			return ctx.Err()
-		}
+	now := time.Now()
+	slot := c.lastRequest.Add(c.throttle)
+	if slot.Before(now) {
+		slot = now
 	}
-	c.lastRequest = time.Now()
-	return nil
+	c.lastRequest = slot
+	c.throttleLock.Unlock()
+
+	wait := time.Until(slot)
+	if wait <= 0 {
+		return nil
+	}
+
+	timer := time.NewTimer(wait)
+	defer timer.Stop()
+	select {
+	case <-timer.C:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
 // get performs a GET request

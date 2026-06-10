@@ -5,6 +5,8 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"sort"
+	"sync"
 	"testing"
 	"time"
 )
@@ -197,6 +199,67 @@ func TestThrottleDelay(t *testing.T) {
 	}
 
 	t.Logf("First: %v, Second: %v (throttle: %v)", firstDuration, secondDuration, throttleTime)
+}
+
+// TestThrottleConcurrentStarts verifies the throttle serializes request starts
+// across concurrent goroutines: with a 10ms throttle and 8 workers firing 30
+// requests, consecutive starts must stay at least one throttle interval apart
+// (within timer tolerance), and the run must be race-free under -race.
+func TestThrottleConcurrentStarts(t *testing.T) {
+	const (
+		throttle = 10 * time.Millisecond
+		requests = 30
+		workers  = 8
+	)
+
+	var (
+		mu     sync.Mutex
+		starts []time.Time
+	)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		starts = append(starts, time.Now())
+		mu.Unlock()
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	c := NewClient(WithThrottle(throttle), WithConcurrency(workers))
+
+	jobs := make(chan int)
+	var wg sync.WaitGroup
+	wg.Add(workers)
+	for w := 0; w < workers; w++ {
+		go func() {
+			defer wg.Done()
+			for range jobs {
+				if _, err := c.get(context.Background(), server.URL); err != nil {
+					t.Errorf("request failed: %v", err)
+				}
+			}
+		}()
+	}
+	for i := 0; i < requests; i++ {
+		jobs <- i
+	}
+	close(jobs)
+	wg.Wait()
+
+	if len(starts) != requests {
+		t.Fatalf("recorded %d starts, want %d", len(starts), requests)
+	}
+
+	sort.Slice(starts, func(i, j int) bool { return starts[i].Before(starts[j]) })
+
+	// The handler timestamp lags the throttle's reserved slot by scheduling and
+	// network jitter, so allow a tolerance below the nominal interval.
+	const tolerance = 4 * time.Millisecond
+	for i := 1; i < len(starts); i++ {
+		gap := starts[i].Sub(starts[i-1])
+		if gap < throttle-tolerance {
+			t.Errorf("start %d came %v after previous, want >= %v", i, gap, throttle-tolerance)
+		}
+	}
 }
 
 func TestBuildURL(t *testing.T) {

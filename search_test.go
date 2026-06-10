@@ -15,11 +15,6 @@ func TestSearchValidation(t *testing.T) {
 	if err == nil {
 		t.Error("expected error for empty term")
 	}
-
-	_, err = c.Search(context.Background(), SearchOptions{Term: "test", Num: 300})
-	if err == nil {
-		t.Error("expected error for num > 250")
-	}
 }
 
 func TestGetPriceValue(t *testing.T) {

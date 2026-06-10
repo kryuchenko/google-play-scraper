@@ -85,6 +85,12 @@ func main() {
 	save(outDir, "datasafety_page.html",
 		get(c, fmt.Sprintf("%s/store/apps/datasafety?id=%s&hl=en&gl=us", baseURL, appID)))
 
+	// 10. Top-charts page (parseListPage / listViaHTML fallback source). Google
+	// redirects /store/apps/top to /store/apps; the default client follows it,
+	// matching the library's own get.
+	save(outDir, "top_charts_page.html",
+		get(c, fmt.Sprintf("%s/store/apps/top?hl=en&gl=us", baseURL)))
+
 	fmt.Println("fixtures written to", outDir)
 }
 

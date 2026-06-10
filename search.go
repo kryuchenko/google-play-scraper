@@ -5,13 +5,20 @@ import (
 	"fmt"
 	"net/url"
 	"strings"
+	"sync"
 )
+
+// searchMaxNum is the largest number of results Search will return. Higher
+// requested values are clamped to it rather than rejected.
+const searchMaxNum = 250
 
 // SearchOptions configures the search request
 type SearchOptions struct {
-	Term       string
-	Lang       string
-	Country    string
+	Term    string
+	Lang    string
+	Country string
+	// Num caps the number of results returned. Default 20. Values above 250
+	// are clamped to 250 (searchMaxNum).
 	Num        int
 	Price      string // "free", "paid", "all"
 	FullDetail bool
@@ -39,10 +46,6 @@ func (c *Client) Search(ctx context.Context, opts SearchOptions) ([]SearchResult
 		return nil, fmt.Errorf("search term is required")
 	}
 
-	if opts.Num > 250 {
-		return nil, fmt.Errorf("number of results can't exceed 250")
-	}
-
 	if opts.Lang == "" {
 		opts.Lang = "en"
 	}
@@ -51,6 +54,9 @@ func (c *Client) Search(ctx context.Context, opts SearchOptions) ([]SearchResult
 	}
 	if opts.Num == 0 {
 		opts.Num = 20
+	}
+	if opts.Num > searchMaxNum {
+		opts.Num = searchMaxNum
 	}
 
 	price := getPriceValue(opts.Price)
@@ -407,33 +413,71 @@ func parseSearchResult(item interface{}) SearchResult {
 	return result
 }
 
+// enrichSearchResults replaces each result with full App() details, fetched by
+// a pool of c.concurrency workers (default 1 — sequential). Output order
+// matches input: workers write into a preallocated slice by index. If a single
+// App() call fails, that slot keeps its original, un-enriched result — the same
+// per-item fallback the sequential version used. The error return is reserved
+// for future use and is currently always nil.
 func (c *Client) enrichSearchResults(ctx context.Context, results []SearchResult, lang, country string) ([]SearchResult, error) {
 	enriched := make([]SearchResult, len(results))
-	for i, r := range results {
-		app, err := c.App(ctx, r.AppID, AppOptions{
-			Lang:    lang,
-			Country: country,
-		})
-		if err != nil {
-			// Keep original result if enrichment fails
-			enriched[i] = r
-			continue
-		}
-		// Convert App to SearchResult with full details
-		enriched[i] = SearchResult{
-			AppID:       app.AppID,
-			Title:       app.Title,
-			URL:         app.URL,
-			Icon:        app.Icon,
-			Developer:   app.Developer,
-			DeveloperID: app.DeveloperID,
-			Currency:    app.Currency,
-			Price:       app.Price,
-			Free:        app.Free,
-			Summary:     app.Summary,
-			ScoreText:   app.ScoreText,
-			Score:       app.Score,
-		}
+
+	workers := c.concurrency
+	if workers < 1 {
+		workers = 1
 	}
+	if workers > len(results) {
+		workers = len(results)
+	}
+	if workers <= 1 {
+		for i, r := range results {
+			enriched[i] = c.enrichOne(ctx, r, lang, country)
+		}
+		return enriched, nil
+	}
+
+	indexes := make(chan int)
+	var wg sync.WaitGroup
+	wg.Add(workers)
+	for w := 0; w < workers; w++ {
+		go func() {
+			defer wg.Done()
+			for i := range indexes {
+				enriched[i] = c.enrichOne(ctx, results[i], lang, country)
+			}
+		}()
+	}
+	for i := range results {
+		indexes <- i
+	}
+	close(indexes)
+	wg.Wait()
+
 	return enriched, nil
+}
+
+// enrichOne fetches full details for a single result, falling back to the
+// original result if the App() call fails.
+func (c *Client) enrichOne(ctx context.Context, r SearchResult, lang, country string) SearchResult {
+	app, err := c.App(ctx, r.AppID, AppOptions{
+		Lang:    lang,
+		Country: country,
+	})
+	if err != nil {
+		return r
+	}
+	return SearchResult{
+		AppID:       app.AppID,
+		Title:       app.Title,
+		URL:         app.URL,
+		Icon:        app.Icon,
+		Developer:   app.Developer,
+		DeveloperID: app.DeveloperID,
+		Currency:    app.Currency,
+		Price:       app.Price,
+		Free:        app.Free,
+		Summary:     app.Summary,
+		ScoreText:   app.ScoreText,
+		Score:       app.Score,
+	}
 }
