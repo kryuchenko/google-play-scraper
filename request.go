@@ -10,11 +10,36 @@ import (
 	"time"
 )
 
+// StatusError reports an HTTP response whose status code was not 200 OK.
+// It lets callers branch on the specific status (e.g. 404 vs 429) instead of
+// matching on the error string:
+//
+//	app, err := client.App(ctx, id, opts)
+//	var se *StatusError
+//	if errors.As(err, &se) {
+//		switch se.Code {
+//		case http.StatusNotFound:
+//			// app does not exist
+//		case http.StatusTooManyRequests:
+//			// back off and retry
+//		}
+//	}
+type StatusError struct {
+	Code int
+}
+
+// Error returns the message historically produced by the request helpers, so
+// existing callers that match on the string keep working.
+func (e *StatusError) Error() string {
+	return fmt.Sprintf("unexpected status: %d", e.Code)
+}
+
 // Client handles HTTP requests to Google Play
 type Client struct {
 	httpClient   *http.Client
 	userAgent    string
 	throttle     time.Duration
+	timeout      time.Duration
 	lastRequest  time.Time
 	throttleLock sync.Mutex
 }
@@ -22,10 +47,14 @@ type Client struct {
 // ClientOption configures the client
 type ClientOption func(*Client)
 
-// WithTimeout sets the HTTP client timeout
+// WithTimeout sets the HTTP client timeout.
+//
+// It is applied after the client is fully built, so it works regardless of
+// ordering relative to WithHTTPClient: a custom client always receives the
+// requested timeout.
 func WithTimeout(d time.Duration) ClientOption {
 	return func(c *Client) {
-		c.httpClient.Timeout = d
+		c.timeout = d
 	}
 }
 
@@ -43,6 +72,26 @@ func WithThrottle(d time.Duration) ClientOption {
 	}
 }
 
+// WithHTTPClient replaces the underlying *http.Client used for all requests.
+//
+// The supplied client must follow redirects and persist cookies the way the
+// default one does (the default uses a zero-value http.Client, which follows
+// up to 10 redirects). Google Play relies on both: detail and listing pages
+// redirect across locales, and several endpoints set cookies that later
+// requests echo back. A client with redirects disabled or a nil Jar where one
+// is expected will silently return empty or malformed results.
+//
+// Use it to inject a transport with proxy support, custom TLS, or request
+// tracing. Combine with WithTimeout to override the client's timeout without
+// constructing your own.
+func WithHTTPClient(client *http.Client) ClientOption {
+	return func(c *Client) {
+		if client != nil {
+			c.httpClient = client
+		}
+	}
+}
+
 // NewClient creates a new Google Play scraper client
 func NewClient(opts ...ClientOption) *Client {
 	c := &Client{
@@ -56,28 +105,45 @@ func NewClient(opts ...ClientOption) *Client {
 		opt(c)
 	}
 
+	// Apply the timeout last so it wins regardless of option ordering and
+	// applies to a client supplied via WithHTTPClient too.
+	if c.timeout > 0 {
+		c.httpClient.Timeout = c.timeout
+	}
+
 	return c
 }
 
-// waitThrottle waits for throttle duration if needed
-func (c *Client) waitThrottle() {
+// waitThrottle waits for the throttle interval to elapse since the previous
+// request, returning early with ctx.Err() if the context is cancelled while
+// waiting.
+func (c *Client) waitThrottle(ctx context.Context) error {
 	if c.throttle == 0 {
-		return
+		return nil
 	}
 
 	c.throttleLock.Lock()
 	defer c.throttleLock.Unlock()
 
 	elapsed := time.Since(c.lastRequest)
-	if elapsed < c.throttle {
-		time.Sleep(c.throttle - elapsed)
+	if wait := c.throttle - elapsed; wait > 0 {
+		timer := time.NewTimer(wait)
+		defer timer.Stop()
+		select {
+		case <-timer.C:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
 	}
 	c.lastRequest = time.Now()
+	return nil
 }
 
 // get performs a GET request
 func (c *Client) get(ctx context.Context, url string) ([]byte, error) {
-	c.waitThrottle()
+	if err := c.waitThrottle(ctx); err != nil {
+		return nil, err
+	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
@@ -95,7 +161,7 @@ func (c *Client) get(ctx context.Context, url string) ([]byte, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("unexpected status: %d", resp.StatusCode)
+		return nil, &StatusError{Code: resp.StatusCode}
 	}
 
 	body, err := io.ReadAll(resp.Body)
@@ -108,7 +174,9 @@ func (c *Client) get(ctx context.Context, url string) ([]byte, error) {
 
 // post performs a POST request
 func (c *Client) post(ctx context.Context, url string, contentType string, body string) ([]byte, error) {
-	c.waitThrottle()
+	if err := c.waitThrottle(ctx); err != nil {
+		return nil, err
+	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, strings.NewReader(body))
 	if err != nil {
@@ -126,7 +194,7 @@ func (c *Client) post(ctx context.Context, url string, contentType string, body 
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("unexpected status: %d", resp.StatusCode)
+		return nil, &StatusError{Code: resp.StatusCode}
 	}
 
 	respBody, err := io.ReadAll(resp.Body)

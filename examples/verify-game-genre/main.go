@@ -13,9 +13,11 @@ import (
 	"bufio"
 	"context"
 	"encoding/csv"
+	"errors"
 	"flag"
 	"fmt"
 	"math/rand"
+	"net/http"
 	"os"
 	"strings"
 	"time"
@@ -72,8 +74,9 @@ func main() {
 
 	for i, id := range ids {
 		app, err := client.App(ctx, id, googleplayscraper.AppOptions{Lang: *lang, Country: *country})
+		var statusErr *googleplayscraper.StatusError
 		switch {
-		case err != nil && strings.Contains(err.Error(), "404"):
+		case errors.As(err, &statusErr) && statusErr.Code == http.StatusNotFound:
 			gone++
 			w.Write([]string{id, "gone", "", "", "", err.Error()})
 		case err != nil:

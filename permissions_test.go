@@ -7,6 +7,9 @@ import (
 )
 
 func TestPermissions(t *testing.T) {
+	if testing.Short() {
+		t.Skip("network test")
+	}
 	client := NewClient()
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -50,6 +53,9 @@ func TestPermissionsRequiresAppID(t *testing.T) {
 }
 
 func TestPermissionsInstagram(t *testing.T) {
+	if testing.Short() {
+		t.Skip("network test")
+	}
 	client := NewClient()
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()

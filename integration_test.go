@@ -11,6 +11,9 @@ import (
 // ============== APP TESTS ==============
 
 func TestApp(t *testing.T) {
+	if testing.Short() {
+		t.Skip("network test")
+	}
 	client := googleplayscraper.NewClient()
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -35,6 +38,9 @@ func TestApp(t *testing.T) {
 }
 
 func TestAppNotFound(t *testing.T) {
+	if testing.Short() {
+		t.Skip("network test")
+	}
 	client := googleplayscraper.NewClient()
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -46,6 +52,9 @@ func TestAppNotFound(t *testing.T) {
 }
 
 func TestAppLocalization(t *testing.T) {
+	if testing.Short() {
+		t.Skip("network test")
+	}
 	client := googleplayscraper.NewClient()
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -73,6 +82,9 @@ func TestAppLocalization(t *testing.T) {
 }
 
 func TestAppPaid(t *testing.T) {
+	if testing.Short() {
+		t.Skip("network test")
+	}
 	client := googleplayscraper.NewClient()
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -92,6 +104,9 @@ func TestAppPaid(t *testing.T) {
 // ============== REVIEWS TESTS ==============
 
 func TestReviews(t *testing.T) {
+	if testing.Short() {
+		t.Skip("network test")
+	}
 	client := googleplayscraper.NewClient()
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -116,6 +131,9 @@ func TestReviews(t *testing.T) {
 }
 
 func TestReviewsSorting(t *testing.T) {
+	if testing.Short() {
+		t.Skip("network test")
+	}
 	client := googleplayscraper.NewClient()
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -136,6 +154,9 @@ func TestReviewsSorting(t *testing.T) {
 }
 
 func TestReviewsPagination(t *testing.T) {
+	if testing.Short() {
+		t.Skip("network test")
+	}
 	client := googleplayscraper.NewClient()
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
@@ -171,6 +192,9 @@ func TestReviewsPagination(t *testing.T) {
 }
 
 func TestReviewsFilterScore(t *testing.T) {
+	if testing.Short() {
+		t.Skip("network test")
+	}
 	client := googleplayscraper.NewClient()
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -193,6 +217,9 @@ func TestReviewsFilterScore(t *testing.T) {
 }
 
 func TestReviewsAll(t *testing.T) {
+	if testing.Short() {
+		t.Skip("network test")
+	}
 	client := googleplayscraper.NewClient()
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
@@ -215,6 +242,9 @@ func TestReviewsAll(t *testing.T) {
 // ============== SEARCH TESTS ==============
 
 func TestSearch(t *testing.T) {
+	if testing.Short() {
+		t.Skip("network test")
+	}
 	client := googleplayscraper.NewClient()
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -239,6 +269,9 @@ func TestSearch(t *testing.T) {
 }
 
 func TestSearchLocalization(t *testing.T) {
+	if testing.Short() {
+		t.Skip("network test")
+	}
 	client := googleplayscraper.NewClient()
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -257,6 +290,9 @@ func TestSearchLocalization(t *testing.T) {
 }
 
 func TestSearchFreeOnly(t *testing.T) {
+	if testing.Short() {
+		t.Skip("network test")
+	}
 	client := googleplayscraper.NewClient()
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -280,6 +316,9 @@ func TestSearchFreeOnly(t *testing.T) {
 // ============== DEVELOPER TESTS ==============
 
 func TestDeveloper(t *testing.T) {
+	if testing.Short() {
+		t.Skip("network test")
+	}
 	client := googleplayscraper.NewClient()
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -307,6 +346,9 @@ func TestDeveloper(t *testing.T) {
 }
 
 func TestDeveloperNumericID(t *testing.T) {
+	if testing.Short() {
+		t.Skip("network test")
+	}
 	client := googleplayscraper.NewClient()
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -325,6 +367,9 @@ func TestDeveloperNumericID(t *testing.T) {
 // ============== SIMILAR TESTS ==============
 
 func TestSimilar(t *testing.T) {
+	if testing.Short() {
+		t.Skip("network test")
+	}
 	client := googleplayscraper.NewClient()
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -348,6 +393,9 @@ func TestSimilar(t *testing.T) {
 }
 
 func TestSimilarDifferentDevelopers(t *testing.T) {
+	if testing.Short() {
+		t.Skip("network test")
+	}
 	client := googleplayscraper.NewClient()
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -370,6 +418,9 @@ func TestSimilarDifferentDevelopers(t *testing.T) {
 // ============== SUGGEST TESTS ==============
 
 func TestSuggest(t *testing.T) {
+	if testing.Short() {
+		t.Skip("network test")
+	}
 	client := googleplayscraper.NewClient()
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -391,6 +442,9 @@ func TestSuggest(t *testing.T) {
 // ============== PERMISSIONS TESTS ==============
 
 func TestPermissions(t *testing.T) {
+	if testing.Short() {
+		t.Skip("network test")
+	}
 	client := googleplayscraper.NewClient()
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -418,6 +472,9 @@ func TestPermissions(t *testing.T) {
 // ============== DATASAFETY TESTS ==============
 
 func TestDataSafety(t *testing.T) {
+	if testing.Short() {
+		t.Skip("network test")
+	}
 	client := googleplayscraper.NewClient()
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -440,6 +497,9 @@ func TestDataSafety(t *testing.T) {
 // ============== LIST TESTS ==============
 
 func TestList(t *testing.T) {
+	if testing.Short() {
+		t.Skip("network test")
+	}
 	client := googleplayscraper.NewClient()
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()

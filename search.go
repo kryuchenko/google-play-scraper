@@ -162,31 +162,56 @@ func extractSearchResults(data map[string]interface{}) ([]SearchResult, string, 
 	return results, token, nil
 }
 
-// findAppsInData recursively searches for apps array in data
+// findAppsInData recursively searches for the apps array in data, returning the
+// candidate that yields the most app entries. Google Play search pages nest a
+// short "did you mean"/featured array alongside the full results grid; picking
+// the first match by depth-first order can land on the short one, so we compare
+// all candidates and keep the largest.
 func findAppsInData(data interface{}) []interface{} {
+	best := bestAppsArray(data)
+	if best == nil {
+		return nil
+	}
+	return best
+}
+
+func bestAppsArray(data interface{}) []interface{} {
 	arr, ok := data.([]interface{})
 	if !ok {
 		return nil
 	}
 
-	// Check if this looks like an apps array (has appId-like structures)
+	var best []interface{}
+	bestCount := 0
+
+	// A candidate is an array whose direct children look like app entries.
+	count := 0
 	for _, item := range arr {
-		if itemArr, ok := item.([]interface{}); ok {
-			// Look for com.* pattern in nested arrays indicating appId
-			if hasAppIdPattern(itemArr) {
-				return arr
+		if itemArr, ok := item.([]interface{}); ok && hasAppIdPattern(itemArr) {
+			count++
+		}
+	}
+	if count > 0 {
+		best, bestCount = arr, count
+	}
+
+	// Still recurse: a larger results grid may live deeper than a small
+	// inline candidate at this level.
+	for _, item := range arr {
+		if cand := bestAppsArray(item); cand != nil {
+			candCount := 0
+			for _, e := range cand {
+				if ea, ok := e.([]interface{}); ok && hasAppIdPattern(ea) {
+					candCount++
+				}
+			}
+			if candCount > bestCount {
+				best, bestCount = cand, candCount
 			}
 		}
 	}
 
-	// Recurse into nested arrays
-	for _, item := range arr {
-		if result := findAppsInData(item); result != nil {
-			return result
-		}
-	}
-
-	return nil
+	return best
 }
 
 func hasAppIdPattern(arr []interface{}) bool {

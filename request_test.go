@@ -2,6 +2,7 @@ package googleplayscraper
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -66,7 +67,75 @@ func TestClientGetError(t *testing.T) {
 	c := NewClient()
 	_, err := c.get(context.Background(), server.URL)
 	if err == nil {
-		t.Error("expected error for 404 status")
+		t.Fatal("expected error for 404 status")
+	}
+
+	var statusErr *StatusError
+	if !errors.As(err, &statusErr) {
+		t.Fatalf("error is not *StatusError: %v", err)
+	}
+	if statusErr.Code != http.StatusNotFound {
+		t.Errorf("Code: got %d, want %d", statusErr.Code, http.StatusNotFound)
+	}
+	if got, want := err.Error(), "unexpected status: 404"; got != want {
+		t.Errorf("Error(): got %q, want %q", got, want)
+	}
+}
+
+func TestWithHTTPClient(t *testing.T) {
+	custom := &http.Client{Timeout: 7 * time.Second}
+
+	// WithHTTPClient installs the supplied client.
+	c := NewClient(WithHTTPClient(custom))
+	if c.httpClient != custom {
+		t.Error("WithHTTPClient did not install the custom client")
+	}
+
+	// A nil client is ignored, leaving the default in place.
+	c = NewClient(WithHTTPClient(nil))
+	if c.httpClient == nil {
+		t.Error("nil client should be ignored, default preserved")
+	}
+
+	// WithTimeout overrides the timeout of a custom client regardless of
+	// option ordering.
+	for _, order := range []struct {
+		name string
+		opts []ClientOption
+	}{
+		{"client then timeout", []ClientOption{WithHTTPClient(&http.Client{Timeout: time.Minute}), WithTimeout(3 * time.Second)}},
+		{"timeout then client", []ClientOption{WithTimeout(3 * time.Second), WithHTTPClient(&http.Client{Timeout: time.Minute})}},
+	} {
+		c := NewClient(order.opts...)
+		if c.httpClient.Timeout != 3*time.Second {
+			t.Errorf("%s: Timeout = %v, want %v", order.name, c.httpClient.Timeout, 3*time.Second)
+		}
+	}
+}
+
+func TestThrottleContextCancel(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	// A long throttle ensures the second request would block; cancelling the
+	// context must return immediately with the context error.
+	c := NewClient(WithThrottle(time.Hour))
+	if _, err := c.get(context.Background(), server.URL); err != nil {
+		t.Fatalf("first request failed: %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	start := time.Now()
+	_, err := c.get(ctx, server.URL)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("error: got %v, want context.Canceled", err)
+	}
+	if elapsed := time.Since(start); elapsed > time.Second {
+		t.Errorf("waited %v before honoring cancellation, want near-immediate", elapsed)
 	}
 }
 

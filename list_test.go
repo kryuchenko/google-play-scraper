@@ -11,6 +11,9 @@ import (
 // The List function returns apps from these curated sections.
 
 func TestListPopularApps(t *testing.T) {
+	if testing.Short() {
+		t.Skip("network test")
+	}
 	client := NewClient()
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -49,6 +52,9 @@ func TestListPopularApps(t *testing.T) {
 }
 
 func TestListDifferentSections(t *testing.T) {
+	if testing.Short() {
+		t.Skip("network test")
+	}
 	client := NewClient()
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -74,6 +80,9 @@ func TestListDifferentSections(t *testing.T) {
 }
 
 func TestListAppsFromCategory(t *testing.T) {
+	if testing.Short() {
+		t.Skip("network test")
+	}
 	client := NewClient()
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -98,6 +107,9 @@ func TestListAppsFromCategory(t *testing.T) {
 }
 
 func TestListDefaults(t *testing.T) {
+	if testing.Short() {
+		t.Skip("network test")
+	}
 	client := NewClient()
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -117,6 +129,9 @@ func TestListDefaults(t *testing.T) {
 }
 
 func TestListLimitResults(t *testing.T) {
+	if testing.Short() {
+		t.Skip("network test")
+	}
 	client := NewClient()
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
