@@ -4,18 +4,18 @@ import "time"
 
 // Review represents a single user review
 type Review struct {
-	ID           string    `json:"id"`
-	UserName     string    `json:"userName"`
-	UserImage    string    `json:"userImage"`
-	Date         time.Time `json:"date"`
-	Score        int       `json:"score"`
-	Text         string    `json:"text"`
-	ReplyDate    time.Time `json:"replyDate,omitempty"`
-	ReplyText    string    `json:"replyText,omitempty"`
-	Version      string    `json:"version,omitempty"`
-	ThumbsUp     int       `json:"thumbsUp"`
-	URL          string    `json:"url"`
-	Criterias    []Criteria `json:"criterias,omitempty"`
+	ID        string     `json:"id"`
+	UserName  string     `json:"userName"`
+	UserImage string     `json:"userImage"`
+	Date      time.Time  `json:"date"`
+	Score     int        `json:"score"`
+	Text      string     `json:"text"`
+	ReplyDate time.Time  `json:"replyDate,omitempty"`
+	ReplyText string     `json:"replyText,omitempty"`
+	Version   string     `json:"version,omitempty"`
+	ThumbsUp  int        `json:"thumbsUp"`
+	URL       string     `json:"url"`
+	Criterias []Criteria `json:"criterias,omitempty"`
 }
 
 // Criteria represents review criteria (e.g., gameplay, graphics)

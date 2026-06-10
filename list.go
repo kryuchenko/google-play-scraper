@@ -3,7 +3,6 @@ package googleplayscraper
 import (
 	"context"
 	_ "embed"
-	"encoding/json"
 	"fmt"
 	"net/url"
 	"strings"
@@ -203,25 +202,7 @@ func (c *Client) listViaHTML(ctx context.Context, opts ListOptions) ([]SearchRes
 }
 
 func parseListPage(body []byte, opts ListOptions) ([]SearchResult, error) {
-	html := string(body)
-
-	// Find data blocks
-	dataBlocks := make(map[string]interface{})
-	matches := scriptDataRegex.FindAllStringSubmatch(html, -1)
-
-	for _, match := range matches {
-		if len(match) < 3 {
-			continue
-		}
-		key := match[1]
-		dataStr := strings.TrimSpace(match[2])
-
-		var data interface{}
-		if err := json.Unmarshal([]byte(dataStr), &data); err != nil {
-			continue
-		}
-		dataBlocks[key] = data
-	}
+	dataBlocks := parseDataBlocks(body)
 
 	// Apps are in ds:4[0][1][x][21][0]
 	ds4, ok := dataBlocks["ds:4"]

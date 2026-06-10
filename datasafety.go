@@ -2,9 +2,7 @@ package googleplayscraper
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"strings"
 )
 
 // DataSafetyEntry represents a single data collection/sharing entry
@@ -61,25 +59,7 @@ func (c *Client) DataSafety(ctx context.Context, opts DataSafetyOptions) (*DataS
 }
 
 func parseDataSafetyPage(body []byte) (*DataSafety, error) {
-	html := string(body)
-
-	// Find data blocks
-	dataBlocks := make(map[string]interface{})
-	matches := scriptDataRegex.FindAllStringSubmatch(html, -1)
-
-	for _, match := range matches {
-		if len(match) < 3 {
-			continue
-		}
-		key := match[1]
-		dataStr := strings.TrimSpace(match[2])
-
-		var data interface{}
-		if err := json.Unmarshal([]byte(dataStr), &data); err != nil {
-			continue
-		}
-		dataBlocks[key] = data
-	}
+	dataBlocks := parseDataBlocks(body)
 
 	ds3, ok := dataBlocks["ds:3"]
 	if !ok {

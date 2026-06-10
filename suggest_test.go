@@ -42,12 +42,16 @@ func TestParseSuggestResponse(t *testing.T) {
 		t.Error("expected error for invalid JSON")
 	}
 
-	// Case 2: Valid JSON but missing suggestions array structure
-	// Expected: [0][0][0] = "suggestion"
-	_, err = parseSuggestResponse([]byte(`[[]]`))
-	// Depending on implementation, might return empty or error.
-	// suggest.go:44 unmarshals to array.
-	// If structures nested don't match, it usually returns nil suggestions without error or error if strict.
+	// Case 2: Valid JSON but missing suggestions array structure.
+	// outer[0] has fewer than 3 elements, so parsing returns no suggestions
+	// and no error.
+	suggestions, err := parseSuggestResponse([]byte(`[[]]`))
+	if err != nil {
+		t.Errorf("unexpected error for missing suggestions structure: %v", err)
+	}
+	if len(suggestions) != 0 {
+		t.Errorf("expected 0 suggestions, got %d", len(suggestions))
+	}
 
 	// Case 3: Proper structure
 	// parseSuggestResponse expects outer JSON: [["wrb.fr", "rpcId", "INNER_JSON_STRING", "generic"]]
@@ -59,7 +63,7 @@ func TestParseSuggestResponse(t *testing.T) {
 	validBody := fmt.Sprintf(`)]}'
 [["wrb.fr","rpcId","%s","generic"]]`, strings.ReplaceAll(innerJSON, `"`, `\"`))
 
-	suggestions, err := parseSuggestResponse([]byte(validBody))
+	suggestions, err = parseSuggestResponse([]byte(validBody))
 	if err != nil {
 		t.Errorf("unexpected error: %v", err)
 	}

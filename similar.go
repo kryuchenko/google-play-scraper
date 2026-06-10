@@ -2,7 +2,6 @@ package googleplayscraper
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strings"
 )
@@ -69,25 +68,7 @@ func (c *Client) Similar(ctx context.Context, opts SimilarOptions) ([]SearchResu
 }
 
 func findSimilarCluster(body []byte) (string, error) {
-	html := string(body)
-
-	// Find data blocks
-	dataBlocks := make(map[string]interface{})
-	matches := scriptDataRegex.FindAllStringSubmatch(html, -1)
-
-	for _, match := range matches {
-		if len(match) < 3 {
-			continue
-		}
-		key := match[1]
-		dataStr := strings.TrimSpace(match[2])
-
-		var data interface{}
-		if err := json.Unmarshal([]byte(dataStr), &data); err != nil {
-			continue
-		}
-		dataBlocks[key] = data
-	}
+	dataBlocks := parseDataBlocks(body)
 
 	// Look for clusters with "Similar" in title
 	// Clusters are typically in ds:7 or ds:8, path [1][1]
@@ -132,25 +113,7 @@ func findSimilarCluster(body []byte) (string, error) {
 }
 
 func parseSimilarPage(body []byte) ([]SearchResult, error) {
-	html := string(body)
-
-	// Find data blocks
-	dataBlocks := make(map[string]interface{})
-	matches := scriptDataRegex.FindAllStringSubmatch(html, -1)
-
-	for _, match := range matches {
-		if len(match) < 3 {
-			continue
-		}
-		key := match[1]
-		dataStr := strings.TrimSpace(match[2])
-
-		var data interface{}
-		if err := json.Unmarshal([]byte(dataStr), &data); err != nil {
-			continue
-		}
-		dataBlocks[key] = data
-	}
+	dataBlocks := parseDataBlocks(body)
 
 	// Apps in ds:3 -> [0][1][0][21][0]
 	ds3, ok := dataBlocks["ds:3"]

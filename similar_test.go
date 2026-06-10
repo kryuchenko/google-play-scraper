@@ -170,6 +170,9 @@ func TestParseSimilarPage(t *testing.T) {
 
 	// Missing ds:3
 	res, err = parseSimilarPage([]byte(`<html></html>`))
+	if err != nil {
+		t.Fatalf("unexpected error for missing ds:3: %v", err)
+	}
 	if len(res) != 0 {
 		t.Error("expected 0 results")
 	}
@@ -179,6 +182,9 @@ func TestParseSimilarPage(t *testing.T) {
 		<script>AF_initDataCallback({key: 'ds:3', isError: false , hash: '1', data: []});</script>
 	`
 	res, err = parseSimilarPage([]byte(malformed))
+	if err != nil {
+		t.Fatalf("unexpected error for malformed ds:3: %v", err)
+	}
 	if len(res) != 0 {
 		t.Error("expected 0 results")
 	}

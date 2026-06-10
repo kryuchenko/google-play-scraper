@@ -2,7 +2,6 @@ package googleplayscraper
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"regexp"
 	"strconv"
@@ -38,29 +37,8 @@ func (c *Client) App(ctx context.Context, appID string, opts AppOptions) (*App, 
 	return parseAppPage(body, appID, url)
 }
 
-var scriptDataRegex = regexp.MustCompile(`AF_initDataCallback\(\{key:\s*'(ds:\d+)'.*?data:(.*?), sideChannel:`)
-
 func parseAppPage(body []byte, appID, pageURL string) (*App, error) {
-	html := string(body)
-
-	// Find all script data blocks
-	dataBlocks := make(map[string]interface{})
-	matches := scriptDataRegex.FindAllStringSubmatch(html, -1)
-
-	for _, match := range matches {
-		if len(match) < 3 {
-			continue
-		}
-		key := match[1]
-		dataStr := strings.TrimSpace(match[2])
-
-		var data interface{}
-		if err := json.Unmarshal([]byte(dataStr), &data); err != nil {
-			continue
-		}
-		dataBlocks[key] = data
-	}
-
+	dataBlocks := parseDataBlocks(body)
 	return extractAppData(dataBlocks, appID, pageURL)
 }
 

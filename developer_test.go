@@ -176,12 +176,18 @@ func TestParseDeveloperPage(t *testing.T) {
 	`
 	// Path to apps for numeric ID: [0][1][0][21][0]
 	res, err := parseDeveloperPage([]byte(body), true, 10)
+	if err != nil {
+		t.Fatalf("unexpected error for empty apps data: %v", err)
+	}
 	if len(res) != 0 {
 		t.Error("expected 0 results for empty apps data")
 	}
 
 	// Let's test missing ds:3
 	res, err = parseDeveloperPage([]byte(`<html></html>`), false, 10)
+	if err != nil {
+		t.Fatalf("unexpected error for missing data: %v", err)
+	}
 	if len(res) != 0 {
 		t.Error("expected 0 results for missing data")
 	}

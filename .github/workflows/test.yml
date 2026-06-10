@@ -13,26 +13,43 @@ jobs:
   test:
     runs-on: ubuntu-latest
 
+    strategy:
+      fail-fast: false
+      matrix:
+        go-version: ['1.24', '1.25', 'stable']
+
     steps:
       - uses: actions/checkout@v6
 
       - name: Setup Go
         uses: actions/setup-go@v6
         with:
-          go-version: '1.24'
+          go-version: ${{ matrix.go-version }}
+
+      - name: Check formatting
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "The following files are not gofmt-formatted:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - name: Run go vet
+        run: go vet ./...
 
       - name: Run tests with coverage
         run: go test -v -race -coverprofile=coverage.out -covermode=atomic ./...
 
       - name: Update coverage in README
-        if: github.ref == 'refs/heads/main'
+        if: github.ref == 'refs/heads/main' && matrix.go-version == 'stable'
         run: |
           COVERAGE=$(go tool cover -func=coverage.out | grep total | awk '{print $3}' | tr -d '%')
           sed -i "s/coverage-[0-9.]*%25/coverage-${COVERAGE}%25/" README.md
           echo "Coverage: $COVERAGE%"
 
       - name: Commit coverage badge
-        if: github.ref == 'refs/heads/main'
+        if: github.ref == 'refs/heads/main' && matrix.go-version == 'stable'
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
