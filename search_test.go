@@ -288,32 +288,34 @@ func TestSearchFullDetail(t *testing.T) {
 	t.Logf("Got %d results with full details", len(results))
 }
 
-// TestParseSearchBatchResponse tests the batch response parser
-func TestParseSearchBatchResponse(t *testing.T) {
+// TestDecodeBatchEnvelope tests the shared batchexecute envelope decoder.
+func TestDecodeBatchEnvelope(t *testing.T) {
 	// Empty response
-	_, _, err := parseSearchBatchResponse([]byte{})
-	if err == nil {
+	if _, err := decodeBatchEnvelope([]byte{}); err == nil {
 		t.Error("expected error for empty response")
 	}
 
 	// Invalid JSON
-	_, _, err = parseSearchBatchResponse([]byte("\n{invalid"))
-	if err == nil {
+	if _, err := decodeBatchEnvelope([]byte("\n{invalid")); err == nil {
 		t.Error("expected error for invalid JSON")
 	}
 
-	// Valid but empty response (standard empty batch response format)
-	results, token, err := parseSearchBatchResponse([]byte(`
-[[["wrb.fr","[[null,[]],null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null]","null",null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null]]]
-`))
+	// Null payload signals "no more data": returns nil data, no error.
+	data, err := decodeBatchEnvelope([]byte(")]}'\n[[\"wrb.fr\",\"qnKhOb\",null,null,null,[3],\"generic\"]]"))
 	if err != nil {
 		t.Errorf("unexpected error: %v", err)
 	}
-	if len(results) != 0 {
-		t.Errorf("expected 0 results, got %d", len(results))
+	if data != nil {
+		t.Errorf("expected nil data for null payload, got %v", data)
 	}
-	if token != "" {
-		t.Errorf("expected empty token, got %q", token)
+
+	// Valid payload: data string is parsed into a slice.
+	data, err = decodeBatchEnvelope([]byte(")]}'\n[[\"wrb.fr\",\"qnKhOb\",\"[1,2,3]\",null,null,[3],\"generic\"]]"))
+	if err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+	if len(data) != 3 {
+		t.Errorf("expected 3 elements, got %d", len(data))
 	}
 }
 
@@ -402,7 +404,7 @@ func (m *MockTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	return m.RoundTripFunc(req)
 }
 
-func TestFetchMoreSearchResults(t *testing.T) {
+func TestFetchMoreApps(t *testing.T) {
 	// Mock response for batchexecute
 	mockResponseBody := `)]}'
 [["wrb.fr","[[null,[[10,[10,50]],true,null,[96,27,4,8,57,30,110,79,11,16,49,1,3,9,12,104,55,56,51,10,34,77]],[null,\"token\"]]",null,"generic"]]`
@@ -430,15 +432,11 @@ func TestFetchMoreSearchResults(t *testing.T) {
 	}
 	c.httpClient.Transport = mockTransport
 
-	results, token, err := c.fetchMoreSearchResults(context.Background(), "token", SearchOptions{
-		Lang:    "en",
-		Country: "us",
-	})
+	results, token, err := c.fetchMoreApps(context.Background(), "token", "en", "us")
 
-	// We expect NO error, even if parsing fails to find meaningful data (empty results)
-	// gracefully handled by parseSearchBatchResponse
+	// We expect NO error: a null payload is gracefully handled as "no more data".
 	if err != nil {
-		t.Fatalf("fetchMoreSearchResults failed: %v", err)
+		t.Fatalf("fetchMoreApps failed: %v", err)
 	}
 
 	// In this mock, we don't have real app data, so results should be empty

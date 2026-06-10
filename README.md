@@ -238,8 +238,8 @@ Get top apps by collection and category.
 |-----------|------|---------|-------------|
 | collection | Collection | `CollectionTopFree` | App collection |
 | category | Category | `""` | App category |
-| age | Age | `""` | Age rating filter |
-| num | int | `50` | Number of results |
+| age | Age | `""` | Age rating filter (see caveat below) |
+| num | int | `500` | Number of results; values >660 are clamped to 660. Google returns ~200 max per collection in practice |
 | lang | string | `"en"` | Language code |
 | country | string | `"us"` | Country code |
 | fullDetail | bool | `false` | Fetch full details for each app |
@@ -248,14 +248,44 @@ Get top apps by collection and category.
 apps, err := client.List(ctx, googleplayscraper.ListOptions{
     Collection: googleplayscraper.CollectionTopFree,
     Category:   googleplayscraper.CategoryGame,
-    Age:        googleplayscraper.AgeFive, // Ages 5 and under
-    Num:        50,
+    Num:        500,
 })
 ```
 
-**Collections:** `CollectionTopFree`, `CollectionTopPaid`, `CollectionGrossing`, `CollectionTrending`, `CollectionNewFree`, `CollectionNewPaid`
+**Collections:** `CollectionTopFree`, `CollectionTopPaid`, `CollectionGrossing`
 
 **Age ratings:** `AgeFive` (5 and under), `AgeSix` (6-8), `AgeNine` (9-12)
+
+> **Age filter caveat:** `Age` is currently a no-op on the primary list path.
+> The vyAe2 batchexecute endpoint reads filters from the request body, not the
+> URL, and ignores the `age` query parameter, so filtered and unfiltered lists
+> come back identical (verified for both `CategoryFamily` and `CategoryGame`).
+> The parameter is still sent for parity with the reference implementation and
+> is honoured only by the legacy HTML fallback.
+
+---
+
+### ClusterURLs / Cluster
+
+Discover the app clusters ("Popular apps", "New releases", …) on a category or
+top-charts page with `ClusterURLs`, then fetch a cluster's apps with `Cluster`.
+
+```go
+clusters, err := client.ClusterURLs(ctx, googleplayscraper.ClusterURLsOptions{
+    Category: googleplayscraper.CategoryGame,
+})
+// clusters[i].Title, clusters[i].URL
+
+apps, err := client.Cluster(ctx, googleplayscraper.ClusterOptions{
+    Path: clusters[0].URL,
+    Num:  100,
+})
+```
+
+> **Known limitation:** continuation-token pagination (the `qnKhOb` RPC) is
+> currently rejected by Google, so `Cluster` returns only the first page
+> (~20–50 apps). For the same reason `Search` is limited to its first page plus
+> inline results (a pre-existing limitation).
 
 ---
 

@@ -20,6 +20,14 @@ const (
 	CollectionGrossing Collection = "GROSSING"
 )
 
+// clusterNames maps a Collection to the cluster identifier Google Play
+// expects in the vyAe2 batchexecute payload.
+var clusterNames = map[Collection]string{
+	CollectionTopFree:  "topselling_free",
+	CollectionTopPaid:  "topselling_paid",
+	CollectionGrossing: "topgrossing",
+}
+
 // Category types
 type Category string
 

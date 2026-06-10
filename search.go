@@ -70,8 +70,8 @@ func (c *Client) Search(ctx context.Context, opts SearchOptions) ([]SearchResult
 
 	// Fetch more results if needed
 	for len(results) < opts.Num && token != "" {
-		moreResults, nextToken, err := c.fetchMoreSearchResults(ctx, token, opts)
-		if err != nil {
+		moreResults, nextToken, err := c.fetchMoreApps(ctx, token, opts.Lang, opts.Country)
+		if err != nil || len(moreResults) == 0 {
 			break
 		}
 		results = append(results, moreResults...)
@@ -148,7 +148,7 @@ func extractSearchResults(data map[string]interface{}) ([]SearchResult, string, 
 	paths := [][]int{
 		{0, 1, 0, 22, 0}, // developer pages
 		{0, 1, 0, 21, 0},
-		{0, 1, 0, 0, 0},  // search pages
+		{0, 1, 0, 0, 0}, // search pages
 	}
 
 	var apps []interface{}
@@ -400,75 +400,6 @@ func parseSearchResult(item interface{}) SearchResult {
 	}
 
 	return result
-}
-
-func (c *Client) fetchMoreSearchResults(ctx context.Context, token string, opts SearchOptions) ([]SearchResult, string, error) {
-	// Use batchexecute for pagination
-	payload := fmt.Sprintf(`[[["qnKhOb","[[null,[[10,[10,50]],true,null,[96,27,4,8,57,30,110,79,11,16,49,1,3,9,12,104,55,56,51,10,34,77]],[null,\"%s\"]]",null,"generic"]]]`, token)
-
-	reqURL := fmt.Sprintf("%s/_/PlayStoreUi/data/batchexecute?hl=%s&gl=%s", BaseURL, opts.Lang, opts.Country)
-	body, err := c.post(ctx, reqURL, "application/x-www-form-urlencoded", "f.req="+url.QueryEscape(payload))
-	if err != nil {
-		return nil, "", err
-	}
-
-	return parseSearchBatchResponse(body)
-}
-
-func parseSearchBatchResponse(body []byte) ([]SearchResult, string, error) {
-	// Skip the )]}'  prefix
-	start := 0
-	for i := range body {
-		if body[i] == '\n' {
-			start = i + 1
-			break
-		}
-	}
-
-	if start >= len(body) {
-		return nil, "", fmt.Errorf("invalid response")
-	}
-
-	var outer [][]interface{}
-	if err := json.Unmarshal(body[start:], &outer); err != nil {
-		return nil, "", err
-	}
-
-	if len(outer) == 0 || len(outer[0]) < 3 {
-		return nil, "", nil
-	}
-
-	dataStr, ok := outer[0][2].(string)
-	if !ok {
-		return nil, "", nil
-	}
-
-	var data []interface{}
-	if err := json.Unmarshal([]byte(dataStr), &data); err != nil {
-		return nil, "", err
-	}
-
-	var results []SearchResult
-	var nextToken string
-
-	// Apps in data[0][0][0]
-	if apps := getPath(data, 0, 0, 0); apps != nil {
-		if appsArr, ok := apps.([]interface{}); ok {
-			for _, app := range appsArr {
-				result := parseSearchResult(app)
-				if result.AppID != "" {
-					results = append(results, result)
-				}
-			}
-		}
-	}
-
-	// Token in data[0][0][7][1]
-	if t := getPath(data, 0, 0, 7, 1); t != nil {
-		nextToken = toString(t)
-	}
-
-	return results, nextToken, nil
 }
 
 func (c *Client) enrichSearchResults(ctx context.Context, results []SearchResult, lang, country string) ([]SearchResult, error) {
