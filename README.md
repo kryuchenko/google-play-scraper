@@ -316,6 +316,45 @@ app, _ := client.App(ctx, appID, googleplayscraper.AppOptions{
 })
 ```
 
+## Coverage & limitations
+
+This library scrapes the **anonymous public web** interface of Google Play
+(`play.google.com`), so it is bound by what that interface exposes:
+
+- **Lists/charts cap at ~200 apps** per category × collection. Google does not
+  serve a full catalog, and continuation-token pagination (the `qnKhOb` RPC) is
+  currently rejected for lists/search — see the `Cluster` note above. This is a
+  server-side limit, not a library bug; the reference Node library
+  (`facundoolano/google-play-scraper`) and the Python libraries hit the same
+  wall.
+- **Get broad coverage by multiplying sources**, not by paginating deeper:
+  iterate categories × collections × countries/languages, fetch each category's
+  clusters, and crawl the app graph via `Similar` and `Developer`. Filter to
+  games by `GenreID` starting with `GAME`.
+
+### Need deeper access? The mobile protobuf API (FDFE)
+
+If you need true deep pagination or batched detail lookups, the only known
+option beyond the web interface is Google Play's **mobile protobuf API** — the
+same `android.clients.google.com/fdfe/` endpoints the Play Store app uses. It
+supports real `nextPageUrl` pagination and `bulkDetails` (hundreds of package
+names per request, ideal for fast catalog verification).
+
+This library does **not** implement it, because it requires a different (and
+heavier) setup with a different risk profile:
+
+- a Google account token (or an anonymous one from a token dispenser) — i.e.
+  **authenticated** access, a clearer ToS violation than anonymous scraping;
+- device check-in / registration with a protobuf device profile;
+- ongoing maintenance of reverse-engineered protobuf schemas and token rotation
+  (anonymous accounts get banned periodically).
+
+The reference implementation is **[AuroraOSS/gplayapi](https://gitlab.com/AuroraOSS/gplayapi)**
+(Kotlin, on GitLab — the GitHub `whyorean/GPlayApi` repo is an outdated mirror),
+as used by the [Aurora Store](https://github.com/whyorean/AuroraStore) client.
+For a fully managed option, commercial APIs (SerpApi, 42matters) wrap the same
+data behind their own pagination.
+
 ## License
 
 MIT
