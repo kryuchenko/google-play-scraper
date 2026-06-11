@@ -3,6 +3,19 @@
 All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Added
+
+- `CategoryApps` coverage orchestrator: unions many independent slices of a
+  category (collections × locales × age buckets × a search-term dictionary × a
+  `Similar`/`Developer` graph walk), deduplicating by `AppID` with a saturation
+  stop, to collect far more than the ~200-app single-request ceiling. A measured
+  `GAME_ACTION` run reached ~1,800 unique apps. Ships with `CoverageLocales`, a
+  per-category search-term dictionary, and the `examples/category-coverage` CLI.
+  This maximizes coverage of the commercially visible layer of a category; it
+  does not (and anonymously cannot) enumerate the full catalog.
+
 ## [1.1.0] - 2026-06-10
 
 ### Behavior change (soft break)

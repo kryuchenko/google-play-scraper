@@ -337,7 +337,39 @@ This library scrapes the **anonymous public web** interface of Google Play
 - **Get broad coverage by multiplying sources**, not by paginating deeper:
   iterate categories × collections × countries/languages, fetch each category's
   clusters, and crawl the app graph via `Similar` and `Developer`. Filter to
-  games by `GenreID` starting with `GAME`.
+  games by `GenreID` starting with `GAME`. The `CategoryApps` method below
+  automates exactly this.
+
+### CategoryApps — automated category coverage
+
+`CategoryApps` unions many independent slices of one category (collections ×
+locales × age buckets × a search-term dictionary × a `Similar`/`Developer`
+graph walk), deduplicating by `AppID`, with a saturation stop on the expensive
+phases. It is the practical answer to "give me everything in this category"
+within the anonymous web limits.
+
+```go
+result, err := client.CategoryApps(ctx, googleplayscraper.CoverageOptions{
+    Category:    googleplayscraper.CategoryGameAction,
+    Locales:     googleplayscraper.CoverageLocales[:3], // us/en, gb/en, in/en, …
+    GraphDepth:  1,                                     // Similar/Developer BFS
+    MaxApps:     5000,
+})
+// result.Apps, result.PerSourceNew, result.RequestsMade, result.Saturated
+```
+
+**What to expect (measured):** a single `GAME_ACTION` run reached ~1,800 unique
+apps — roughly 9× the ~200 single-request ceiling — with zero duplicates. The
+**search-term dictionary contributes far more unique apps than adding locales**,
+so widen `SearchTerms` before adding countries. The example CLI
+(`examples/category-coverage`) exposes `-locales`, `-graph-depth`, `-suggest`,
+and `-no-search` to control the request budget.
+
+**Honest boundary:** this collects the *commercially visible* layer of a
+category — typically thousands of apps, **not the full catalog**. Apps with no
+ratings that never surface in any chart, search, or similarity graph are not
+reachable through the anonymous web at all (see the FDFE note below). Full
+pagination of a category remains impossible anonymously.
 
 ### Need deeper access? The mobile protobuf API (FDFE)
 
