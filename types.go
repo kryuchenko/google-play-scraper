@@ -88,6 +88,30 @@ type App struct {
 	Video            string   `json:"video,omitempty"`
 	VideoImage       string   `json:"videoImage,omitempty"`
 	HeaderImage      string   `json:"headerImage,omitempty"`
+	PreviewVideo     string   `json:"previewVideo,omitempty"`
 	PrivacyPolicy    string   `json:"privacyPolicy,omitempty"`
 	Available        bool     `json:"available"`
+
+	// Monetization
+	AdSupported     bool    `json:"adSupported"`
+	OffersIAP       bool    `json:"offersIAP"`
+	IAPRange        string  `json:"IAPRange,omitempty"`
+	OriginalPrice   float64 `json:"originalPrice,omitempty"`
+	DiscountEndDate int64   `json:"discountEndDate,omitempty"`
+
+	// Distribution / availability
+	IsAvailableInPlayPass bool `json:"isAvailableInPlayPass"`
+	Preregister           bool `json:"preregister"`
+	EarlyAccessEnabled    bool `json:"earlyAccessEnabled"`
+
+	// Content & changelog
+	RecentChanges            string `json:"recentChanges,omitempty"`
+	ContentRatingDescription string `json:"contentRatingDescription,omitempty"`
+
+	// Developer (EU DSA trader info; absent for non-EU traders)
+	DeveloperInternalID       string `json:"developerInternalID,omitempty"`
+	DeveloperLegalName        string `json:"developerLegalName,omitempty"`
+	DeveloperLegalEmail       string `json:"developerLegalEmail,omitempty"`
+	DeveloperLegalAddress     string `json:"developerLegalAddress,omitempty"`
+	DeveloperLegalPhoneNumber string `json:"developerLegalPhoneNumber,omitempty"`
 }

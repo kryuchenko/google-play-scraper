@@ -3,6 +3,7 @@ package googleplayscraper
 import (
 	"context"
 	"fmt"
+	"html"
 	"regexp"
 	"strconv"
 	"strings"
@@ -211,7 +212,128 @@ func extractAppData(data map[string]interface{}, appID, url string) (*App, error
 		app.PrivacyPolicy = toString(v)
 	}
 
+	extractMedia(app, appData)
+	extractMonetization(app, appData)
+	extractDistribution(app, appData)
+	extractChangelog(app, appData)
+	extractLegalInfo(app, appData)
+
 	return app, nil
+}
+
+// extractMedia fills the promotional media URLs (header image, trailer video and
+// its poster, and the autoplay preview clip). All are optional and absent on most
+// non-game listings.
+func extractMedia(app *App, appData interface{}) {
+	// HeaderImage (feature graphic): [96][0][3][2]
+	if v := getPath(appData, 96, 0, 3, 2); v != nil {
+		app.HeaderImage = toString(v)
+	}
+	// Video (YouTube trailer player URL): [100][0][0][3][2]
+	if v := getPath(appData, 100, 0, 0, 3, 2); v != nil {
+		app.Video = toString(v)
+	}
+	// VideoImage (trailer poster): [100][1][0][3][2]
+	if v := getPath(appData, 100, 1, 0, 3, 2); v != nil {
+		app.VideoImage = toString(v)
+	}
+	// PreviewVideo (autoplay mp4 clip): [100][1][2][0][2]
+	if v := getPath(appData, 100, 1, 2, 0, 2); v != nil {
+		app.PreviewVideo = toString(v)
+	}
+}
+
+// extractMonetization fills ad-support, in-app-purchase and discount fields.
+func extractMonetization(app *App, appData interface{}) {
+	// AdSupported: [48] is present (e.g. ["Contains ads"]) when the app shows ads.
+	app.AdSupported = getPath(appData, 48) != nil
+
+	// IAPRange: [19][0] is a human range like "$0.99 - $149.99 per item".
+	// Its mere presence is what node uses to derive offersIAP.
+	if v := getPath(appData, 19, 0); v != nil {
+		app.IAPRange = toString(v)
+		app.OffersIAP = true
+	}
+
+	// OriginalPrice (pre-discount price, micros): [57][0][0][0][0][1][1][0].
+	// Present only while a promotional discount is active.
+	if v := getPath(appData, 57, 0, 0, 0, 0, 1, 1, 0); v != nil {
+		app.OriginalPrice = toFloat64(v) / 1000000
+	}
+
+	// DiscountEndDate (unix seconds): [57][0][0][0][0][14][0][0]. The [14][1]
+	// sibling is the human-readable "Sale ends in N days" string, not the epoch.
+	if v := getPath(appData, 57, 0, 0, 0, 0, 14, 0, 0); v != nil {
+		app.DiscountEndDate = toInt64(v)
+	}
+}
+
+// extractDistribution fills availability flags: Play Pass inclusion, pre-registration
+// and early-access state.
+func extractDistribution(app *App, appData interface{}) {
+	// IsAvailableInPlayPass: [62] is a non-null block when the app is in Play Pass.
+	app.IsAvailableInPlayPass = getPath(appData, 62) != nil
+
+	// Preregister: [18][0] == 1 marks an unreleased, pre-registerable app.
+	if v := getPath(appData, 18, 0); v != nil {
+		app.Preregister = toInt(v) == 1
+	}
+
+	// EarlyAccessEnabled: [18][2] is a string when early access is offered.
+	if v := getPath(appData, 18, 2); v != nil {
+		if _, ok := v.(string); ok {
+			app.EarlyAccessEnabled = true
+		}
+	}
+}
+
+// extractChangelog fills the "what's new" text and the content-rating description.
+func extractChangelog(app *App, appData interface{}) {
+	// RecentChanges: [144][1][1]. The raw value carries <br> tags and HTML
+	// entities, so run it through stripHTML like Description.
+	if v := getPath(appData, 144, 1, 1); v != nil {
+		app.RecentChanges = stripHTML(toString(v))
+	}
+	// ContentRatingDescription: [9][2][1] (e.g. "Fantasy Violence")
+	if v := getPath(appData, 9, 2, 1); v != nil {
+		app.ContentRatingDescription = toString(v)
+	}
+}
+
+// extractLegalInfo fills the developer's internal store ID and the EU DSA trader
+// contact details. The legal fields are absent for developers outside the EU
+// trader regime, which is expected and left empty.
+func extractLegalInfo(app *App, appData interface{}) {
+	// DeveloperInternalID: the id= query param of the developer store URL
+	// at [68][1][4][2] (numeric for /store/apps/dev, a name for /developer).
+	if v := getPath(appData, 68, 1, 4, 2); v != nil {
+		app.DeveloperInternalID = devIDFromURL(toString(v))
+	}
+	// DeveloperLegalName: [69][4][0]
+	if v := getPath(appData, 69, 4, 0); v != nil {
+		app.DeveloperLegalName = toString(v)
+	}
+	// DeveloperLegalEmail: [69][4][1][0]
+	if v := getPath(appData, 69, 4, 1, 0); v != nil {
+		app.DeveloperLegalEmail = toString(v)
+	}
+	// DeveloperLegalAddress: [69][4][2][0], newlines flattened to ", " like node.
+	if v := getPath(appData, 69, 4, 2, 0); v != nil {
+		app.DeveloperLegalAddress = strings.ReplaceAll(toString(v), "\n", ", ")
+	}
+	// DeveloperLegalPhoneNumber: [69][4][3]
+	if v := getPath(appData, 69, 4, 3); v != nil {
+		app.DeveloperLegalPhoneNumber = toString(v)
+	}
+}
+
+// devIDFromURL extracts the id= query parameter from a developer store URL,
+// matching node's `devUrl.split('id=')[1]`.
+func devIDFromURL(devURL string) string {
+	if _, after, ok := strings.Cut(devURL, "id="); ok {
+		return after
+	}
+	return devURL
 }
 
 func getPath(data interface{}, indices ...int) interface{} {
@@ -338,5 +460,7 @@ func stripHTML(s string) string {
 	s = strings.ReplaceAll(s, "<br/>", "\n")
 	s = strings.ReplaceAll(s, "<br />", "\n")
 	// Remove all other tags
-	return htmlTagRegex.ReplaceAllString(s, "")
+	s = htmlTagRegex.ReplaceAllString(s, "")
+	// Decode HTML entities (&#39; -> ', &amp; -> &, ...)
+	return html.UnescapeString(s)
 }

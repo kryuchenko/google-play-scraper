@@ -3,6 +3,7 @@ package googleplayscraper
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -31,6 +32,60 @@ func TestParseAppPageFixture(t *testing.T) {
 	}
 	if app.GenreID == "" {
 		t.Error("GenreID is empty")
+	}
+}
+
+// TestParseAppPageGameFixture asserts the fields that only populate on a rich
+// game listing: trailer media, in-app-purchase range, ad support, recent changes
+// and the EU DSA trader contact details. These are absent from the Maps fixture,
+// so this fixture is the one that keeps their parse paths verifiably alive.
+func TestParseAppPageGameFixture(t *testing.T) {
+	app, err := parseAppPage(readFixture(t, "app_page_game.html"), "com.king.candycrushsaga", "https://play.google.com/store/apps/details?id=com.king.candycrushsaga")
+	if err != nil {
+		t.Fatalf("parseAppPage: %v", err)
+	}
+
+	if app.Title == "" {
+		t.Error("Title is empty")
+	}
+	if !app.OffersIAP {
+		t.Error("OffersIAP is false, want true")
+	}
+	if app.IAPRange == "" {
+		t.Error("IAPRange is empty")
+	}
+	if !app.AdSupported {
+		t.Error("AdSupported is false, want true")
+	}
+	if app.RecentChanges == "" {
+		t.Error("RecentChanges is empty")
+	}
+	if app.Video == "" {
+		t.Error("Video is empty")
+	}
+	if app.VideoImage == "" {
+		t.Error("VideoImage is empty")
+	}
+	if app.PreviewVideo == "" {
+		t.Error("PreviewVideo is empty")
+	}
+	if app.HeaderImage == "" {
+		t.Error("HeaderImage is empty")
+	}
+	if app.DeveloperInternalID == "" {
+		t.Error("DeveloperInternalID is empty")
+	}
+	if app.DeveloperLegalName == "" {
+		t.Error("DeveloperLegalName is empty")
+	}
+	if app.DeveloperLegalEmail == "" {
+		t.Error("DeveloperLegalEmail is empty")
+	}
+	if app.DeveloperLegalAddress == "" {
+		t.Error("DeveloperLegalAddress is empty")
+	}
+	if strings.Contains(app.DeveloperLegalAddress, "\n") {
+		t.Error("DeveloperLegalAddress still contains raw newlines")
 	}
 }
 

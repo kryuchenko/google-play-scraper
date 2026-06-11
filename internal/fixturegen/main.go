@@ -25,6 +25,10 @@ const (
 	baseURL   = "https://play.google.com"
 	userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 	appID     = "com.google.android.apps.maps"
+	// gameAppID is a free-to-play game whose listing exercises the media,
+	// monetization and changelog fields that the Maps fixture lacks
+	// (trailer video, in-app-purchase range, "Contains ads", recent changes).
+	gameAppID = "com.king.candycrushsaga"
 )
 
 // scriptDataRegex mirrors the library's block matcher; used here only to pull a
@@ -41,6 +45,11 @@ func main() {
 	// 1. App detail page.
 	appPage := get(c, fmt.Sprintf("%s/store/apps/details?id=%s&hl=en&gl=us", baseURL, appID))
 	save(outDir, "app_page.html", appPage)
+
+	// 1b. Game detail page: exercises media/monetization/changelog fields absent
+	// from the Maps fixture.
+	save(outDir, "app_page_game.html",
+		get(c, fmt.Sprintf("%s/store/apps/details?id=%s&hl=en&gl=us", baseURL, gameAppID)))
 
 	// 2. Search page.
 	save(outDir, "search_page.html",

@@ -81,7 +81,15 @@ app, err := client.App(ctx, "com.google.android.apps.maps", googleplayscraper.Ap
 <details>
 <summary>Available fields</summary>
 
-`AppID`, `Title`, `Summary`, `Description`, `DescriptionHTML`, `Developer`, `DeveloperID`, `DeveloperEmail`, `DeveloperWebsite`, `DeveloperAddress`, `Icon`, `Score`, `ScoreText`, `Ratings`, `Reviews`, `Histogram`, `Price`, `PriceText`, `Currency`, `Free`, `Installs`, `MinInstalls`, `MaxInstalls`, `Genre`, `GenreID`, `Categories`, `Version`, `AndroidVersion`, `ContentRating`, `Released`, `Updated`, `URL`, `Screenshots`, `Video`, `VideoImage`, `HeaderImage`, `PrivacyPolicy`, `Available`
+`AppID`, `Title`, `Summary`, `Description`, `DescriptionHTML`, `Developer`, `DeveloperID`, `DeveloperEmail`, `DeveloperWebsite`, `DeveloperAddress`, `Icon`, `Score`, `ScoreText`, `Ratings`, `Reviews`, `Histogram`, `Price`, `PriceText`, `Currency`, `Free`, `Installs`, `MinInstalls`, `MaxInstalls`, `Genre`, `GenreID`, `Categories`, `Version`, `AndroidVersion`, `ContentRating`, `Released`, `Updated`, `URL`, `Screenshots`, `Video`, `VideoImage`, `HeaderImage`, `PreviewVideo`, `PrivacyPolicy`, `Available`
+
+Monetization: `AdSupported`, `OffersIAP`, `IAPRange`, `OriginalPrice`, `DiscountEndDate`
+
+Distribution: `IsAvailableInPlayPass`, `Preregister`, `EarlyAccessEnabled`
+
+Content & changelog: `RecentChanges`, `ContentRatingDescription`
+
+Developer (EU DSA trader info, empty for non-EU traders): `DeveloperInternalID`, `DeveloperLegalName`, `DeveloperLegalEmail`, `DeveloperLegalAddress`, `DeveloperLegalPhoneNumber`
 
 </details>
 
