@@ -1,0 +1,35 @@
+name: Canary (live Google Play contract)
+
+# Live contract tests against the real Google Play. They assert concrete fields
+# on freshly fetched data, so a red run signals that Google changed its page
+# layout or RPC shape and a specific parse path broke — not a code regression in
+# this repo. A weekly cadence is enough to catch drift without hammering Google
+# (and risking rate-limit bans), plus manual dispatch for on-demand checks.
+
+on:
+  schedule:
+    # Mondays 06:00 UTC.
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+
+# Read-only: unlike the main Tests workflow, this never commits anything.
+permissions:
+  contents: read
+
+jobs:
+  canary:
+    runs-on: ubuntu-latest
+    # Generous ceiling: the suite is throttled (1s between requests) and
+    # sequential, and CategoryApps issues a bounded burst of requests.
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: stable
+
+      - name: Run canary contract tests
+        run: go test -tags canary -run TestCanary -v -timeout 15m ./...
