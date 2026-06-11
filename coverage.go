@@ -64,6 +64,13 @@ type CoverageOptions struct {
 	Locales []Locale
 
 	// Ages to apply as an extra core-phase axis. Empty means no age filter.
+	//
+	// Note: on the current Google Play layout the age filter is a no-op on the
+	// vyAe2 list path — every AGE_RANGE returns the same apps as no filter
+	// (verified across GAME_ACTION, FAMILY and GAME). Passing N age buckets
+	// therefore multiplies the request count by N for zero extra coverage.
+	// Leave empty unless Google restores age filtering; the field is kept for
+	// completeness and for the HTML fallback path.
 	Ages []Age
 
 	// SearchTerms seeds the search phase. When nil, defaultSearchTerms(Category)
