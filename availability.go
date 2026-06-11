@@ -131,15 +131,10 @@ func (c *Client) Availability(ctx context.Context, appID string, opts Availabili
 		lang = "en"
 	}
 
+	// workers seeds the pool size; parallelIndexed clamps it to [1, len].
 	workers := opts.Concurrency
 	if workers <= 0 {
 		workers = c.concurrency
-	}
-	if workers < 1 {
-		workers = 1
-	}
-	if workers > len(countries) {
-		workers = len(countries)
 	}
 
 	result := AvailabilityResult{
@@ -171,59 +166,18 @@ func (c *Client) Availability(ctx context.Context, appID string, opts Availabili
 		}
 	}
 
-	probe := func(country string) {
+	// Probes fan out over a worker pool that records each result via the closure
+	// above (serialized by mu) and stops dispatching new countries once ctx is
+	// done, returning ctx.Err() in that case. The partial result built so far is
+	// still returned alongside it.
+	cancelled := parallelIndexed(ctx, len(countries), workers, func(ctx context.Context, i int) {
+		country := countries[i]
 		status, err := c.checkOne(ctx, appID, country, lang)
 		record(country, status, err)
-	}
-
-	var cancelled error
-	if workers <= 1 {
-		for _, country := range countries {
-			if err := ctx.Err(); err != nil {
-				cancelled = err
-				break
-			}
-			probe(country)
-		}
-	} else {
-		cancelled = runProbes(ctx, countries, workers, probe)
-	}
+	})
 
 	finalizeAvailability(&result)
 	return result, cancelled
-}
-
-// runProbes fans the countries out over a fixed worker pool, preserving the
-// "context cancellation stops the sweep" contract: workers drain the queue but
-// skip any country once the context is done, and the first observed ctx error is
-// returned. Probe results are recorded by the probe closure itself.
-func runProbes(ctx context.Context, countries []string, workers int, probe func(string)) error {
-	indexes := make(chan int)
-	var (
-		wg       sync.WaitGroup
-		once     sync.Once
-		canceled error
-	)
-
-	wg.Add(workers)
-	for w := 0; w < workers; w++ {
-		go func() {
-			defer wg.Done()
-			for i := range indexes {
-				if err := ctx.Err(); err != nil {
-					once.Do(func() { canceled = err })
-					continue
-				}
-				probe(countries[i])
-			}
-		}()
-	}
-	for i := range countries {
-		indexes <- i
-	}
-	close(indexes)
-	wg.Wait()
-	return canceled
 }
 
 // finalizeAvailability computes the aggregate fields once every probe is

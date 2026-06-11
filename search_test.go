@@ -283,6 +283,44 @@ func TestSearchFullDetail(t *testing.T) {
 	t.Logf("Got %d results with full details", len(results))
 }
 
+// TestSearchFullDetailConcurrentPreservesOrder drives the FullDetail enrichment
+// path through the shared worker pool at concurrency>1 and asserts the enriched
+// output stays in the same AppID order as the plain search. Run under -race it
+// proves the rewritten enrichSearchResults has no data race (each worker writes
+// its own slot) and that completion-order nondeterminism never reorders results.
+func TestSearchFullDetailConcurrentPreservesOrder(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+
+	opts := SearchOptions{Term: "weather", Num: 8, Country: "us", Lang: "en"}
+
+	plain, err := NewClient().Search(context.Background(), opts)
+	if err != nil {
+		t.Fatalf("plain search failed: %v", err)
+	}
+	if len(plain) == 0 {
+		t.Fatal("expected at least one result")
+	}
+
+	detailOpts := opts
+	detailOpts.FullDetail = true
+	enriched, err := NewClient(WithConcurrency(4)).Search(context.Background(), detailOpts)
+	if err != nil {
+		t.Fatalf("full-detail search failed: %v", err)
+	}
+
+	if len(enriched) != len(plain) {
+		t.Fatalf("enriched length %d != plain length %d", len(enriched), len(plain))
+	}
+	for i := range plain {
+		if enriched[i].AppID != plain[i].AppID {
+			t.Errorf("order diverged at %d: enriched %q, plain %q", i, enriched[i].AppID, plain[i].AppID)
+		}
+		assertValidApp(t, enriched[i])
+	}
+}
+
 // TestDecodeBatchEnvelope tests the shared batchexecute envelope decoder.
 func TestDecodeBatchEnvelope(t *testing.T) {
 	// Empty response

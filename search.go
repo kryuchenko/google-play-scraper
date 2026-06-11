@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/url"
 	"strings"
-	"sync"
 )
 
 // searchMaxNum is the largest number of results Search will return. Higher
@@ -420,38 +419,19 @@ func parseSearchResult(item interface{}) SearchResult {
 // per-item fallback the sequential version used. The error return is reserved
 // for future use and is currently always nil.
 func (c *Client) enrichSearchResults(ctx context.Context, results []SearchResult, lang, country string) ([]SearchResult, error) {
+	// Seed every slot with its original result, then overwrite in place with the
+	// enriched version. Output order matches input (each worker owns slot i), and
+	// any slot left untouched — because enrichOne hit an App() error, or because
+	// ctx cancellation stopped the pool from dispatching that index — keeps its
+	// original, un-enriched result rather than a zero value. fn never needs to
+	// surface an error, so parallelIndexed's only return (ctx cancellation) is
+	// intentionally ignored: enrich always yields a full-length slice.
 	enriched := make([]SearchResult, len(results))
+	copy(enriched, results)
 
-	workers := c.concurrency
-	if workers < 1 {
-		workers = 1
-	}
-	if workers > len(results) {
-		workers = len(results)
-	}
-	if workers <= 1 {
-		for i, r := range results {
-			enriched[i] = c.enrichOne(ctx, r, lang, country)
-		}
-		return enriched, nil
-	}
-
-	indexes := make(chan int)
-	var wg sync.WaitGroup
-	wg.Add(workers)
-	for w := 0; w < workers; w++ {
-		go func() {
-			defer wg.Done()
-			for i := range indexes {
-				enriched[i] = c.enrichOne(ctx, results[i], lang, country)
-			}
-		}()
-	}
-	for i := range results {
-		indexes <- i
-	}
-	close(indexes)
-	wg.Wait()
+	_ = parallelIndexed(ctx, len(results), c.concurrency, func(ctx context.Context, i int) {
+		enriched[i] = c.enrichOne(ctx, results[i], lang, country)
+	})
 
 	return enriched, nil
 }

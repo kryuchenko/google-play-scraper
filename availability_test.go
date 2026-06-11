@@ -36,6 +36,35 @@ func TestClassifyAvailability(t *testing.T) {
 	}
 }
 
+// TestEarlyAccessDoesNotSuppressAvailable proves that an installable early-access
+// app is still reported Available. Early access lives in [18][2] (a string),
+// while availability is decided independently by [18][0]; the two must not be
+// conflated. No live early-access fixture is used: such apps are rare and short-
+// lived, and a sweep of ~1300 live listings (top-charts across 12 game
+// categories plus multi-country "early access"/"beta" searches) surfaced none.
+// This synthetic node reproduces the exact shape an installable early-access
+// listing has — [18] = [2, nil, "Early access"] — and pins that:
+//   - classifyAvailability still returns StatusAvailable (reads [18][0]==2), and
+//   - extractDistribution still sets EarlyAccessEnabled (reads the [18][2] string),
+//
+// so early access can never produce a false Available=false.
+func TestEarlyAccessDoesNotSuppressAvailable(t *testing.T) {
+	appData := appDataWith18([]interface{}{float64(2), nil, "Early access"})
+
+	if got := classifyAvailability(appData); got != StatusAvailable {
+		t.Errorf("classifyAvailability(early-access [18]=[2,nil,string]) = %v, want StatusAvailable", got)
+	}
+
+	var app App
+	extractDistribution(&app, appData)
+	if !app.EarlyAccessEnabled {
+		t.Error("EarlyAccessEnabled is false, want true ([18][2] is a string)")
+	}
+	if app.Preregister {
+		t.Error("Preregister is true, want false (early access is installable, [18][0]==2 not 1)")
+	}
+}
+
 // TestClassifyAvailabilityOnFixtures runs the classifier against the captured
 // app pages, pinning the available vs region-locked signal to real bytes.
 func TestClassifyAvailabilityOnFixtures(t *testing.T) {
@@ -148,5 +177,36 @@ func TestAvailabilityRequiresAppID(t *testing.T) {
 	c := NewClient()
 	if _, err := c.Availability(context.Background(), "", AvailabilityOptions{}); err == nil {
 		t.Error("expected error for empty appID, got nil")
+	}
+}
+
+// TestAvailabilityConcurrentRecordsEveryCountry drives the Availability sweep
+// through the shared worker pool at concurrency>1 over several countries. Run
+// under -race it proves the rewritten probe path records results without a data
+// race (all shared-map writes go through the mu-guarded record closure) and that
+// every requested country ends up with a status — no probe is dropped by the
+// pool.
+func TestAvailabilityConcurrentRecordsEveryCountry(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+
+	countries := []string{"us", "gb", "de", "fr", "es", "it", "br", "in"}
+
+	res, err := NewClient().Availability(context.Background(), "com.google.android.apps.maps", AvailabilityOptions{
+		Countries:   countries,
+		Concurrency: 4,
+	})
+	if err != nil {
+		t.Fatalf("Availability failed: %v", err)
+	}
+
+	if len(res.Statuses) != len(countries) {
+		t.Fatalf("recorded %d statuses, want %d", len(res.Statuses), len(countries))
+	}
+	for _, country := range countries {
+		if _, ok := res.Statuses[country]; !ok {
+			t.Errorf("country %q has no recorded status", country)
+		}
 	}
 }
