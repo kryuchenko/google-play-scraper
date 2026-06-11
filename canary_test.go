@@ -70,6 +70,7 @@ func TestCanary(t *testing.T) {
 	t.Run("Suggest", func(t *testing.T) { canarySuggest(t, client) })
 	t.Run("Categories", func(t *testing.T) { canaryCategories(t, client) })
 	t.Run("CategoryApps", func(t *testing.T) { canaryCategoryApps(t, client) })
+	t.Run("Availability", func(t *testing.T) { canaryAvailability(t, client) })
 }
 
 // ---------------------------------------------------------------------------
@@ -572,4 +573,66 @@ func canaryCategoryApps(t *testing.T, client *googleplayscraper.Client) {
 		}
 		seen[a.AppID] = true
 	}
+}
+
+// canaryAppRegionLocked is a stable US-only app: its listing exists in the US
+// ([18]=[2]) but is not offered in Germany ([18]=[]), so a de probe must return
+// StatusNotInRegion. Verified live 2026-06-11. If Google ever opens it in the
+// EU, swap in another US-only carrier app.
+const canaryAppRegionLocked = "com.vzw.hss.myverizon"
+
+// canaryAvailability asserts the three availability outcomes are genuinely
+// distinguishable on live data, all keyed off the [18] node:
+//   - an available app reports StatusAvailable in its home region;
+//   - a US-only app reports StatusNotInRegion abroad;
+//   - a nonexistent app reports StatusNotFound and GloballyRemoved.
+func canaryAvailability(t *testing.T, client *googleplayscraper.Client) {
+	t.Run("available", func(t *testing.T) {
+		ctx, cancel := canaryCtx(t)
+		defer cancel()
+
+		res, err := client.Availability(ctx, canaryStableApp, googleplayscraper.AvailabilityOptions{
+			Countries: []string{"us"},
+		})
+		if err != nil {
+			t.Fatalf("Availability(%s, us): %v", canaryStableApp, err)
+		}
+		if got := res.Statuses["us"]; got != googleplayscraper.StatusAvailable {
+			t.Errorf("Availability(%s).Statuses[us] = %v, want StatusAvailable — [18][0] is no longer 2 for an available app", canaryStableApp, got)
+		}
+	})
+
+	t.Run("not_in_region", func(t *testing.T) {
+		ctx, cancel := canaryCtx(t)
+		defer cancel()
+
+		res, err := client.Availability(ctx, canaryAppRegionLocked, googleplayscraper.AvailabilityOptions{
+			Countries: []string{"de"},
+		})
+		if err != nil {
+			t.Fatalf("Availability(%s, de): %v", canaryAppRegionLocked, err)
+		}
+		if got := res.Statuses["de"]; got != googleplayscraper.StatusNotInRegion {
+			t.Errorf("Availability(%s).Statuses[de] = %v, want StatusNotInRegion — the [18]=[] region-lock signal changed (or the app opened in the EU)", canaryAppRegionLocked, got)
+		}
+	})
+
+	t.Run("not_found_globally_removed", func(t *testing.T) {
+		ctx, cancel := canaryCtx(t)
+		defer cancel()
+
+		const ghost = "com.invalid.nonexistent.app.xyz123"
+		res, err := client.Availability(ctx, ghost, googleplayscraper.AvailabilityOptions{
+			Countries: []string{"us"},
+		})
+		if err != nil {
+			t.Fatalf("Availability(%s, us): %v", ghost, err)
+		}
+		if got := res.Statuses["us"]; got != googleplayscraper.StatusNotFound {
+			t.Errorf("Availability(%s).Statuses[us] = %v, want StatusNotFound — a missing listing no longer 404s", ghost, got)
+		}
+		if !res.GloballyRemoved {
+			t.Error("Availability(nonexistent): GloballyRemoved = false, want true — every checked country 404'd")
+		}
+	})
 }

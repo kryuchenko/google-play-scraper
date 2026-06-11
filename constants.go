@@ -91,6 +91,43 @@ const (
 	CategoryGameWord        Category = "GAME_WORD"
 )
 
+// AllCountries is a snapshot of country codes where the Google Play Store is
+// available, as ISO 3166-1 alpha-2 codes in lowercase — the same form the gl
+// query parameter takes everywhere in this library.
+//
+// Google does not publish a machine-readable list of Play countries, so this is
+// a hand-curated snapshot (taken 2026-06-11) drawn from the published Play
+// "available countries" documentation and cross-referenced with ISO 3166-1.
+// Coverage drifts as Google opens or closes markets; treat it as a sensible
+// default sweep set, not an authoritative registry. A code being present here
+// only means Play *generally* operates there — a given app may still be
+// region-locked, which Availability reports per country.
+//
+// Markets without an official Play Store (e.g. cn, ir, kp, sy) are excluded, so
+// a default AllCountries sweep never probes them. Pass them explicitly via
+// AvailabilityOptions.Countries if you want to check a Play details page there
+// anyway (the page still renders and usually reports NotInRegion).
+var AllCountries = []string{
+	"ae", "ag", "ai", "al", "am", "ao", "ar", "at", "au", "aw",
+	"az", "ba", "bb", "bd", "be", "bf", "bg", "bh", "bj", "bm",
+	"bn", "bo", "br", "bs", "bt", "bw", "by", "bz", "ca", "cd",
+	"cg", "ch", "ci", "cl", "cm", "co", "cr", "cv", "cy", "cz",
+	"de", "dk", "dm", "do", "dz", "ec", "ee", "eg", "es", "et",
+	"fi", "fj", "fm", "fr", "ga", "gb", "gd", "ge", "gh", "gr",
+	"gt", "gw", "gy", "hk", "hn", "hr", "ht", "hu", "id", "ie",
+	"il", "in", "iq", "is", "it", "jm", "jo", "jp", "ke", "kg",
+	"kh", "ki", "kn", "kr", "kw", "ky", "kz", "la", "lb", "lc",
+	"li", "lk", "lr", "ls", "lt", "lu", "lv", "ly", "ma", "md",
+	"me", "mg", "mk", "ml", "mm", "mn", "mo", "mt", "mu", "mv",
+	"mw", "mx", "my", "mz", "na", "ne", "ng", "ni", "nl", "no",
+	"np", "nz", "om", "pa", "pe", "pg", "ph", "pk", "pl", "pr",
+	"pt", "pw", "py", "qa", "ro", "rs", "ru", "rw", "sa", "sb",
+	"sc", "se", "sg", "si", "sk", "sl", "sn", "sr", "st", "sv",
+	"sz", "tc", "td", "tg", "th", "tj", "tm", "tn", "to", "tr",
+	"tt", "tw", "tz", "ua", "ug", "us", "uy", "uz", "vc", "ve",
+	"vg", "vn", "vu", "ye", "za", "zm", "zw",
+}
+
 // AllCategories returns all known category IDs
 var AllCategories = []Category{
 	CategoryApplication,

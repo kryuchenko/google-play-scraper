@@ -7,6 +7,16 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- `Availability(ctx, appID, opts)` and `AvailableCountries(ctx, appID, opts)`:
+  probe an app's region availability across many Google Play countries and
+  report a per-country `Status` (`StatusAvailable`, `StatusNotInRegion`,
+  `StatusNotFound`, `StatusFetchError`). Each probe is lightweight — it fetches
+  the listing and reads only the availability node, skipping the full parse —
+  and runs through the shared throttle and an opt-in worker pool. A single
+  country's failure never aborts the sweep; only context cancellation does,
+  returning the partial result. The result's `GloballyRemoved` flag is set when
+  every conclusively-probed country returned 404. Ships with `AllCountries` (a
+  snapshot of Play country codes) and the `examples/app-availability` CLI.
 - `CategoryApps` coverage orchestrator: unions many independent slices of a
   category (collections × locales × age buckets × a search-term dictionary × a
   `Similar`/`Developer` graph walk), deduplicating by `AppID` with a saturation
@@ -15,6 +25,15 @@ All notable changes to this project are documented here. The format is based on
   per-category search-term dictionary, and the `examples/category-coverage` CLI.
   This maximizes coverage of the commercially visible layer of a category; it
   does not (and anonymously cannot) enumerate the full catalog.
+
+### Behavior change (soft break)
+
+- `App.Available` was hardcoded to `true` and never reflected reality. It is now
+  derived from the listing's availability node (`[18][0]`): `true` only when the
+  app is installable in the requested country, `false` for a region-locked
+  listing or a pre-registration (unreleased) entry. Callers that read
+  `App.Available` will now see `false` where they previously always saw `true` —
+  the field compiles unchanged but its value is no longer a constant.
 
 ## [1.1.0] - 2026-06-10
 

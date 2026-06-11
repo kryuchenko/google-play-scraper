@@ -12,6 +12,7 @@ Inspired by [facundoolano/google-play-scraper](https://github.com/facundoolano/g
 ## Features
 
 - **App Details** — full app info: description, rating, reviews count, screenshots, version, etc.
+- **Availability** — map an app's region availability across many countries (available / not-in-region / not-found)
 - **Search** — search apps with price filtering (free/paid) and full details
 - **Reviews** — fetch reviews with sorting, filtering by rating, and pagination
 - **Developer Apps** — list all apps by a developer (by name or ID)
@@ -92,6 +93,58 @@ Content & changelog: `RecentChanges`, `ContentRatingDescription`
 Developer (EU DSA trader info, empty for non-EU traders): `DeveloperInternalID`, `DeveloperLegalName`, `DeveloperLegalEmail`, `DeveloperLegalAddress`, `DeveloperLegalPhoneNumber`
 
 </details>
+
+`Available` reflects whether the app is installable in the requested `country`:
+it is `false` for a region-locked listing or a pre-registration (unreleased)
+entry. (Previously it was hardcoded `true`.) To map availability across many
+countries at once, use `Availability` below.
+
+---
+
+### Availability
+
+Probes an app's region availability across many countries and returns a
+per-country status. Each probe fetches the listing and reads only the
+availability node, so it is much cheaper than a full `App` call per country.
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| appId | string | *required* | App ID to probe |
+| Countries | []string | `AllCountries` | Country codes to probe (lowercased and deduplicated) |
+| Lang | string | `"en"` | Language code |
+| Concurrency | int | client's `WithConcurrency` (1) | Countries probed in parallel |
+| Progress | func | nil | Called once per probed country |
+
+Each country resolves to one of four statuses:
+
+| Status | Meaning |
+|--------|---------|
+| `StatusAvailable` | Installable in the country |
+| `StatusNotInRegion` | Listing exists but the app is not offered there (region-locked, or a pre-registration entry) |
+| `StatusNotFound` | Google returned 404 — no listing for the app in that country |
+| `StatusFetchError` | Transport/HTTP error other than 404; availability is unknown (the error is recorded in `Result.Errors`) |
+
+```go
+result, err := client.Availability(ctx, "com.spotify.music", googleplayscraper.AvailabilityOptions{
+    Countries: []string{"us", "de", "cn"},
+})
+// result.Statuses["cn"] == googleplayscraper.StatusNotInRegion
+
+// Or just the installable countries:
+countries, err := client.AvailableCountries(ctx, "com.spotify.music", googleplayscraper.AvailabilityOptions{})
+```
+
+A single country's 404 or transport error never aborts the sweep; only context
+cancellation does, in which case the partial result is returned alongside
+`ctx.Err()`. `result.GloballyRemoved` is `true` only when every conclusively
+probed country returned 404 — it is meaningful only on a full `AllCountries`
+sweep, not on a narrow `Countries` subset.
+
+**Cost & etiquette.** A full sweep issues roughly one request per country
+(`AllCountries` is ~177 codes), so at a 500ms throttle a complete sweep takes
+~90s. This is *active probing*, not an official availability feed: keep the
+throttle gentle to avoid rate limiting, and prefer a targeted `Countries` list
+when you don't need the whole world. See `examples/app-availability`.
 
 ---
 

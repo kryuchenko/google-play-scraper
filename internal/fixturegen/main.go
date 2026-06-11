@@ -29,6 +29,11 @@ const (
 	// monetization and changelog fields that the Maps fixture lacks
 	// (trailer video, in-app-purchase range, "Contains ads", recent changes).
 	gameAppID = "com.king.candycrushsaga"
+	// regionLockedAppID is a US-only carrier app. Fetched with gl=de it returns
+	// a 200 page whose availability node [18] is empty, the signal Availability
+	// classifies as StatusNotInRegion. Captured for the offline classifier test.
+	regionLockedAppID = "com.vzw.hss.myverizon"
+	regionLockedGL    = "de"
 )
 
 // scriptDataRegex mirrors the library's block matcher; used here only to pull a
@@ -50,6 +55,12 @@ func main() {
 	// from the Maps fixture.
 	save(outDir, "app_page_game.html",
 		get(c, fmt.Sprintf("%s/store/apps/details?id=%s&hl=en&gl=us", baseURL, gameAppID)))
+
+	// 1c. Region-locked detail page: a US-only app fetched from Germany, whose
+	// [18] availability node is empty. Backs the offline availability classifier
+	// test and the App.Available=false case.
+	save(outDir, "app_unavailable_region.html",
+		get(c, fmt.Sprintf("%s/store/apps/details?id=%s&hl=en&gl=%s", baseURL, regionLockedAppID, regionLockedGL)))
 
 	// 2. Search page.
 	save(outDir, "search_page.html",

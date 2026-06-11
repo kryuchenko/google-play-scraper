@@ -43,11 +43,42 @@ func parseAppPage(body []byte, appID, pageURL string) (*App, error) {
 	return extractAppData(dataBlocks, appID, pageURL)
 }
 
+// appDataNode navigates a parsed Google Play app page to the core app-info node
+// (ds:5 → [1][2]). It is the single point every availability-aware caller shares,
+// so the lightweight Availability probe and the full App parser agree on where
+// the app data lives. ok is false when the page has no ds:5 block or the [1][2]
+// node is absent (e.g. a non-app page or a malformed response).
+func appDataNode(body []byte) (appData interface{}, ok bool) {
+	ds5, found := parseDataBlocks(body)["ds:5"]
+	if !found {
+		return nil, false
+	}
+	appData = getPath(ds5, 1, 2)
+	return appData, appData != nil
+}
+
+// classifyAvailability interprets the multiplexed availability node at
+// [18][0] of the app data into a region-level Status:
+//
+//   - 2   → StatusAvailable      (installable in this region)
+//   - 1   → StatusNotInRegion    (pre-registration: an unreleased app, not yet
+//     installable — treated as not available in the region)
+//   - nil → StatusNotInRegion    (the page exists but the app is not offered in
+//     this region; [18] is an empty array)
+//
+// It never returns StatusNotFound or StatusError: those are HTTP/transport
+// outcomes decided before the body is parsed.
+func classifyAvailability(appData interface{}) Status {
+	if toInt(getPath(appData, 18, 0)) == 2 {
+		return StatusAvailable
+	}
+	return StatusNotInRegion
+}
+
 func extractAppData(data map[string]interface{}, appID, url string) (*App, error) {
 	app := &App{
-		AppID:     appID,
-		URL:       url,
-		Available: true,
+		AppID: appID,
+		URL:   url,
 	}
 
 	// Main data is in ds:5
@@ -61,6 +92,11 @@ func extractAppData(data map[string]interface{}, appID, url string) (*App, error
 	if appData == nil {
 		return nil, fmt.Errorf("app data not found")
 	}
+
+	// Available reflects region availability, derived from the multiplexed
+	// [18][0] node (==2 means installable here). It is not a hardcoded true:
+	// a region-locked listing or a pre-registration entry is not available.
+	app.Available = classifyAvailability(appData) == StatusAvailable
 
 	// Title: [0][0]
 	if v := getPath(appData, 0, 0); v != nil {

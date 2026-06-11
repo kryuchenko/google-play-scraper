@@ -33,6 +33,25 @@ func TestParseAppPageFixture(t *testing.T) {
 	if app.GenreID == "" {
 		t.Error("GenreID is empty")
 	}
+	// The Maps fixture's [18] node is [2], so Available must be true. This pins
+	// the fix that replaced the old hardcoded Available=true with a value derived
+	// from the availability node.
+	if !app.Available {
+		t.Error("Available is false, want true (Maps fixture [18]=[2])")
+	}
+}
+
+// TestParseAppPageUnavailableFixture checks the region-locked fixture: a 200 page
+// whose [18] node is empty must parse as Available=false. It is the negative
+// counterpart that proves Available is no longer a constant.
+func TestParseAppPageUnavailableFixture(t *testing.T) {
+	app, err := parseAppPage(readFixture(t, "app_unavailable_region.html"), "com.vzw.hss.myverizon", "https://play.google.com/store/apps/details?id=com.vzw.hss.myverizon")
+	if err != nil {
+		t.Fatalf("parseAppPage: %v", err)
+	}
+	if app.Available {
+		t.Error("Available is true, want false (region-locked fixture [18]=[])")
+	}
 }
 
 // TestParseAppPageGameFixture asserts the fields that only populate on a rich
