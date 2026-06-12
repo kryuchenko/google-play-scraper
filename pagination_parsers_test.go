@@ -2,30 +2,32 @@ package googleplayscraper
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"net/http"
+	"strings"
 	"sync"
 	"testing"
 )
 
-// clusterMorePayload renders the qnKhOb pagination response that fetchMoreApps
-// consumes. Apps live at data[0][0][0]; each app is a parseSearchResult row with
-// AppID at [12][0] and Title at [2]. The next token sits at data[0][0][7][1].
+// clusterMorePayload renders the qnKhOb feed response that fetchQnKhOb /
+// parseQnKhObResponse consume. Apps live at data[0][21][0]; each app is a
+// parseSearchResultNew row with AppID at [0][0] and Title at [3]. The token at
+// data[0][3][0] is set for shape fidelity but is intentionally ignored by
+// paginateQnKhOb (it is the dead echo token); continuation is driven by the
+// per-topic feed tokens extracted from the HTML page instead.
 func clusterMorePayload(t *testing.T, appIDs []string, nextToken string) []byte {
 	t.Helper()
 	apps := make([]interface{}, 0, len(appIDs))
 	for _, id := range appIDs {
-		row := make([]interface{}, 13)
-		row[2] = "Title " + id
-		row[12] = []interface{}{id}
-		apps = append(apps, row)
+		apps = append(apps, []interface{}{[]interface{}{id}, nil, nil, "Title " + id})
 	}
-	inner0 := make([]interface{}, 8)
-	inner0[0] = apps
+	lvl := make([]interface{}, 22)
 	if nextToken != "" {
-		inner0[7] = []interface{}{nil, nextToken}
+		lvl[3] = []interface{}{nextToken} // [0][3][0] echo token (ignored)
 	}
-	data := []interface{}{[]interface{}{inner0}}
+	lvl[21] = []interface{}{apps} // [0][21][0] apps
+	data := []interface{}{lvl}
 	raw, err := json.Marshal(data)
 	if err != nil {
 		t.Fatalf("marshal cluster-more: %v", err)
@@ -33,11 +35,12 @@ func clusterMorePayload(t *testing.T, appIDs []string, nextToken string) []byte 
 	return batchEnvelope("qnKhOb", string(raw))
 }
 
-// TestClusterPaginates drives Cluster across two pages: the initial HTML page
-// carries a token, the first qnKhOb call returns more apps + a second token, and
-// the second call returns an empty (tokenless) page that stops the loop.
+// TestClusterPaginates drives Cluster with FollowFeed: the initial HTML page
+// carries the apps grid plus two recommendation-topic cluster URLs. Each topic
+// is fetched once via qnKhOb and its apps merged in, de-duplicated against the
+// grid and across topics.
 func TestClusterPaginates(t *testing.T) {
-	initialPage := clusterHTMLPage(t, []string{"com.a", "com.b"}, "tok1")
+	initialPage := clusterHTMLPage(t, []string{"com.a", "com.b"}, "GAME", "topicOne", "topicTwo")
 
 	var mu sync.Mutex
 	var batchCalls int
@@ -51,28 +54,32 @@ func TestClusterPaginates(t *testing.T) {
 			defer mu.Unlock()
 			batchCalls++
 			if batchCalls == 1 {
-				return mockResponse{Body: clusterMorePayload(t, []string{"com.c", "com.d"}, "tok2")}, true
+				// First topic: two fresh apps plus one repeat of the grid.
+				return mockResponse{Body: clusterMorePayload(t, []string{"com.a", "com.c", "com.d"}, "")}, true
 			}
-			return mockResponse{Body: clusterMorePayload(t, nil, "")}, true
+			// Second topic: one fresh app plus a cross-topic repeat.
+			return mockResponse{Body: clusterMorePayload(t, []string{"com.d", "com.e"}, "")}, true
 		},
 	)
 
-	results, err := c.Cluster(context.Background(), ClusterOptions{Path: "/store/apps/collection/cluster?x=1"})
+	results, err := c.Cluster(context.Background(), ClusterOptions{Path: "/store/apps/collection/cluster?x=1", FollowFeed: true})
 	if err != nil {
 		t.Fatalf("Cluster: %v", err)
 	}
-	// 2 initial + 2 from page 1; page 2 is empty and stops the loop.
-	if len(results) != 4 {
-		t.Fatalf("got %d apps across pages, want 4", len(results))
+	// Grid {a,b} + topic1 {a,c,d} + topic2 {d,e} = {a,b,c,d,e} after dedup.
+	if len(results) != 5 {
+		t.Fatalf("got %d apps across topics, want 5 unique", len(results))
 	}
 	if batchCalls != 2 {
-		t.Errorf("batch calls = %d, want 2 (second page empty stops)", batchCalls)
+		t.Errorf("batch calls = %d, want 2 (one per recommendation topic)", batchCalls)
 	}
 }
 
-// clusterHTMLPage builds a cluster HTML page with apps at [0,1,0,21,0] and the
-// pagination token at [0,1,0,3,0], matching parseClusterPage.
-func clusterHTMLPage(t *testing.T, appIDs []string, token string) []byte {
+// clusterHTMLPage builds a cluster/category HTML page with apps at [0,1,0,21,0]
+// and, for each topic id, a recommendation cluster URL whose gsr blob carries a
+// recs_topic token (the shape extractFeedTokens harvests). The echo token at
+// [0,1,0,3,0] is included for realism but is not used for pagination.
+func clusterHTMLPage(t *testing.T, appIDs []string, category string, topicIDs ...string) []byte {
 	t.Helper()
 	apps := make([]interface{}, 0, len(appIDs))
 	for _, id := range appIDs {
@@ -80,8 +87,8 @@ func clusterHTMLPage(t *testing.T, appIDs []string, token string) []byte {
 		apps = append(apps, []interface{}{[]interface{}{id}, nil, nil, "Title " + id})
 	}
 	lvl := make([]interface{}, 22)
-	lvl[3] = []interface{}{token} // [0,1,0,3,0] token
-	lvl[21] = []interface{}{apps} // [0,1,0,21,0] apps
+	lvl[3] = []interface{}{"echo-token"} // [0,1,0,3,0] echo token (ignored)
+	lvl[21] = []interface{}{apps}        // [0,1,0,21,0] apps
 	node := []interface{}{
 		[]interface{}{nil, []interface{}{lvl}}, // [0][1][0] = lvl
 	}
@@ -89,7 +96,84 @@ func clusterHTMLPage(t *testing.T, appIDs []string, token string) []byte {
 	if err != nil {
 		t.Fatalf("marshal cluster page: %v", err)
 	}
-	return htmlWithDataBlocks(map[string]string{"ds:4": string(raw)})
+
+	var sb strings.Builder
+	sb.Write(htmlWithDataBlocks(map[string]string{"ds:4": string(raw)}))
+	for _, topic := range topicIDs {
+		sb.WriteString(`<a href="/store/apps/collection/cluster?gsr=`)
+		sb.WriteString(makeGsrBlob(category, topic))
+		sb.WriteString(`"></a>`)
+	}
+	return []byte(sb.String())
+}
+
+// makeGsrBlob builds a base64url field-9 (tag 0x4a) protobuf blob equivalent to
+// the recommendation cluster gsr value Google embeds, so extractFeedTokens /
+// gsrToFeedToken accept it. The inner query is field 2 (tag 0x12) carrying a
+// "recs_topic_<topic>" string at field 4 (tag 0x22); the exact sub-fields do
+// not matter to the parser, only that the inner bytes contain "recs_topic".
+func makeGsrBlob(category, topic string) string {
+	name := "recs_topic_" + topic
+	// field 4 (tag 0x22, len-delimited) = the recs_topic name.
+	field4 := append([]byte{0x22, byte(len(name))}, []byte(name)...)
+	// field 3 (tag 0x1a) = category, just to mirror the real layout.
+	field3 := append([]byte{0x1a, byte(len(category))}, []byte(category)...)
+	inner := append(field3, field4...)
+	// field 2 (tag 0x12) wraps the query.
+	query := append([]byte{0x12, byte(len(inner))}, inner...)
+	// field 9 (tag 0x4a) wraps the whole gsr payload.
+	blob := append([]byte{0x4a, byte(len(query))}, query...)
+	return base64.RawURLEncoding.EncodeToString(blob)
+}
+
+// TestGsrToFeedToken verifies the gsr→feed-token rewrap: a field-9 recs blob is
+// re-wrapped as a field-12 token whose inner bytes still carry the recs_topic
+// query, and non-recs / malformed blobs are rejected.
+func TestGsrToFeedToken(t *testing.T) {
+	gsr := makeGsrBlob("GAME_ACTION", "abc123")
+	tok, ok := gsrToFeedToken(gsr)
+	if !ok {
+		t.Fatal("gsrToFeedToken rejected a valid recs blob")
+	}
+	raw, err := base64.RawURLEncoding.DecodeString(tok)
+	if err != nil {
+		t.Fatalf("token is not base64url: %v", err)
+	}
+	if raw[0] != 0x62 {
+		t.Errorf("token wrapper tag = %#x, want 0x62 (field 12)", raw[0])
+	}
+	if !strings.Contains(string(raw), "recs_topic_abc123") {
+		t.Error("token lost the recs_topic query")
+	}
+
+	// A promotion-style cluster (field 9 wrapping a non-recs query) is rejected.
+	promo := base64.RawURLEncoding.EncodeToString(
+		append([]byte{0x4a, 0x05, 0x12, 0x03}, []byte("xyz")...),
+	)
+	if _, ok := gsrToFeedToken(promo); ok {
+		t.Error("gsrToFeedToken accepted a non-recs blob")
+	}
+
+	// Garbage / non-base64 input is rejected without panicking.
+	if _, ok := gsrToFeedToken("!!!not-base64!!!"); ok {
+		t.Error("gsrToFeedToken accepted non-base64 input")
+	}
+}
+
+// TestExtractFeedTokensDedup confirms the page scanner finds each recs cluster
+// URL once, tolerates the JSON-escaped '=' separator, and de-duplicates repeats.
+func TestExtractFeedTokensDedup(t *testing.T) {
+	a := makeGsrBlob("GAME_ACTION", "alpha")
+	b := makeGsrBlob("GAME_ACTION", "beta")
+	esc := string([]byte{'\\', 'u', '0', '0', '3', 'd'}) // JSON-escaped '='
+	html := `x cluster?gsr` + esc + a +                  // escaped separator form
+		` y cluster?gsr=` + b + // plain separator form
+		` z cluster?gsr=` + a // duplicate of the first
+
+	tokens := extractFeedTokens([]byte(html))
+	if len(tokens) != 2 {
+		t.Fatalf("got %d tokens, want 2 (deduped)", len(tokens))
+	}
 }
 
 // TestParseSearchResultRichRow covers parseSearchResult (the qnKhOb-row parser)

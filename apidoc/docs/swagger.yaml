@@ -771,15 +771,24 @@ paths:
   /_/PlayStoreUi/data/batchexecute(qnKhOb):
     post:
       description: |-
-        POST /_/PlayStoreUi/data/batchexecute?rpcids=qnKhOb. Advances a
-        list, cluster or search result set using a continuation token.
-        Returns the batchexecute envelope; []SearchResult plus the next
-        token are decoded from the inner payload.
-        Empirical note: Google currently REJECTS this continuation token
-        for list/cluster/search (returns a 200 with a NULL payload on the
-        first call), so deeper pages are unreachable and callers get only
-        the initial page. Review pagination uses a different RPC (oCPfdb)
-        and still works.
+        POST /_/PlayStoreUi/data/batchexecute?rpcids=qnKhOb. Fetches a
+        recommendation topic by continuation token. Returns the
+        batchexecute envelope; []SearchResult plus an echo token are
+        decoded from the inner payload.
+        Empirical note (reverse-engineered live 2026-06-12): PAGE 1 of a
+        topic IS reachable statelessly. Each "recommended for you" section
+        on the category/cluster HTML page carries the topic's recs_topic
+        query inside its cluster URL gsr param (a field-9 base64url
+        protobuf); re-wrapped into the field-12 form this RPC expects, it
+        returns the topic's apps in one request (see extractFeedTokens).
+        The scraper follows every topic on the page this way. PAGE 2+ of a
+        single topic is SERVER-STATEFUL: the response's own token
+        ([0][3][0]) re-references the same topic and is answered with a
+        200 + NULL payload on replay, and the next topic is allocated
+        server-side per session and never echoed — so a single topic
+        cannot be chained deeper from bare HTTP. The payload template is
+        kept current so this keeps working as Google rebuilds its flags.
+        Review pagination uses a different RPC (oCPfdb).
       operationId: batchPaginateQnKhOb
       parameters:
       - description: Fixed rpcid for this operation

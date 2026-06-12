@@ -33,10 +33,13 @@ const (
 	// multiplier in a coverage run.
 	coverageSearchNum = searchMaxNum
 
-	// coverageClusterNum bounds how deep each category cluster is paginated.
-	// Clusters rarely exceed a few hundred apps; this keeps a single cluster
-	// from dominating the request budget.
-	coverageClusterNum = 200
+	// coverageClusterNum bounds how many apps each cluster contributes. Set to
+	// 500 so a large cluster is not clipped; a single cluster still cannot
+	// dominate the request budget at this ceiling. FollowFeed is intentionally
+	// left off here: on the cluster URLs ClusterURLs returns, the feed adds zero
+	// unique apps because every app it surfaces is already in that cluster's own
+	// grid (full overlap; verified live 2026-06-12).
+	coverageClusterNum = 500
 
 	// coverageQueueGuard caps the search-term queue so ExpandSuggest cannot
 	// grow it without bound.

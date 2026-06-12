@@ -43,6 +43,7 @@ type Client struct {
 	concurrency  int
 	lastRequest  time.Time
 	throttleLock sync.Mutex
+	reqIDSeq     int64 // monotonic counter for batchexecute _reqid (see nextReqID)
 }
 
 // ClientOption configures the client

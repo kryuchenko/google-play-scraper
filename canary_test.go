@@ -292,6 +292,74 @@ func canaryCluster(t *testing.T, client *googleplayscraper.Client) {
 			t.Errorf("Cluster: app[%d] AppID empty — parseSearchResultNew appId path may have changed", i)
 		}
 	}
+
+	t.Run("pagination", func(t *testing.T) { canaryClusterPagination(t, client) })
+}
+
+// canaryClusterPagination guards the qnKhOb recommendation-feed extension wired
+// into Cluster. It runs against the GAME_ACTION *category* page, whose
+// "recommended for you" sections expose the recs_topic feed tokens the extension
+// follows.
+//
+// MECHANISM (reverse-engineered and re-confirmed live 2026-06-12): each
+// recommendation section links to a cluster URL whose gsr query value is a
+// base64url protobuf wrapping the topic's recs query. Re-wrapping that query
+// from its field-9 gsr form into the field-12 form the qnKhOb RPC expects yields
+// a stateless token that returns the whole topic in one request. extractFeedTokens
+// harvests one such token per section. (The deeper "next topic" pointer in a
+// response — [0][3][0] — is server-stateful and NULLs on replay, so it is NOT
+// used.) Page-1 of the feed is therefore reachable statelessly; page-2+ of a
+// single topic is not, but harvesting every topic on the page is the better win.
+//
+// This canary asserts the load-bearing contract: turning FollowFeed ON returns
+// STRICTLY MORE apps than the initial grid alone. A green here means the token
+// extraction + payload are alive; a red means one of them drifted.
+func canaryClusterPagination(t *testing.T, client *googleplayscraper.Client) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+
+	const feedPath = "/store/apps/category/GAME_ACTION"
+
+	initial, err := client.Cluster(ctx, googleplayscraper.ClusterOptions{
+		Path: feedPath,
+		Num:  500,
+	})
+	if err != nil {
+		t.Fatalf("Cluster(GAME_ACTION, initial): %v", err)
+	}
+	if len(initial) < 10 {
+		t.Fatalf("Cluster(GAME_ACTION): initial grid got %d apps, want >= 10 — "+
+			"cluster apps path [0][1][0][21][0] likely drifted", len(initial))
+	}
+
+	extended, err := client.Cluster(ctx, googleplayscraper.ClusterOptions{
+		Path:       feedPath,
+		Num:        500,
+		FollowFeed: true,
+	})
+	if err != nil {
+		t.Fatalf("Cluster(GAME_ACTION, FollowFeed): %v", err)
+	}
+
+	// The extension must add apps. Equality means the feed extension is dead.
+	if len(extended) <= len(initial) {
+		t.Errorf("Cluster(GAME_ACTION): FollowFeed added nothing (initial=%d, extended=%d) — "+
+			"qnKhOb feed extension dead: recs_topic token extraction (extractFeedTokens) or the "+
+			"qnKhOb payload likely drifted; re-capture f.req from the browser (see qnkhob_payload.txt)",
+			len(initial), len(extended))
+	}
+
+	seen := make(map[string]bool, len(extended))
+	for i, a := range extended {
+		if a.AppID == "" {
+			t.Errorf("Cluster(GAME_ACTION): app[%d] has empty AppID", i)
+			continue
+		}
+		if seen[a.AppID] {
+			t.Errorf("Cluster(GAME_ACTION): duplicate AppID %q — paginateQnKhOb dedup regressed", a.AppID)
+		}
+		seen[a.AppID] = true
+	}
 }
 
 // ---------------------------------------------------------------------------

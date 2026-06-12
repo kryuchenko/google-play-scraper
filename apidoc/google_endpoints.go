@@ -243,15 +243,24 @@ func batchListVyAe2() {}
 // batchPaginateQnKhOb documents the qnKhOb pagination RPC.
 //
 // @Summary      Paginate list/cluster/search RPC (qnKhOb)
-// @Description  POST /_/PlayStoreUi/data/batchexecute?rpcids=qnKhOb. Advances a
-// @Description  list, cluster or search result set using a continuation token.
-// @Description  Returns the batchexecute envelope; []SearchResult plus the next
-// @Description  token are decoded from the inner payload.
-// @Description  Empirical note: Google currently REJECTS this continuation token
-// @Description  for list/cluster/search (returns a 200 with a NULL payload on the
-// @Description  first call), so deeper pages are unreachable and callers get only
-// @Description  the initial page. Review pagination uses a different RPC (oCPfdb)
-// @Description  and still works.
+// @Description  POST /_/PlayStoreUi/data/batchexecute?rpcids=qnKhOb. Fetches a
+// @Description  recommendation topic by continuation token. Returns the
+// @Description  batchexecute envelope; []SearchResult plus an echo token are
+// @Description  decoded from the inner payload.
+// @Description  Empirical note (reverse-engineered live 2026-06-12): PAGE 1 of a
+// @Description  topic IS reachable statelessly. Each "recommended for you" section
+// @Description  on the category/cluster HTML page carries the topic's recs_topic
+// @Description  query inside its cluster URL gsr param (a field-9 base64url
+// @Description  protobuf); re-wrapped into the field-12 form this RPC expects, it
+// @Description  returns the topic's apps in one request (see extractFeedTokens).
+// @Description  The scraper follows every topic on the page this way. PAGE 2+ of a
+// @Description  single topic is SERVER-STATEFUL: the response's own token
+// @Description  ([0][3][0]) re-references the same topic and is answered with a
+// @Description  200 + NULL payload on replay, and the next topic is allocated
+// @Description  server-side per session and never echoed — so a single topic
+// @Description  cannot be chained deeper from bare HTTP. The payload template is
+// @Description  kept current so this keeps working as Google rebuilds its flags.
+// @Description  Review pagination uses a different RPC (oCPfdb).
 // @Id           batchPaginateQnKhOb
 // @Tags         batchexecute-rpc
 // @Accept       x-www-form-urlencoded

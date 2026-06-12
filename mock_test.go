@@ -126,6 +126,9 @@ func batchEnvelope(rpcID, innerJSON string) []byte {
 func htmlWithDataBlocks(blocks map[string]string) []byte {
 	var sb strings.Builder
 	sb.WriteString("<!doctype html><html><body>")
+	// A minimal WIZ_global_data block so extractWizData (used by the qnKhOb
+	// pagination path) finds an f.sid/bl on mocked pages.
+	sb.WriteString(`<script>window.WIZ_global_data = {"FdrFJe":"-1","cfb2h":"boq_test_p0"};</script>`)
 	for key, data := range blocks {
 		sb.WriteString(fmt.Sprintf(
 			"<script>AF_initDataCallback({key: '%s', hash: '1', data:%s, sideChannel: {}});</script>",

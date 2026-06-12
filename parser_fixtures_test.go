@@ -144,6 +144,30 @@ func TestParseListBatchFixture(t *testing.T) {
 	}
 }
 
+func TestParseQnKhObFixture(t *testing.T) {
+	// One real qnKhOb feed response (GAME_ACTION). Proves the apps array at
+	// [0][21][0] is extracted offline; a drift there surfaces here rather than as
+	// a silent empty page in production. The token at [0][3][0] is the dead echo
+	// token (asserted for response-shape drift only — pagination does not use it).
+	data, err := decodeBatchEnvelope(readFixture(t, "qnkhob_page.bin"))
+	if err != nil {
+		t.Fatalf("decodeBatchEnvelope: %v", err)
+	}
+
+	results, echoToken := parseQnKhObResponse(data)
+	if len(results) < 1 {
+		t.Fatalf("got %d apps, want >= 1", len(results))
+	}
+	for i, r := range results {
+		if r.AppID == "" {
+			t.Errorf("result %d has empty AppID", i)
+		}
+	}
+	if echoToken == "" {
+		t.Error("echo token empty — response-shape path [0][3][0] may have changed")
+	}
+}
+
 func TestParseListPageFixture(t *testing.T) {
 	// The HTML fallback (listViaHTML -> parseListPage) is exercised here against
 	// a captured /store/apps top-charts page so it stays verifiably alive: a
@@ -177,7 +201,7 @@ func TestParseClusterURLsFixture(t *testing.T) {
 }
 
 func TestParseClusterPageFixture(t *testing.T) {
-	results, _, err := parseClusterPage(readFixture(t, "cluster_page.html"))
+	results, err := parseClusterPage(readFixture(t, "cluster_page.html"))
 	if err != nil {
 		t.Fatalf("parseClusterPage: %v", err)
 	}
