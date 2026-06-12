@@ -37,6 +37,19 @@ type SecurityPractice = googleplayscraper.SecurityPractice
 // Permission is a single app permission entry.
 type Permission = googleplayscraper.Permission
 
+// Status is the region-level availability of an app for a single probed country.
+// It is an integer enum: 0 unknown, 1 available, 2 not_in_region, 3 not_found,
+// 4 error (see x-enum-varnames in the generated schema).
+type Status = googleplayscraper.Status
+
+// AvailabilityResult is the aggregated result of an Availability sweep across
+// countries (the synthetic GET /store/apps/details(availability) operation).
+type AvailabilityResult = googleplayscraper.AvailabilityResult
+
+// AvailabilityProgress is a single per-country progress event emitted during a
+// sweep.
+type AvailabilityProgress = googleplayscraper.AvailabilityProgress
+
 // BatchExecuteEnvelope documents the raw POST /_/PlayStoreUi/data/batchexecute
 // response wrapper. The body is NOT valid JSON as-is: it is prefixed with the
 // XSSI guard `)]}'` and framed as a sequence of `wrb.fr` rows whose third field

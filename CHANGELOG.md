@@ -5,6 +5,14 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Fixed
+
+- `App.Histogram` was decoded with a wrong index mapping: the 5-star bucket (the
+  largest for most apps) was always 0 and the 1–4-star counts were reversed and
+  mislabeled, so the buckets did not sum to `Ratings`. It now correctly maps the
+  `[null, 1★, 2★, 3★, 4★, 5★]` node to `hist[0]=1-star .. hist[4]=5-star`;
+  verified live that the buckets sum to `Ratings`.
+
 ### Added
 
 - `Availability(ctx, appID, opts)` and `AvailableCountries(ctx, appID, opts)`:

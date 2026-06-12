@@ -7,10 +7,14 @@ import (
 	"net/url"
 )
 
-// Permission represents an app permission
+// Permission is a single app permission entry.
 type Permission struct {
-	Type       string `json:"type"`
-	Permission string `json:"permission"`
+	// Type is the permission group label, e.g. "Location", "Camera". Falls back
+	// to "Common"/"Other" when the group is unnamed.
+	Type string `json:"type" example:"Location"`
+	// Permission is the human-readable permission description, e.g.
+	// "precise location".
+	Permission string `json:"permission" example:"precise location"`
 }
 
 // PermissionsOptions configures the permissions request

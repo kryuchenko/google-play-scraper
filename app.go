@@ -462,9 +462,13 @@ func extractHistogram(data interface{}) [5]int {
 	if !ok {
 		return hist
 	}
-	for i := 0; i < 5 && i < len(arr); i++ {
+	// The node is a 6-element array [null, 1-star, 2-star, 3-star, 4-star,
+	// 5-star]; index 0 is a null placeholder. Map arr[i] -> hist[i-1] so the
+	// result is ordered hist[0]=1-star .. hist[4]=5-star. Each entry is itself
+	// a 2-tuple ["formatted", count]; we take the integer count at index 1.
+	for i := 1; i <= 5 && i < len(arr); i++ {
 		if inner, ok := arr[i].([]interface{}); ok && len(inner) > 1 {
-			hist[4-i] = toInt(inner[1]) // Reverse: 5-star is first in response
+			hist[i-1] = toInt(inner[1])
 		}
 	}
 	return hist

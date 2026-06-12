@@ -23,20 +23,33 @@ type SearchOptions struct {
 	FullDetail bool
 }
 
-// SearchResult represents a search result item
+// SearchResult is the compact app model returned by search, list, cluster and
+// developer endpoints. It is a subset of App with no detail-page fields.
 type SearchResult struct {
-	AppID       string  `json:"appId"`
-	Title       string  `json:"title"`
-	URL         string  `json:"url"`
-	Icon        string  `json:"icon"`
-	Developer   string  `json:"developer"`
-	DeveloperID string  `json:"developerId"`
-	Currency    string  `json:"currency"`
-	Price       float64 `json:"price"`
-	Free        bool    `json:"free"`
-	Summary     string  `json:"summary"`
-	ScoreText   string  `json:"scoreText"`
-	Score       float64 `json:"score"`
+	// AppID is the app package name.
+	AppID string `json:"appId" example:"com.king.candycrushsaga"`
+	// Title is the localized app name.
+	Title string `json:"title" example:"Candy Crush Saga"`
+	// URL is the canonical Play Store listing URL.
+	URL string `json:"url" format:"uri" example:"https://play.google.com/store/apps/details?id=com.king.candycrushsaga"`
+	// Icon is the app icon URL.
+	Icon string `json:"icon" format:"uri" example:"https://play-lh.googleusercontent.com/...=s64"`
+	// Developer is the developer's display name.
+	Developer string `json:"developer" example:"King"`
+	// DeveloperID is the developer listing id.
+	DeveloperID string `json:"developerId" example:"King"`
+	// Currency is the ISO 4217 code for Price; often empty in compact results.
+	Currency string `json:"currency" example:""`
+	// Price is the purchase price in major currency units; 0 for free apps.
+	Price float64 `json:"price" minimum:"0" example:"0"`
+	// Free is true when Price == 0.
+	Free bool `json:"free" example:"true"`
+	// Summary is the short tagline; may contain HTML entities as served.
+	Summary string `json:"summary"`
+	// ScoreText is the rounded, one-decimal rating label, e.g. "4.6".
+	ScoreText string `json:"scoreText" example:"4.5"`
+	// Score is the average star rating, a float in [0,5] at full precision.
+	Score float64 `json:"score" minimum:"0" maximum:"5" example:"4.5100965"`
 }
 
 // Search searches for apps on Google Play

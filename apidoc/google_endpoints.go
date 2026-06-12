@@ -57,7 +57,7 @@ func getAppDetails() {}
 // @Param        id  query  string  true   "App package id"
 // @Param        hl  query  string  false  "UI language"
 // @Param        gl  query  string  true   "Country to probe; one request per country"
-// @Success      200  {object}  App  "Availability read from ds:5[1][2][18]"
+// @Success      200  {object}  AvailabilityResult  "Aggregated availability sweep; per-country Status read from ds:5[1][2][18]"
 // @x-rpcid "none"
 // @x-data-block "ds:5"
 // @x-response-encoding "AF_initDataCallback"

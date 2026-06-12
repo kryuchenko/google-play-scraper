@@ -95,19 +95,20 @@ func TestToInt(t *testing.T) {
 }
 
 func TestExtractHistogram(t *testing.T) {
-	// Simulate histogram data from Google Play
-	// Order in response: 5-star, 4-star, 3-star, 2-star, 1-star
+	// Real Google Play shape: a 6-element array whose first element is a null
+	// placeholder, followed by 1-star..5-star, each a ["formatted", count] pair.
 	data := []interface{}{
-		[]interface{}{5, float64(1000)}, // 5-star
-		[]interface{}{4, float64(500)},  // 4-star
-		[]interface{}{3, float64(200)},  // 3-star
-		[]interface{}{2, float64(100)},  // 2-star
-		[]interface{}{1, float64(50)},   // 1-star
+		nil,
+		[]interface{}{"50", float64(50)},     // 1-star
+		[]interface{}{"100", float64(100)},   // 2-star
+		[]interface{}{"200", float64(200)},   // 3-star
+		[]interface{}{"500", float64(500)},   // 4-star
+		[]interface{}{"1000", float64(1000)}, // 5-star
 	}
 
 	hist := extractHistogram(data)
 
-	// Result should be [1-star, 2-star, 3-star, 4-star, 5-star]
+	// Result is ordered hist[0]=1-star .. hist[4]=5-star.
 	expected := [5]int{50, 100, 200, 500, 1000}
 	if hist != expected {
 		t.Errorf("got %v, want %v", hist, expected)

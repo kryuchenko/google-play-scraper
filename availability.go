@@ -78,22 +78,27 @@ type AvailabilityOptions struct {
 
 // AvailabilityProgress is a single observability event emitted per country.
 type AvailabilityProgress struct {
-	Country    string
-	Status     Status
-	DoneCount  int
-	TotalCount int
+	// Country is the gl country code that was just probed (lowercase).
+	Country string `json:"country" example:"us"`
+	// Status is the probe outcome for Country.
+	Status Status `json:"status"`
+	// DoneCount is the running count of probed countries so far.
+	DoneCount int `json:"doneCount" minimum:"0" example:"42"`
+	// TotalCount is the total number of countries in the sweep.
+	TotalCount int `json:"totalCount" minimum:"0" example:"242"`
 }
 
 // AvailabilityResult summarizes a completed (or context-cancelled) sweep.
 type AvailabilityResult struct {
 	// AppID is the probed app.
-	AppID string
-	// Statuses maps each probed country to its Status. Countries that were never
-	// reached (e.g. due to context cancellation) are absent.
-	Statuses map[string]Status
+	AppID string `json:"appId" example:"com.google.android.apps.maps"`
+	// Statuses maps each probed gl country code to its Status. Countries that
+	// were never reached (e.g. due to context cancellation) are absent.
+	Statuses map[string]Status `json:"statuses"`
 	// Errors maps a country to the underlying error, populated only for
-	// StatusFetchError outcomes. It is nil when no probe errored.
-	Errors map[string]error
+	// StatusFetchError outcomes. It is nil when no probe errored. Serialized as a
+	// country-to-message map.
+	Errors map[string]error `json:"errors,omitempty" swaggertype:"object,string"`
 	// GloballyRemoved is true only when at least one country was conclusively
 	// probed and every conclusive (non-error) probe returned StatusNotFound —
 	// i.e. the app appears to have no listing anywhere it was checked. It is only
@@ -101,10 +106,10 @@ type AvailabilityResult struct {
 	// merely reflects that subset. Note that AllCountries excludes markets
 	// without an official Play Store (cn/ir/kp/sy), so "globally" means across
 	// the Play markets, not literally every country.
-	GloballyRemoved bool
+	GloballyRemoved bool `json:"globallyRemoved" example:"false"`
 	// Checked is the number of countries that produced a conclusive status
 	// (anything other than StatusFetchError).
-	Checked int
+	Checked int `json:"checked" minimum:"0" example:"242"`
 }
 
 // Availability probes the app's listing in each requested country and reports

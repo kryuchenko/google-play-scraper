@@ -5,26 +5,40 @@ import (
 	"fmt"
 )
 
-// DataSafetyEntry represents a single data collection/sharing entry
+// DataSafetyEntry is a single collected or shared data item.
 type DataSafetyEntry struct {
-	Data     string `json:"data"`
-	Optional bool   `json:"optional"`
-	Purpose  string `json:"purpose"`
-	Type     string `json:"type"`
+	// Data is the specific data item name, e.g. "Email address".
+	Data string `json:"data" example:"Email address"`
+	// Optional is true when collection/sharing of this item is optional
+	// (false = required).
+	Optional bool `json:"optional" example:"true"`
+	// Purpose is the comma-separated list of declared purposes, e.g.
+	// "App functionality, Analytics".
+	Purpose string `json:"purpose" example:"App functionality, Account management"`
+	// Type is the category this item belongs to, e.g. "Personal info".
+	Type string `json:"type" example:"Personal info"`
 }
 
-// SecurityPractice represents a security practice declaration
+// SecurityPractice is one declared security practice.
 type SecurityPractice struct {
-	Practice    string `json:"practice"`
-	Description string `json:"description"`
+	// Practice is the practice headline, e.g. "Data is encrypted in transit".
+	Practice string `json:"practice" example:"Data is encrypted in transit"`
+	// Description is the practice detail; it may contain inline HTML (e.g. an
+	// anchor tag) exactly as Google serves it.
+	Description string `json:"description" example:"Your data is transferred over a secure connection"`
 }
 
-// DataSafety contains all data safety information for an app
+// DataSafety is the data-safety section parsed from the ds:3 block of GET
+// /store/apps/datasafety.
 type DataSafety struct {
-	SharedData        []DataSafetyEntry  `json:"sharedData"`
-	CollectedData     []DataSafetyEntry  `json:"collectedData"`
+	// SharedData lists data the app shares with third parties; may be empty.
+	SharedData []DataSafetyEntry `json:"sharedData"`
+	// CollectedData lists data the app collects; may be empty.
+	CollectedData []DataSafetyEntry `json:"collectedData"`
+	// SecurityPractices lists the developer's declared security practices.
 	SecurityPractices []SecurityPractice `json:"securityPractices"`
-	PrivacyPolicyURL  string             `json:"privacyPolicyUrl"`
+	// PrivacyPolicyURL is the privacy-policy URL from the data-safety page.
+	PrivacyPolicyURL string `json:"privacyPolicyUrl" format:"uri" example:"http://www.google.com/policies/privacy"`
 }
 
 // DataSafetyOptions configures the data safety request
