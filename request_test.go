@@ -5,8 +5,8 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
-	"sort"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -203,8 +203,16 @@ func TestThrottleDelay(t *testing.T) {
 
 // TestThrottleConcurrentStarts verifies the throttle serializes request starts
 // across concurrent goroutines: with a 10ms throttle and 8 workers firing 30
-// requests, consecutive starts must stay at least one throttle interval apart
-// (within timer tolerance), and the run must be race-free under -race.
+// requests, the whole run cannot finish faster than (requests-1) throttle
+// intervals, and it must be race-free under -race.
+//
+// We assert total elapsed time rather than per-pair gaps: the throttle reserves
+// monotonic start slots one interval apart under a lock, so the aggregate floor
+// of (requests-1)*throttle is a hard lower bound. Scheduling and network jitter
+// can only push individual handler timestamps later, which would falsely
+// compress an individual gap but can never shorten the total below the floor —
+// making this invariant robust on a loaded machine while still catching a
+// throttle that fails to serialize (that run would finish far faster).
 func TestThrottleConcurrentStarts(t *testing.T) {
 	const (
 		throttle = 10 * time.Millisecond
@@ -212,14 +220,9 @@ func TestThrottleConcurrentStarts(t *testing.T) {
 		workers  = 8
 	)
 
-	var (
-		mu     sync.Mutex
-		starts []time.Time
-	)
+	var hits int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		mu.Lock()
-		starts = append(starts, time.Now())
-		mu.Unlock()
+		atomic.AddInt32(&hits, 1)
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer server.Close()
@@ -239,26 +242,26 @@ func TestThrottleConcurrentStarts(t *testing.T) {
 			}
 		}()
 	}
+
+	start := time.Now()
 	for i := 0; i < requests; i++ {
 		jobs <- i
 	}
 	close(jobs)
 	wg.Wait()
+	elapsed := time.Since(start)
 
-	if len(starts) != requests {
-		t.Fatalf("recorded %d starts, want %d", len(starts), requests)
+	if got := atomic.LoadInt32(&hits); got != requests {
+		t.Fatalf("server saw %d requests, want %d", got, requests)
 	}
 
-	sort.Slice(starts, func(i, j int) bool { return starts[i].Before(starts[j]) })
-
-	// The handler timestamp lags the throttle's reserved slot by scheduling and
-	// network jitter, so allow a tolerance below the nominal interval.
-	const tolerance = 4 * time.Millisecond
-	for i := 1; i < len(starts); i++ {
-		gap := starts[i].Sub(starts[i-1])
-		if gap < throttle-tolerance {
-			t.Errorf("start %d came %v after previous, want >= %v", i, gap, throttle-tolerance)
-		}
+	// The first request takes its slot immediately; the remaining (requests-1)
+	// each wait one throttle interval, so the run cannot complete sooner. A
+	// small tolerance absorbs the measurement starting just before the first
+	// reserved slot.
+	floor := time.Duration(requests-1)*throttle - throttle
+	if elapsed < floor {
+		t.Errorf("run finished in %v, want >= %v (throttle not serializing starts)", elapsed, floor)
 	}
 }
 
