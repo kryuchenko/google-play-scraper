@@ -384,6 +384,19 @@ app, _ := client.App(ctx, appID, googleplayscraper.AppOptions{
 })
 ```
 
+## API documentation
+
+The [`apidoc/`](apidoc/) directory holds an auto-generated **OpenAPI/Swagger**
+specification of the *private, undocumented* Google Play HTTP endpoints this
+library calls (the `/store/...` HTML pages and the `batchexecute` RPCs). It lives
+in a **separate nested Go module** so the root library stays
+**zero-dependency** — only `apidoc/` pulls in [swaggo](https://github.com/swaggo/swag).
+
+Regenerate the spec with `cd apidoc && make gen` (or `./gen.sh`); the committed
+output is `apidoc/docs/swagger.{json,yaml}`. See [`apidoc/README.md`](apidoc/README.md)
+for details and the Terms-of-Service disclaimer — these endpoints are not a
+public Google API and may change without notice.
+
 ## Coverage & limitations
 
 This library scrapes the **anonymous public web** interface of Google Play

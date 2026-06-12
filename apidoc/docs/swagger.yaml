@@ -1,0 +1,755 @@
+basePath: /
+definitions:
+  apidoc.App:
+    properties:
+      IAPRange:
+        type: string
+      adSupported:
+        description: Monetization
+        type: boolean
+      androidVersion:
+        type: string
+      appId:
+        type: string
+      available:
+        type: boolean
+      categories:
+        items:
+          type: string
+        type: array
+      contentRating:
+        type: string
+      contentRatingDescription:
+        type: string
+      currency:
+        type: string
+      description:
+        type: string
+      descriptionHTML:
+        type: string
+      developer:
+        type: string
+      developerAddress:
+        type: string
+      developerEmail:
+        type: string
+      developerId:
+        type: string
+      developerInternalID:
+        description: Developer (EU DSA trader info; absent for non-EU traders)
+        type: string
+      developerLegalAddress:
+        type: string
+      developerLegalEmail:
+        type: string
+      developerLegalName:
+        type: string
+      developerLegalPhoneNumber:
+        type: string
+      developerWebsite:
+        type: string
+      discountEndDate:
+        type: integer
+      earlyAccessEnabled:
+        type: boolean
+      free:
+        type: boolean
+      genre:
+        type: string
+      genreId:
+        type: string
+      headerImage:
+        type: string
+      histogram:
+        items:
+          type: integer
+        type: array
+      icon:
+        type: string
+      installs:
+        type: string
+      isAvailableInPlayPass:
+        description: Distribution / availability
+        type: boolean
+      maxInstalls:
+        type: integer
+      minInstalls:
+        type: integer
+      offersIAP:
+        type: boolean
+      originalPrice:
+        type: number
+      preregister:
+        type: boolean
+      previewVideo:
+        type: string
+      price:
+        type: number
+      priceText:
+        type: string
+      privacyPolicy:
+        type: string
+      ratings:
+        type: integer
+      recentChanges:
+        description: Content & changelog
+        type: string
+      released:
+        type: string
+      reviews:
+        type: integer
+      score:
+        type: number
+      scoreText:
+        type: string
+      screenshots:
+        items:
+          type: string
+        type: array
+      summary:
+        type: string
+      title:
+        type: string
+      updated:
+        type: integer
+      url:
+        type: string
+      version:
+        type: string
+      video:
+        type: string
+      videoImage:
+        type: string
+    type: object
+  apidoc.DataSafety:
+    properties:
+      collectedData:
+        items:
+          $ref: '#/definitions/googleplayscraper.DataSafetyEntry'
+        type: array
+      privacyPolicyUrl:
+        type: string
+      securityPractices:
+        items:
+          $ref: '#/definitions/googleplayscraper.SecurityPractice'
+        type: array
+      sharedData:
+        items:
+          $ref: '#/definitions/googleplayscraper.DataSafetyEntry'
+        type: array
+    type: object
+  apidoc.Permission:
+    properties:
+      permission:
+        type: string
+      type:
+        type: string
+    type: object
+  apidoc.ReviewsResult:
+    properties:
+      nextToken:
+        type: string
+      reviews:
+        items:
+          $ref: '#/definitions/googleplayscraper.Review'
+        type: array
+    type: object
+  apidoc.SearchResult:
+    properties:
+      appId:
+        type: string
+      currency:
+        type: string
+      developer:
+        type: string
+      developerId:
+        type: string
+      free:
+        type: boolean
+      icon:
+        type: string
+      price:
+        type: number
+      score:
+        type: number
+      scoreText:
+        type: string
+      summary:
+        type: string
+      title:
+        type: string
+      url:
+        type: string
+    type: object
+  googleplayscraper.Criteria:
+    properties:
+      name:
+        type: string
+      rating:
+        type: integer
+    type: object
+  googleplayscraper.DataSafetyEntry:
+    properties:
+      data:
+        type: string
+      optional:
+        type: boolean
+      purpose:
+        type: string
+      type:
+        type: string
+    type: object
+  googleplayscraper.Review:
+    properties:
+      criterias:
+        items:
+          $ref: '#/definitions/googleplayscraper.Criteria'
+        type: array
+      date:
+        type: string
+      id:
+        type: string
+      replyDate:
+        type: string
+      replyText:
+        type: string
+      score:
+        type: integer
+      text:
+        type: string
+      thumbsUp:
+        type: integer
+      url:
+        type: string
+      userImage:
+        type: string
+      userName:
+        type: string
+      version:
+        type: string
+    type: object
+  googleplayscraper.SecurityPractice:
+    properties:
+      description:
+        type: string
+      practice:
+        type: string
+    type: object
+externalDocs:
+  description: google-play-scraper source
+  url: https://github.com/kryuchenko/google-play-scraper
+host: play.google.com
+info:
+  contact: {}
+  description: |-
+    Reverse-engineered description of the PRIVATE, undocumented
+    HTTP endpoints of the Google Play Store web frontend that the
+    google-play-scraper Go library calls.
+
+    DISCLAIMER: These endpoints are NOT a public, supported Google
+    API. This project is NOT affiliated with, endorsed by, or
+    sponsored by Google. The endpoints are undocumented, may change
+    or disappear without notice, and accessing them may be subject
+    to the Google Play / Google Terms of Service. This spec is
+    provided for interoperability and educational purposes only.
+
+    Two response shapes appear:
+    * AF_initDataCallback: GET endpoints return text/html whose
+    body embeds `AF_initDataCallback({key:'ds:N', data:[...]})`
+    script blocks; the scraper extracts the logical model from
+    a numbered data block (e.g. ds:5).
+    * batchexecute envelope: POST /_/PlayStoreUi/data/batchexecute
+    returns a `)]}'`-prefixed, `wrb.fr`-framed envelope; the
+    scraper decodes the inner URL-encoded JSON for the RPC.
+  license:
+    name: MIT
+    url: https://github.com/kryuchenko/google-play-scraper/blob/main/LICENSE
+  title: Google Play Store private HTTP API (reverse-engineered)
+  version: 1.0.0
+paths:
+  /_/PlayStoreUi/data/batchexecute(IJ4APc):
+    post:
+      consumes:
+      - application/x-www-form-urlencoded
+      description: |-
+        POST /_/PlayStoreUi/data/batchexecute?rpcids=IJ4APc. Returns the
+        batchexecute envelope; a []string of suggested query terms is
+        decoded from the inner payload.
+      operationId: batchSuggestIJ4APc
+      parameters:
+      - description: IJ4APc
+        in: query
+        name: rpcids
+        required: true
+        type: string
+      - description: URL-encoded JSON envelope [[['IJ4APc','<inner-args>']]]
+        in: formData
+        name: f.req
+        required: true
+        type: string
+      produces:
+      - text/plain
+      responses:
+        "200":
+          description: Suggested terms decoded from batchexecute envelope
+          schema:
+            items:
+              type: string
+            type: array
+      summary: Search suggestions RPC (IJ4APc)
+      tags:
+      - batchexecute-rpc
+      x-response-encoding: batchexecute-envelope
+      x-rpcid: IJ4APc
+  /_/PlayStoreUi/data/batchexecute(oCPfdb):
+    post:
+      consumes:
+      - application/x-www-form-urlencoded
+      description: |-
+        POST /_/PlayStoreUi/data/batchexecute. Unlike the other RPCs the
+        scraper does NOT put rpcids in the query string; the rpcid lives
+        only inside the f.req body. Handles both the initial fetch and
+        pagination. Returns the batchexecute envelope; ReviewsResult
+        (reviews + nextToken) is decoded from the inner payload.
+      operationId: batchReviewsOCPfdb
+      parameters:
+      - description: URL-encoded JSON envelope [[['oCPfdb','<inner-args>',null,'generic']]]
+        in: formData
+        name: f.req
+        required: true
+        type: string
+      produces:
+      - text/plain
+      responses:
+        "200":
+          description: Decoded from batchexecute envelope
+          schema:
+            $ref: '#/definitions/apidoc.ReviewsResult'
+      summary: Reviews RPC (oCPfdb)
+      tags:
+      - batchexecute-rpc
+      x-response-encoding: batchexecute-envelope
+      x-rpcid: oCPfdb
+  /_/PlayStoreUi/data/batchexecute(qnKhOb):
+    post:
+      consumes:
+      - application/x-www-form-urlencoded
+      description: |-
+        POST /_/PlayStoreUi/data/batchexecute?rpcids=qnKhOb. Advances a
+        list, cluster or search result set using a continuation token.
+        Returns the batchexecute envelope; []SearchResult plus the next
+        token are decoded from the inner payload.
+      operationId: batchPaginateQnKhOb
+      parameters:
+      - description: qnKhOb
+        in: query
+        name: rpcids
+        required: true
+        type: string
+      - description: URL-encoded JSON carrying the continuation token
+        in: formData
+        name: f.req
+        required: true
+        type: string
+      produces:
+      - text/plain
+      responses:
+        "200":
+          description: Decoded from batchexecute envelope; includes next token
+          schema:
+            items:
+              $ref: '#/definitions/apidoc.SearchResult'
+            type: array
+      summary: Paginate list/cluster/search RPC (qnKhOb)
+      tags:
+      - batchexecute-rpc
+      x-response-encoding: batchexecute-envelope
+      x-rpcid: qnKhOb
+  /_/PlayStoreUi/data/batchexecute(vyAe2):
+    post:
+      consumes:
+      - application/x-www-form-urlencoded
+      description: |-
+        POST /_/PlayStoreUi/data/batchexecute?rpcids=vyAe2. Body is the
+        url-encoded f.req from list_payload.txt with __NUM__,
+        __COLLECTION__ and __CATEGORY__ substituted. Returns the
+        batchexecute envelope; []SearchResult is decoded from the inner
+        payload. The #vyAe2 path fragment only disambiguates this
+        operation and is not sent to the server.
+      operationId: batchListVyAe2
+      parameters:
+      - description: vyAe2
+        in: query
+        name: rpcids
+        required: true
+        type: string
+      - description: URL-encoded JSON envelope [[['vyAe2','<inner-args>',null,'generic']]]
+        in: formData
+        name: f.req
+        required: true
+        type: string
+      produces:
+      - text/plain
+      responses:
+        "200":
+          description: Decoded from batchexecute envelope
+          schema:
+            items:
+              $ref: '#/definitions/apidoc.SearchResult'
+            type: array
+      summary: List apps RPC (vyAe2)
+      tags:
+      - batchexecute-rpc
+      x-response-encoding: batchexecute-envelope
+      x-rpcid: vyAe2
+  /_/PlayStoreUi/data/batchexecute(xdSrCf):
+    post:
+      consumes:
+      - application/x-www-form-urlencoded
+      description: |-
+        POST /_/PlayStoreUi/data/batchexecute?rpcids=xdSrCf. Returns the
+        batchexecute envelope; []Permission is decoded from the inner
+        payload.
+      operationId: batchPermissionsXdSrCf
+      parameters:
+      - description: xdSrCf
+        in: query
+        name: rpcids
+        required: true
+        type: string
+      - description: URL-encoded JSON envelope [[['xdSrCf','<inner-args>',null,'1']]]
+        in: formData
+        name: f.req
+        required: true
+        type: string
+      produces:
+      - text/plain
+      responses:
+        "200":
+          description: Decoded from batchexecute envelope
+          schema:
+            items:
+              $ref: '#/definitions/apidoc.Permission'
+            type: array
+      summary: Permissions RPC (xdSrCf)
+      tags:
+      - batchexecute-rpc
+      x-response-encoding: batchexecute-envelope
+      x-rpcid: xdSrCf
+  /store/apps/category/{category}:
+    get:
+      description: |-
+        Returns text/html for a single category; parsed like the top
+        charts page into []SearchResult plus cluster URLs.
+      operationId: categoryApps
+      parameters:
+      - description: Category id, e.g. GAME or PRODUCTIVITY
+        in: path
+        name: category
+        required: true
+        type: string
+      - description: UI language
+        in: query
+        name: hl
+        type: string
+      - description: Country
+        in: query
+        name: gl
+        type: string
+      produces:
+      - text/html
+      responses:
+        "200":
+          description: Category apps parsed from AF_initDataCallback
+          schema:
+            items:
+              $ref: '#/definitions/apidoc.SearchResult'
+            type: array
+      summary: Category page (HTML)
+      tags:
+      - html-endpoints
+      x-response-encoding: AF_initDataCallback
+      x-rpcid: none
+  /store/apps/collection/{clusterPath}:
+    get:
+      description: |-
+        GET of an absolute collection/cluster URL discovered on a list
+        or similar-apps page. Returns text/html parsed into
+        []SearchResult. The path is dynamic, hence the {clusterPath}
+        placeholder.
+      operationId: getCluster
+      parameters:
+      - description: Absolute cluster/collection path from a prior page
+        in: path
+        name: clusterPath
+        required: true
+        type: string
+      - description: UI language
+        in: query
+        name: hl
+        type: string
+      - description: Country
+        in: query
+        name: gl
+        type: string
+      produces:
+      - text/html
+      responses:
+        "200":
+          description: Cluster apps parsed from AF_initDataCallback
+          schema:
+            items:
+              $ref: '#/definitions/apidoc.SearchResult'
+            type: array
+      summary: Cluster page (HTML, absolute URL)
+      tags:
+      - html-endpoints
+      x-response-encoding: AF_initDataCallback
+      x-rpcid: none
+  /store/apps/datasafety:
+    get:
+      description: |-
+        Returns text/html. The DataSafety model is parsed from the
+        AF_initDataCallback `ds:3` block.
+      operationId: getDataSafety
+      parameters:
+      - description: App package id
+        in: query
+        name: id
+        required: true
+        type: string
+      - description: UI language
+        in: query
+        name: hl
+        type: string
+      - description: Country
+        in: query
+        name: gl
+        type: string
+      produces:
+      - text/html
+      responses:
+        "200":
+          description: Data safety parsed from AF_initDataCallback ds:3
+          schema:
+            $ref: '#/definitions/apidoc.DataSafety'
+      summary: Data safety (HTML, ds:3)
+      tags:
+      - html-endpoints
+      x-data-block: ds:3
+      x-response-encoding: AF_initDataCallback
+      x-rpcid: none
+  /store/apps/details:
+    get:
+      description: |-
+        Returns text/html. The App model is parsed from the
+        AF_initDataCallback `ds:5` block, payload node [1][2].
+      operationId: getAppDetails
+      parameters:
+      - description: App package id, e.g. com.whatsapp
+        in: query
+        name: id
+        required: true
+        type: string
+      - description: UI language (ISO 639), e.g. en
+        in: query
+        name: hl
+        type: string
+      - description: Country (ISO 3166), e.g. us
+        in: query
+        name: gl
+        type: string
+      produces:
+      - text/html
+      responses:
+        "200":
+          description: App parsed from AF_initDataCallback ds:5[1][2]
+          schema:
+            $ref: '#/definitions/apidoc.App'
+      summary: App details (HTML, ds:5)
+      tags:
+      - html-endpoints
+      x-data-block: ds:5
+      x-payload-node: '[1][2]'
+      x-response-encoding: AF_initDataCallback
+      x-rpcid: none
+  /store/apps/details(availability):
+    get:
+      description: |-
+        Reuses GET /store/apps/details per gl country. Availability is
+        derived from node [18] of `ds:5`[1][2]: [18][0]==2 available,
+        ==1 pre-registration, empty/missing not-in-region, HTTP 404
+        not-found. The aggregated sweep yields AvailabilityResult.
+      operationId: getAppAvailability
+      parameters:
+      - description: App package id
+        in: query
+        name: id
+        required: true
+        type: string
+      - description: UI language
+        in: query
+        name: hl
+        type: string
+      - description: Country to probe; one request per country
+        in: query
+        name: gl
+        required: true
+        type: string
+      produces:
+      - text/html
+      responses:
+        "200":
+          description: Availability read from ds:5[1][2][18]
+          schema:
+            $ref: '#/definitions/apidoc.App'
+      summary: App availability probe (HTML, ds:5 node [18])
+      tags:
+      - html-endpoints
+      x-data-block: ds:5
+      x-payload-node: '[1][2][18]'
+      x-response-encoding: AF_initDataCallback
+      x-rpcid: none
+  /store/apps/dev:
+    get:
+      description: |-
+        Returns text/html. Used when the developer id is the numeric
+        internal id; results parsed into []SearchResult.
+      operationId: developerAppsNumeric
+      parameters:
+      - description: Numeric developer id
+        in: query
+        name: id
+        required: true
+        type: string
+      - description: UI language
+        in: query
+        name: hl
+        type: string
+      - description: Country
+        in: query
+        name: gl
+        type: string
+      produces:
+      - text/html
+      responses:
+        "200":
+          description: Developer apps parsed from AF_initDataCallback
+          schema:
+            items:
+              $ref: '#/definitions/apidoc.SearchResult'
+            type: array
+      summary: Developer apps by numeric id (HTML)
+      tags:
+      - html-endpoints
+      x-response-encoding: AF_initDataCallback
+      x-rpcid: none
+  /store/apps/developer:
+    get:
+      description: |-
+        Returns text/html. Used when the developer id is a human-readable
+        name; results parsed into []SearchResult.
+      operationId: developerAppsName
+      parameters:
+      - description: String developer name
+        in: query
+        name: id
+        required: true
+        type: string
+      - description: UI language
+        in: query
+        name: hl
+        type: string
+      - description: Country
+        in: query
+        name: gl
+        type: string
+      produces:
+      - text/html
+      responses:
+        "200":
+          description: Developer apps parsed from AF_initDataCallback
+          schema:
+            items:
+              $ref: '#/definitions/apidoc.SearchResult'
+            type: array
+      summary: Developer apps by name (HTML)
+      tags:
+      - html-endpoints
+      x-response-encoding: AF_initDataCallback
+      x-rpcid: none
+  /store/apps/top:
+    get:
+      description: |-
+        Returns text/html. Used both to parse the initial []SearchResult
+        and to discover collection/cluster URLs for paging.
+      operationId: topApps
+      parameters:
+      - description: UI language
+        in: query
+        name: hl
+        type: string
+      - description: Country
+        in: query
+        name: gl
+        type: string
+      produces:
+      - text/html
+      responses:
+        "200":
+          description: Top apps parsed from AF_initDataCallback
+          schema:
+            items:
+              $ref: '#/definitions/apidoc.SearchResult'
+            type: array
+      summary: Top charts page (HTML)
+      tags:
+      - html-endpoints
+      x-response-encoding: AF_initDataCallback
+      x-rpcid: none
+  /store/search:
+    get:
+      description: |-
+        Returns text/html; []SearchResult and an optional pagination
+        token are parsed from the embedded AF_initDataCallback blocks.
+      operationId: searchApps
+      parameters:
+      - description: Search query
+        in: query
+        name: q
+        required: true
+        type: string
+      - description: Corpus; the scraper always sends 'apps'
+        in: query
+        name: c
+        required: true
+        type: string
+      - description: 'Price filter: 0=all, 1=free, 2=paid'
+        in: query
+        name: price
+        type: integer
+      - description: UI language
+        in: query
+        name: hl
+        type: string
+      - description: Country
+        in: query
+        name: gl
+        type: string
+      produces:
+      - text/html
+      responses:
+        "200":
+          description: Search results parsed from AF_initDataCallback
+          schema:
+            items:
+              $ref: '#/definitions/apidoc.SearchResult'
+            type: array
+      summary: Search apps (HTML)
+      tags:
+      - html-endpoints
+      x-response-encoding: AF_initDataCallback
+      x-rpcid: none
+schemes:
+- https
+swagger: "2.0"

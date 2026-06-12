@@ -1,0 +1,1022 @@
+{
+    "schemes": [
+        "https"
+    ],
+    "swagger": "2.0",
+    "info": {
+        "description": "Reverse-engineered description of the PRIVATE, undocumented\nHTTP endpoints of the Google Play Store web frontend that the\ngoogle-play-scraper Go library calls.\n\nDISCLAIMER: These endpoints are NOT a public, supported Google\nAPI. This project is NOT affiliated with, endorsed by, or\nsponsored by Google. The endpoints are undocumented, may change\nor disappear without notice, and accessing them may be subject\nto the Google Play / Google Terms of Service. This spec is\nprovided for interoperability and educational purposes only.\n\nTwo response shapes appear:\n* AF_initDataCallback: GET endpoints return text/html whose\nbody embeds `AF_initDataCallback({key:'ds:N', data:[...]})`\nscript blocks; the scraper extracts the logical model from\na numbered data block (e.g. ds:5).\n* batchexecute envelope: POST /_/PlayStoreUi/data/batchexecute\nreturns a `)]}'`-prefixed, `wrb.fr`-framed envelope; the\nscraper decodes the inner URL-encoded JSON for the RPC.",
+        "title": "Google Play Store private HTTP API (reverse-engineered)",
+        "contact": {},
+        "license": {
+            "name": "MIT",
+            "url": "https://github.com/kryuchenko/google-play-scraper/blob/main/LICENSE"
+        },
+        "version": "1.0.0"
+    },
+    "host": "play.google.com",
+    "basePath": "/",
+    "paths": {
+        "/_/PlayStoreUi/data/batchexecute(IJ4APc)": {
+            "post": {
+                "description": "POST /_/PlayStoreUi/data/batchexecute?rpcids=IJ4APc. Returns the\nbatchexecute envelope; a []string of suggested query terms is\ndecoded from the inner payload.",
+                "consumes": [
+                    "application/x-www-form-urlencoded"
+                ],
+                "produces": [
+                    "text/plain"
+                ],
+                "tags": [
+                    "batchexecute-rpc"
+                ],
+                "summary": "Search suggestions RPC (IJ4APc)",
+                "operationId": "batchSuggestIJ4APc",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "IJ4APc",
+                        "name": "rpcids",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "URL-encoded JSON envelope [[['IJ4APc','\u003cinner-args\u003e']]]",
+                        "name": "f.req",
+                        "in": "formData",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Suggested terms decoded from batchexecute envelope",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                },
+                "x-response-encoding": "batchexecute-envelope",
+                "x-rpcid": "IJ4APc"
+            }
+        },
+        "/_/PlayStoreUi/data/batchexecute(oCPfdb)": {
+            "post": {
+                "description": "POST /_/PlayStoreUi/data/batchexecute. Unlike the other RPCs the\nscraper does NOT put rpcids in the query string; the rpcid lives\nonly inside the f.req body. Handles both the initial fetch and\npagination. Returns the batchexecute envelope; ReviewsResult\n(reviews + nextToken) is decoded from the inner payload.",
+                "consumes": [
+                    "application/x-www-form-urlencoded"
+                ],
+                "produces": [
+                    "text/plain"
+                ],
+                "tags": [
+                    "batchexecute-rpc"
+                ],
+                "summary": "Reviews RPC (oCPfdb)",
+                "operationId": "batchReviewsOCPfdb",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "URL-encoded JSON envelope [[['oCPfdb','\u003cinner-args\u003e',null,'generic']]]",
+                        "name": "f.req",
+                        "in": "formData",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Decoded from batchexecute envelope",
+                        "schema": {
+                            "$ref": "#/definitions/apidoc.ReviewsResult"
+                        }
+                    }
+                },
+                "x-response-encoding": "batchexecute-envelope",
+                "x-rpcid": "oCPfdb"
+            }
+        },
+        "/_/PlayStoreUi/data/batchexecute(qnKhOb)": {
+            "post": {
+                "description": "POST /_/PlayStoreUi/data/batchexecute?rpcids=qnKhOb. Advances a\nlist, cluster or search result set using a continuation token.\nReturns the batchexecute envelope; []SearchResult plus the next\ntoken are decoded from the inner payload.",
+                "consumes": [
+                    "application/x-www-form-urlencoded"
+                ],
+                "produces": [
+                    "text/plain"
+                ],
+                "tags": [
+                    "batchexecute-rpc"
+                ],
+                "summary": "Paginate list/cluster/search RPC (qnKhOb)",
+                "operationId": "batchPaginateQnKhOb",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "qnKhOb",
+                        "name": "rpcids",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "URL-encoded JSON carrying the continuation token",
+                        "name": "f.req",
+                        "in": "formData",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Decoded from batchexecute envelope; includes next token",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/apidoc.SearchResult"
+                            }
+                        }
+                    }
+                },
+                "x-response-encoding": "batchexecute-envelope",
+                "x-rpcid": "qnKhOb"
+            }
+        },
+        "/_/PlayStoreUi/data/batchexecute(vyAe2)": {
+            "post": {
+                "description": "POST /_/PlayStoreUi/data/batchexecute?rpcids=vyAe2. Body is the\nurl-encoded f.req from list_payload.txt with __NUM__,\n__COLLECTION__ and __CATEGORY__ substituted. Returns the\nbatchexecute envelope; []SearchResult is decoded from the inner\npayload. The #vyAe2 path fragment only disambiguates this\noperation and is not sent to the server.",
+                "consumes": [
+                    "application/x-www-form-urlencoded"
+                ],
+                "produces": [
+                    "text/plain"
+                ],
+                "tags": [
+                    "batchexecute-rpc"
+                ],
+                "summary": "List apps RPC (vyAe2)",
+                "operationId": "batchListVyAe2",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "vyAe2",
+                        "name": "rpcids",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "URL-encoded JSON envelope [[['vyAe2','\u003cinner-args\u003e',null,'generic']]]",
+                        "name": "f.req",
+                        "in": "formData",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Decoded from batchexecute envelope",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/apidoc.SearchResult"
+                            }
+                        }
+                    }
+                },
+                "x-response-encoding": "batchexecute-envelope",
+                "x-rpcid": "vyAe2"
+            }
+        },
+        "/_/PlayStoreUi/data/batchexecute(xdSrCf)": {
+            "post": {
+                "description": "POST /_/PlayStoreUi/data/batchexecute?rpcids=xdSrCf. Returns the\nbatchexecute envelope; []Permission is decoded from the inner\npayload.",
+                "consumes": [
+                    "application/x-www-form-urlencoded"
+                ],
+                "produces": [
+                    "text/plain"
+                ],
+                "tags": [
+                    "batchexecute-rpc"
+                ],
+                "summary": "Permissions RPC (xdSrCf)",
+                "operationId": "batchPermissionsXdSrCf",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "xdSrCf",
+                        "name": "rpcids",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "URL-encoded JSON envelope [[['xdSrCf','\u003cinner-args\u003e',null,'1']]]",
+                        "name": "f.req",
+                        "in": "formData",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Decoded from batchexecute envelope",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/apidoc.Permission"
+                            }
+                        }
+                    }
+                },
+                "x-response-encoding": "batchexecute-envelope",
+                "x-rpcid": "xdSrCf"
+            }
+        },
+        "/store/apps/category/{category}": {
+            "get": {
+                "description": "Returns text/html for a single category; parsed like the top\ncharts page into []SearchResult plus cluster URLs.",
+                "produces": [
+                    "text/html"
+                ],
+                "tags": [
+                    "html-endpoints"
+                ],
+                "summary": "Category page (HTML)",
+                "operationId": "categoryApps",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Category id, e.g. GAME or PRODUCTIVITY",
+                        "name": "category",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "UI language",
+                        "name": "hl",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Country",
+                        "name": "gl",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Category apps parsed from AF_initDataCallback",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/apidoc.SearchResult"
+                            }
+                        }
+                    }
+                },
+                "x-response-encoding": "AF_initDataCallback",
+                "x-rpcid": "none"
+            }
+        },
+        "/store/apps/collection/{clusterPath}": {
+            "get": {
+                "description": "GET of an absolute collection/cluster URL discovered on a list\nor similar-apps page. Returns text/html parsed into\n[]SearchResult. The path is dynamic, hence the {clusterPath}\nplaceholder.",
+                "produces": [
+                    "text/html"
+                ],
+                "tags": [
+                    "html-endpoints"
+                ],
+                "summary": "Cluster page (HTML, absolute URL)",
+                "operationId": "getCluster",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Absolute cluster/collection path from a prior page",
+                        "name": "clusterPath",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "UI language",
+                        "name": "hl",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Country",
+                        "name": "gl",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Cluster apps parsed from AF_initDataCallback",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/apidoc.SearchResult"
+                            }
+                        }
+                    }
+                },
+                "x-response-encoding": "AF_initDataCallback",
+                "x-rpcid": "none"
+            }
+        },
+        "/store/apps/datasafety": {
+            "get": {
+                "description": "Returns text/html. The DataSafety model is parsed from the\nAF_initDataCallback `ds:3` block.",
+                "produces": [
+                    "text/html"
+                ],
+                "tags": [
+                    "html-endpoints"
+                ],
+                "summary": "Data safety (HTML, ds:3)",
+                "operationId": "getDataSafety",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "App package id",
+                        "name": "id",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "UI language",
+                        "name": "hl",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Country",
+                        "name": "gl",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Data safety parsed from AF_initDataCallback ds:3",
+                        "schema": {
+                            "$ref": "#/definitions/apidoc.DataSafety"
+                        }
+                    }
+                },
+                "x-data-block": "ds:3",
+                "x-response-encoding": "AF_initDataCallback",
+                "x-rpcid": "none"
+            }
+        },
+        "/store/apps/details": {
+            "get": {
+                "description": "Returns text/html. The App model is parsed from the\nAF_initDataCallback `ds:5` block, payload node [1][2].",
+                "produces": [
+                    "text/html"
+                ],
+                "tags": [
+                    "html-endpoints"
+                ],
+                "summary": "App details (HTML, ds:5)",
+                "operationId": "getAppDetails",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "App package id, e.g. com.whatsapp",
+                        "name": "id",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "UI language (ISO 639), e.g. en",
+                        "name": "hl",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Country (ISO 3166), e.g. us",
+                        "name": "gl",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "App parsed from AF_initDataCallback ds:5[1][2]",
+                        "schema": {
+                            "$ref": "#/definitions/apidoc.App"
+                        }
+                    }
+                },
+                "x-data-block": "ds:5",
+                "x-payload-node": "[1][2]",
+                "x-response-encoding": "AF_initDataCallback",
+                "x-rpcid": "none"
+            }
+        },
+        "/store/apps/details(availability)": {
+            "get": {
+                "description": "Reuses GET /store/apps/details per gl country. Availability is\nderived from node [18] of `ds:5`[1][2]: [18][0]==2 available,\n==1 pre-registration, empty/missing not-in-region, HTTP 404\nnot-found. The aggregated sweep yields AvailabilityResult.",
+                "produces": [
+                    "text/html"
+                ],
+                "tags": [
+                    "html-endpoints"
+                ],
+                "summary": "App availability probe (HTML, ds:5 node [18])",
+                "operationId": "getAppAvailability",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "App package id",
+                        "name": "id",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "UI language",
+                        "name": "hl",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Country to probe; one request per country",
+                        "name": "gl",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Availability read from ds:5[1][2][18]",
+                        "schema": {
+                            "$ref": "#/definitions/apidoc.App"
+                        }
+                    }
+                },
+                "x-data-block": "ds:5",
+                "x-payload-node": "[1][2][18]",
+                "x-response-encoding": "AF_initDataCallback",
+                "x-rpcid": "none"
+            }
+        },
+        "/store/apps/dev": {
+            "get": {
+                "description": "Returns text/html. Used when the developer id is the numeric\ninternal id; results parsed into []SearchResult.",
+                "produces": [
+                    "text/html"
+                ],
+                "tags": [
+                    "html-endpoints"
+                ],
+                "summary": "Developer apps by numeric id (HTML)",
+                "operationId": "developerAppsNumeric",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Numeric developer id",
+                        "name": "id",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "UI language",
+                        "name": "hl",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Country",
+                        "name": "gl",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Developer apps parsed from AF_initDataCallback",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/apidoc.SearchResult"
+                            }
+                        }
+                    }
+                },
+                "x-response-encoding": "AF_initDataCallback",
+                "x-rpcid": "none"
+            }
+        },
+        "/store/apps/developer": {
+            "get": {
+                "description": "Returns text/html. Used when the developer id is a human-readable\nname; results parsed into []SearchResult.",
+                "produces": [
+                    "text/html"
+                ],
+                "tags": [
+                    "html-endpoints"
+                ],
+                "summary": "Developer apps by name (HTML)",
+                "operationId": "developerAppsName",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "String developer name",
+                        "name": "id",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "UI language",
+                        "name": "hl",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Country",
+                        "name": "gl",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Developer apps parsed from AF_initDataCallback",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/apidoc.SearchResult"
+                            }
+                        }
+                    }
+                },
+                "x-response-encoding": "AF_initDataCallback",
+                "x-rpcid": "none"
+            }
+        },
+        "/store/apps/top": {
+            "get": {
+                "description": "Returns text/html. Used both to parse the initial []SearchResult\nand to discover collection/cluster URLs for paging.",
+                "produces": [
+                    "text/html"
+                ],
+                "tags": [
+                    "html-endpoints"
+                ],
+                "summary": "Top charts page (HTML)",
+                "operationId": "topApps",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "UI language",
+                        "name": "hl",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Country",
+                        "name": "gl",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Top apps parsed from AF_initDataCallback",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/apidoc.SearchResult"
+                            }
+                        }
+                    }
+                },
+                "x-response-encoding": "AF_initDataCallback",
+                "x-rpcid": "none"
+            }
+        },
+        "/store/search": {
+            "get": {
+                "description": "Returns text/html; []SearchResult and an optional pagination\ntoken are parsed from the embedded AF_initDataCallback blocks.",
+                "produces": [
+                    "text/html"
+                ],
+                "tags": [
+                    "html-endpoints"
+                ],
+                "summary": "Search apps (HTML)",
+                "operationId": "searchApps",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Search query",
+                        "name": "q",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Corpus; the scraper always sends 'apps'",
+                        "name": "c",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Price filter: 0=all, 1=free, 2=paid",
+                        "name": "price",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "UI language",
+                        "name": "hl",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Country",
+                        "name": "gl",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Search results parsed from AF_initDataCallback",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/apidoc.SearchResult"
+                            }
+                        }
+                    }
+                },
+                "x-response-encoding": "AF_initDataCallback",
+                "x-rpcid": "none"
+            }
+        }
+    },
+    "definitions": {
+        "apidoc.App": {
+            "type": "object",
+            "properties": {
+                "IAPRange": {
+                    "type": "string"
+                },
+                "adSupported": {
+                    "description": "Monetization",
+                    "type": "boolean"
+                },
+                "androidVersion": {
+                    "type": "string"
+                },
+                "appId": {
+                    "type": "string"
+                },
+                "available": {
+                    "type": "boolean"
+                },
+                "categories": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "contentRating": {
+                    "type": "string"
+                },
+                "contentRatingDescription": {
+                    "type": "string"
+                },
+                "currency": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "descriptionHTML": {
+                    "type": "string"
+                },
+                "developer": {
+                    "type": "string"
+                },
+                "developerAddress": {
+                    "type": "string"
+                },
+                "developerEmail": {
+                    "type": "string"
+                },
+                "developerId": {
+                    "type": "string"
+                },
+                "developerInternalID": {
+                    "description": "Developer (EU DSA trader info; absent for non-EU traders)",
+                    "type": "string"
+                },
+                "developerLegalAddress": {
+                    "type": "string"
+                },
+                "developerLegalEmail": {
+                    "type": "string"
+                },
+                "developerLegalName": {
+                    "type": "string"
+                },
+                "developerLegalPhoneNumber": {
+                    "type": "string"
+                },
+                "developerWebsite": {
+                    "type": "string"
+                },
+                "discountEndDate": {
+                    "type": "integer"
+                },
+                "earlyAccessEnabled": {
+                    "type": "boolean"
+                },
+                "free": {
+                    "type": "boolean"
+                },
+                "genre": {
+                    "type": "string"
+                },
+                "genreId": {
+                    "type": "string"
+                },
+                "headerImage": {
+                    "type": "string"
+                },
+                "histogram": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "icon": {
+                    "type": "string"
+                },
+                "installs": {
+                    "type": "string"
+                },
+                "isAvailableInPlayPass": {
+                    "description": "Distribution / availability",
+                    "type": "boolean"
+                },
+                "maxInstalls": {
+                    "type": "integer"
+                },
+                "minInstalls": {
+                    "type": "integer"
+                },
+                "offersIAP": {
+                    "type": "boolean"
+                },
+                "originalPrice": {
+                    "type": "number"
+                },
+                "preregister": {
+                    "type": "boolean"
+                },
+                "previewVideo": {
+                    "type": "string"
+                },
+                "price": {
+                    "type": "number"
+                },
+                "priceText": {
+                    "type": "string"
+                },
+                "privacyPolicy": {
+                    "type": "string"
+                },
+                "ratings": {
+                    "type": "integer"
+                },
+                "recentChanges": {
+                    "description": "Content \u0026 changelog",
+                    "type": "string"
+                },
+                "released": {
+                    "type": "string"
+                },
+                "reviews": {
+                    "type": "integer"
+                },
+                "score": {
+                    "type": "number"
+                },
+                "scoreText": {
+                    "type": "string"
+                },
+                "screenshots": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "summary": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "updated": {
+                    "type": "integer"
+                },
+                "url": {
+                    "type": "string"
+                },
+                "version": {
+                    "type": "string"
+                },
+                "video": {
+                    "type": "string"
+                },
+                "videoImage": {
+                    "type": "string"
+                }
+            }
+        },
+        "apidoc.DataSafety": {
+            "type": "object",
+            "properties": {
+                "collectedData": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/googleplayscraper.DataSafetyEntry"
+                    }
+                },
+                "privacyPolicyUrl": {
+                    "type": "string"
+                },
+                "securityPractices": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/googleplayscraper.SecurityPractice"
+                    }
+                },
+                "sharedData": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/googleplayscraper.DataSafetyEntry"
+                    }
+                }
+            }
+        },
+        "apidoc.Permission": {
+            "type": "object",
+            "properties": {
+                "permission": {
+                    "type": "string"
+                },
+                "type": {
+                    "type": "string"
+                }
+            }
+        },
+        "apidoc.ReviewsResult": {
+            "type": "object",
+            "properties": {
+                "nextToken": {
+                    "type": "string"
+                },
+                "reviews": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/googleplayscraper.Review"
+                    }
+                }
+            }
+        },
+        "apidoc.SearchResult": {
+            "type": "object",
+            "properties": {
+                "appId": {
+                    "type": "string"
+                },
+                "currency": {
+                    "type": "string"
+                },
+                "developer": {
+                    "type": "string"
+                },
+                "developerId": {
+                    "type": "string"
+                },
+                "free": {
+                    "type": "boolean"
+                },
+                "icon": {
+                    "type": "string"
+                },
+                "price": {
+                    "type": "number"
+                },
+                "score": {
+                    "type": "number"
+                },
+                "scoreText": {
+                    "type": "string"
+                },
+                "summary": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "url": {
+                    "type": "string"
+                }
+            }
+        },
+        "googleplayscraper.Criteria": {
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "string"
+                },
+                "rating": {
+                    "type": "integer"
+                }
+            }
+        },
+        "googleplayscraper.DataSafetyEntry": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "type": "string"
+                },
+                "optional": {
+                    "type": "boolean"
+                },
+                "purpose": {
+                    "type": "string"
+                },
+                "type": {
+                    "type": "string"
+                }
+            }
+        },
+        "googleplayscraper.Review": {
+            "type": "object",
+            "properties": {
+                "criterias": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/googleplayscraper.Criteria"
+                    }
+                },
+                "date": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "replyDate": {
+                    "type": "string"
+                },
+                "replyText": {
+                    "type": "string"
+                },
+                "score": {
+                    "type": "integer"
+                },
+                "text": {
+                    "type": "string"
+                },
+                "thumbsUp": {
+                    "type": "integer"
+                },
+                "url": {
+                    "type": "string"
+                },
+                "userImage": {
+                    "type": "string"
+                },
+                "userName": {
+                    "type": "string"
+                },
+                "version": {
+                    "type": "string"
+                }
+            }
+        },
+        "googleplayscraper.SecurityPractice": {
+            "type": "object",
+            "properties": {
+                "description": {
+                    "type": "string"
+                },
+                "practice": {
+                    "type": "string"
+                }
+            }
+        }
+    },
+    "externalDocs": {
+        "description": "google-play-scraper source",
+        "url": "https://github.com/kryuchenko/google-play-scraper"
+    }
+}

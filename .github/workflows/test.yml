@@ -41,6 +41,15 @@ jobs:
       - name: Run tests with coverage
         run: go test -v -race -coverprofile=coverage.out -covermode=atomic ./...
 
+      # The OpenAPI spec for Google's endpoints lives in the isolated apidoc
+      # submodule (keeps the root zero-dependency), so the root test run above
+      # never enters it. Run its drift tests here on the stable leg: they fail
+      # if a new rpcid/path is undocumented or the committed spec is stale.
+      - name: Verify API docs (apidoc submodule)
+        if: matrix.go-version == 'stable'
+        working-directory: apidoc
+        run: go test ./...
+
       - name: Update coverage in README
         if: github.ref == 'refs/heads/main' && matrix.go-version == 'stable'
         run: |
