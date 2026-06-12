@@ -237,13 +237,12 @@ components:
           type: string
         released:
           description: |-
-            Released is the original release date as Google serves it: a Unix epoch in
-            SECONDS rendered as a stringified float in scientific notation, e.g.
-            "1.352989068e+09" (= 2012-11-15). Empty when absent. NOTE: this raw,
-            non-ISO format is a known data-quality wart, kept here verbatim for
-            fidelity; treat it as seconds-since-epoch, not as a date string.
-          example: "1.352989068e+09"
-          type: string
+            Released is the original release date as a Unix epoch in SECONDS, e.g.
+            1352989068 (= 2012-11-15). 0 when absent. Symmetric with Updated.
+          example: 1352989068
+          format: int64
+          minimum: 0
+          type: integer
         reviews:
           description: Reviews is the number of written text reviews (a subset of
             Ratings).

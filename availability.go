@@ -2,6 +2,7 @@ package googleplayscraper
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -110,6 +111,25 @@ type AvailabilityResult struct {
 	// Checked is the number of countries that produced a conclusive status
 	// (anything other than StatusFetchError).
 	Checked int `json:"checked" minimum:"0" example:"242"`
+}
+
+// MarshalJSON serializes Errors as a country-to-message map (err.Error()) rather
+// than the empty objects a bare error interface would yield, keeping the JSON
+// output and the OpenAPI "object,string" schema truthful. The Go-side Errors
+// field stays map[string]error so callers retain the typed errors.
+func (r AvailabilityResult) MarshalJSON() ([]byte, error) {
+	type rawResult AvailabilityResult // alias drops MarshalJSON, avoiding recursion
+	out := struct {
+		rawResult
+		Errors map[string]string `json:"errors,omitempty"`
+	}{rawResult: rawResult(r)}
+	if len(r.Errors) > 0 {
+		out.Errors = make(map[string]string, len(r.Errors))
+		for country, err := range r.Errors {
+			out.Errors[country] = err.Error()
+		}
+	}
+	return json.Marshal(out)
 }
 
 // Availability probes the app's listing in each requested country and reports

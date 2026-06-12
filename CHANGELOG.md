@@ -43,6 +43,22 @@ All notable changes to this project are documented here. The format is based on
   `App.Available` will now see `false` where they previously always saw `true` —
   the field compiles unchanged but its value is no longer a constant.
 
+### Changed
+
+- `App.Released` changed type from `string` to `int64`. It previously held a
+  stringified float in scientific notation (e.g. `"1.401196337e+09"`); it is now
+  a Unix epoch in seconds (e.g. `1401196337`), `0` when absent — symmetric with
+  `App.Updated`. This is a typed break: callers that read `Released` as a string
+  must update to the integer field. The JSON `released` value is now a number
+  rather than an exponential string.
+
+### Internal
+
+- `AvailabilityResult` now serializes its `Errors` map as `country → string`
+  (via `err.Error()`) instead of empty `{}` objects, making the JSON output and
+  the OpenAPI `object,string` schema truthful. The Go-side `Errors` field stays
+  `map[string]error`, so typed errors remain available to Go callers.
+
 ## [1.1.0] - 2026-06-10
 
 ### Behavior change (soft break)

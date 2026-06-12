@@ -146,12 +146,9 @@ type App struct {
 	// ContentRating is the age/content rating label, e.g. "Everyone" or
 	// "USK: Ages 18+".
 	ContentRating string `json:"contentRating" example:"Everyone"`
-	// Released is the original release date as Google serves it: a Unix epoch in
-	// SECONDS rendered as a stringified float in scientific notation, e.g.
-	// "1.352989068e+09" (= 2012-11-15). Empty when absent. NOTE: this raw,
-	// non-ISO format is a known data-quality wart, kept here verbatim for
-	// fidelity; treat it as seconds-since-epoch, not as a date string.
-	Released string `json:"released" example:"1.352989068e+09"`
+	// Released is the original release date as a Unix epoch in SECONDS, e.g.
+	// 1352989068 (= 2012-11-15). 0 when absent. Symmetric with Updated.
+	Released int64 `json:"released" format:"int64" minimum:"0" example:"1352989068"`
 	// Updated is the last-updated time as a Unix epoch in SECONDS. 0 when absent.
 	Updated int64 `json:"updated" format:"int64" minimum:"0" example:"1779963225"`
 	// URL is the canonical Play Store listing URL.

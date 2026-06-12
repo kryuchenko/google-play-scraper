@@ -151,8 +151,8 @@ func canaryApp(t *testing.T, client *googleplayscraper.Client) {
 		}
 		// Released is absent on a few flagship listings (e.g. Maps), so it is
 		// asserted here on the game app, where its [1][2][10] node is present.
-		if game.Released == "" {
-			t.Error("App(game): Released empty — path [1][2][10][1][0] may have changed")
+		if game.Released == 0 {
+			t.Error("App(game): Released zero — path [1][2][10][1][0] may have changed")
 		}
 	})
 }

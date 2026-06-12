@@ -228,9 +228,9 @@ func extractAppData(data map[string]interface{}, appID, url string) (*App, error
 		app.ContentRating = toString(v)
 	}
 
-	// Released: [10][1][0]
+	// Released: [10][1][0] holds the epoch as a float64; mirror Updated as int64.
 	if v := getPath(appData, 10, 1, 0); v != nil {
-		app.Released = toString(v)
+		app.Released = toInt64(v)
 	}
 
 	// Updated: [145][0][1][0]

@@ -233,9 +233,11 @@
                         "type": "string"
                     },
                     "released": {
-                        "description": "Released is the original release date as Google serves it: a Unix epoch in\nSECONDS rendered as a stringified float in scientific notation, e.g.\n\"1.352989068e+09\" (= 2012-11-15). Empty when absent. NOTE: this raw,\nnon-ISO format is a known data-quality wart, kept here verbatim for\nfidelity; treat it as seconds-since-epoch, not as a date string.",
-                        "example": "1.352989068e+09",
-                        "type": "string"
+                        "description": "Released is the original release date as a Unix epoch in SECONDS, e.g.\n1352989068 (= 2012-11-15). 0 when absent. Symmetric with Updated.",
+                        "example": 1352989068,
+                        "format": "int64",
+                        "minimum": 0,
+                        "type": "integer"
                     },
                     "reviews": {
                         "description": "Reviews is the number of written text reviews (a subset of Ratings).",

@@ -2,6 +2,8 @@ package googleplayscraper
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"reflect"
 	"testing"
 )
@@ -208,5 +210,45 @@ func TestAvailabilityConcurrentRecordsEveryCountry(t *testing.T) {
 		if _, ok := res.Statuses[country]; !ok {
 			t.Errorf("country %q has no recorded status", country)
 		}
+	}
+}
+
+// TestAvailabilityResultMarshalJSON verifies that Errors serializes as a
+// country-to-message map (err.Error()), not the empty objects a bare error
+// interface would emit, and that an empty Errors map is omitted entirely.
+func TestAvailabilityResultMarshalJSON(t *testing.T) {
+	res := AvailabilityResult{
+		AppID:    "com.example.app",
+		Statuses: map[string]Status{"us": StatusFetchError, "de": StatusAvailable},
+		Errors:   map[string]error{"us": errors.New("fetch failed: 503")},
+		Checked:  1,
+	}
+
+	var got struct {
+		Errors map[string]string `json:"errors"`
+	}
+	raw, err := json.Marshal(res)
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+	if err := json.Unmarshal(raw, &got); err != nil {
+		t.Fatalf("Unmarshal: %v", err)
+	}
+	if want := "fetch failed: 503"; got.Errors["us"] != want {
+		t.Errorf("errors[us] = %q, want %q (raw: %s)", got.Errors["us"], want, raw)
+	}
+
+	// An empty Errors map must be omitted, matching the omitempty contract.
+	res.Errors = nil
+	raw, err = json.Marshal(res)
+	if err != nil {
+		t.Fatalf("Marshal (no errors): %v", err)
+	}
+	var probe map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &probe); err != nil {
+		t.Fatalf("Unmarshal (no errors): %v", err)
+	}
+	if _, present := probe["errors"]; present {
+		t.Errorf("errors key present on empty map; want omitted (raw: %s)", raw)
 	}
 }
