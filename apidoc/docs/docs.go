@@ -1699,7 +1699,7 @@ const docTemplate = `{
         },
         "/store/apps/top": {
             "get": {
-                "description": "Returns text/html. Used both to parse the initial []SearchResult\nand to discover collection/cluster URLs for paging.",
+                "description": "Returns text/html. Used both to parse the initial []SearchResult\nand to discover collection/cluster URLs for paging.\nNote: Google answers this path with a 302 to /store/apps before\nthe terminal 200, so the client must follow redirects.",
                 "operationId": "topApps",
                 "parameters": [
                     {

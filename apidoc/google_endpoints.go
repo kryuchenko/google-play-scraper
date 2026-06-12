@@ -101,6 +101,8 @@ func searchApps() {}
 // @Summary      Top charts page (HTML)
 // @Description  Returns text/html. Used both to parse the initial []SearchResult
 // @Description  and to discover collection/cluster URLs for paging.
+// @Description  Note: Google answers this path with a 302 to /store/apps before
+// @Description  the terminal 200, so the client must follow redirects.
 // @Id           topApps
 // @Tags         html-endpoints
 // @Produce      html

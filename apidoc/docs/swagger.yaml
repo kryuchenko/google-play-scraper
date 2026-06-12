@@ -1440,6 +1440,8 @@ paths:
       description: |-
         Returns text/html. Used both to parse the initial []SearchResult
         and to discover collection/cluster URLs for paging.
+        Note: Google answers this path with a 302 to /store/apps before
+        the terminal 200, so the client must follow redirects.
       operationId: topApps
       parameters:
       - description: UI language, ISO 639-1, e.g. en
