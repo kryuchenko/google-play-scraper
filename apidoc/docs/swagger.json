@@ -828,7 +828,7 @@
         },
         "/_/PlayStoreUi/data/batchexecute(qnKhOb)": {
             "post": {
-                "description": "POST /_/PlayStoreUi/data/batchexecute?rpcids=qnKhOb. Advances a\nlist, cluster or search result set using a continuation token.\nReturns the batchexecute envelope; []SearchResult plus the next\ntoken are decoded from the inner payload.",
+                "description": "POST /_/PlayStoreUi/data/batchexecute?rpcids=qnKhOb. Advances a\nlist, cluster or search result set using a continuation token.\nReturns the batchexecute envelope; []SearchResult plus the next\ntoken are decoded from the inner payload.\nEmpirical note: Google currently REJECTS this continuation token\nfor list/cluster/search (returns a 200 with a NULL payload on the\nfirst call), so deeper pages are unreachable and callers get only\nthe initial page. Review pagination uses a different RPC (oCPfdb)\nand still works.",
                 "operationId": "batchPaginateQnKhOb",
                 "parameters": [
                     {
@@ -940,7 +940,7 @@
                             }
                         }
                     },
-                    "description": "URL-encoded JSON envelope [[['vyAe2','\u003cinner-args\u003e',null,'generic']]]; inner __NUM__ is clamped to listMaxNum=660 (list.go)",
+                    "description": "URL-encoded JSON envelope [[['vyAe2','\u003cinner-args\u003e',null,'generic']]]; inner __NUM__ is clamped to listMaxNum=660 (list.go), but see the response note — Google caps the actual result at ~200.",
                     "required": true
                 },
                 "responses": {
@@ -955,7 +955,7 @@
                                 }
                             }
                         },
-                        "description": "Decoded from batchexecute envelope. An empty/null inner payload means no data (end of the collection), not an error."
+                        "description": "Decoded from batchexecute envelope. Empirical limit: Google returns at most ~200 apps per collection regardless of __NUM__ (660 is only the request-side clamp). An empty/null inner payload means no data (end of the collection), not an error."
                     },
                     "429": {
                         "content": {
@@ -1761,7 +1761,7 @@
         },
         "/store/search": {
             "get": {
-                "description": "Returns text/html; []SearchResult and an optional pagination\ntoken are parsed from the embedded AF_initDataCallback blocks.",
+                "description": "Returns text/html; []SearchResult and an optional pagination\ntoken are parsed from the embedded AF_initDataCallback blocks.\nEmpirical limit: this initial page yields only ~20-30 results.\nSearch.Num is validated up to searchMaxNum=250, but Google\ncurrently rejects the qnKhOb continuation token, so deeper\npages are unreachable and the real return is one page.",
                 "operationId": "searchApps",
                 "parameters": [
                     {

@@ -76,6 +76,10 @@ func getAppAvailability() {}
 // @Summary      Search apps (HTML)
 // @Description  Returns text/html; []SearchResult and an optional pagination
 // @Description  token are parsed from the embedded AF_initDataCallback blocks.
+// @Description  Empirical limit: this initial page yields only ~20-30 results.
+// @Description  Search.Num is validated up to searchMaxNum=250, but Google
+// @Description  currently rejects the qnKhOb continuation token, so deeper
+// @Description  pages are unreachable and the real return is one page.
 // @Id           searchApps
 // @Tags         html-endpoints
 // @Produce      html
@@ -227,8 +231,8 @@ func getCluster() {}
 // @Accept       x-www-form-urlencoded
 // @Produce      plain
 // @Param        rpcids  query     string  true   "Fixed rpcid for this operation"  enums(vyAe2)
-// @Param        f.req   formData  string  true   "URL-encoded JSON envelope [[['vyAe2','<inner-args>',null,'generic']]]; inner __NUM__ is clamped to listMaxNum=660 (list.go)"
-// @Success      200     {array}   SearchResult  "Decoded from batchexecute envelope. An empty/null inner payload means no data (end of the collection), not an error."
+// @Param        f.req   formData  string  true   "URL-encoded JSON envelope [[['vyAe2','<inner-args>',null,'generic']]]; inner __NUM__ is clamped to listMaxNum=660 (list.go), but see the response note — Google caps the actual result at ~200."
+// @Success      200     {array}   SearchResult  "Decoded from batchexecute envelope. Empirical limit: Google returns at most ~200 apps per collection regardless of __NUM__ (660 is only the request-side clamp). An empty/null inner payload means no data (end of the collection), not an error."
 // @Failure      429     {object}  ErrorResponse  "Rate-limited / anti-bot challenge. Google may return 429, or 200 redirecting to google.com/sorry (CAPTCHA). Sustained scraping from one IP triggers this."
 // @Failure      500     {object}  ErrorResponse  "Upstream Google error (any 5xx). Surfaced as StatusError with the observed code."
 // @x-rpcid "vyAe2"
@@ -243,6 +247,11 @@ func batchListVyAe2() {}
 // @Description  list, cluster or search result set using a continuation token.
 // @Description  Returns the batchexecute envelope; []SearchResult plus the next
 // @Description  token are decoded from the inner payload.
+// @Description  Empirical note: Google currently REJECTS this continuation token
+// @Description  for list/cluster/search (returns a 200 with a NULL payload on the
+// @Description  first call), so deeper pages are unreachable and callers get only
+// @Description  the initial page. Review pagination uses a different RPC (oCPfdb)
+// @Description  and still works.
 // @Id           batchPaginateQnKhOb
 // @Tags         batchexecute-rpc
 // @Accept       x-www-form-urlencoded

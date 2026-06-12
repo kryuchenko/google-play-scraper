@@ -775,6 +775,11 @@ paths:
         list, cluster or search result set using a continuation token.
         Returns the batchexecute envelope; []SearchResult plus the next
         token are decoded from the inner payload.
+        Empirical note: Google currently REJECTS this continuation token
+        for list/cluster/search (returns a 200 with a NULL payload on the
+        first call), so deeper pages are unreachable and callers get only
+        the initial page. Review pagination uses a different RPC (oCPfdb)
+        and still works.
       operationId: batchPaginateQnKhOb
       parameters:
       - description: Fixed rpcid for this operation
@@ -855,7 +860,8 @@ paths:
               - title: f.req
                 type: string
         description: URL-encoded JSON envelope [[['vyAe2','<inner-args>',null,'generic']]];
-          inner __NUM__ is clamped to listMaxNum=660 (list.go)
+          inner __NUM__ is clamped to listMaxNum=660 (list.go), but see the response
+          note — Google caps the actual result at ~200.
         required: true
       responses:
         "200":
@@ -865,8 +871,10 @@ paths:
                 items:
                   $ref: '#/components/schemas/apidoc.SearchResult'
                 type: array
-          description: Decoded from batchexecute envelope. An empty/null inner payload
-            means no data (end of the collection), not an error.
+          description: 'Decoded from batchexecute envelope. Empirical limit: Google
+            returns at most ~200 apps per collection regardless of __NUM__ (660 is
+            only the request-side clamp). An empty/null inner payload means no data
+            (end of the collection), not an error.'
         "429":
           content:
             text/plain:
@@ -1474,6 +1482,10 @@ paths:
       description: |-
         Returns text/html; []SearchResult and an optional pagination
         token are parsed from the embedded AF_initDataCallback blocks.
+        Empirical limit: this initial page yields only ~20-30 results.
+        Search.Num is validated up to searchMaxNum=250, but Google
+        currently rejects the qnKhOb continuation token, so deeper
+        pages are unreachable and the real return is one page.
       operationId: searchApps
       parameters:
       - description: Search query term
