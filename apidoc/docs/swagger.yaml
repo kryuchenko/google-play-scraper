@@ -1571,4 +1571,4 @@ paths:
       tags:
       - html-endpoints
 servers:
-- url: play.google.com/
+- url: https://play.google.com

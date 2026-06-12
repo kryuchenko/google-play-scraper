@@ -31,9 +31,7 @@
 // @description         returns a `)]}'`-prefixed, `wrb.fr`-framed envelope; the
 // @description         scraper decodes the inner URL-encoded JSON for the RPC.
 //
-// @host      play.google.com
-// @BasePath  /
-// @schemes   https
+// @servers.url  https://play.google.com
 //
 // @license.name  MIT
 // @license.url   https://github.com/kryuchenko/google-play-scraper/blob/main/LICENSE

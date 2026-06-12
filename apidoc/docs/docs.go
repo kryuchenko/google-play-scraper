@@ -1877,7 +1877,7 @@ const docTemplate = `{
     "openapi": "3.1.0",
     "servers": [
         {
-            "url": "play.google.com/"
+            "url": "https://play.google.com"
         }
     ]
 }`
