@@ -363,6 +363,14 @@ page also carries a "recommended for you" feed that can extend that set;
 | `FeedLightweight` | ~77 | one extra request per feed topic, zero-dependency |
 | `FeedBrowser` | ~130–149 | runs a headless browser (see below) |
 
+**Which to use:** the feed only pays off on a **category landing page**
+(`/store/apps/category/{id}`), where `FeedLightweight` adds ~25–60 apps for its
+extra requests. On a **specific cluster URL** (what `ClusterURLs` returns), the
+feed surfaces only apps already in that cluster's own grid — so `FeedLightweight`
+there spends ~6 requests for **zero** new apps; keep `FeedNone`. That is exactly
+why `CategoryApps` leaves the feed off during its cluster sweep. `FeedNone` is
+also the right pick when you want a predictable single-request cost.
+
 `FeedLightweight` is the stateless sweet spot: it follows each feed topic's
 `recs_topic` continuation token in one request apiece, in pure Go. (The legacy
 `FollowFeed: true` field is deprecated and maps to `FeedLightweight`.)
