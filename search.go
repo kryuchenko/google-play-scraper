@@ -119,6 +119,41 @@ func getPriceValue(price string) int {
 	}
 }
 
+// fetchMoreApps requests the next page of search results via the qnKhOb RPC,
+// using the legacy compact payload. It is Search's pagination primitive only:
+// Cluster moved to fetchQnKhOb (qnkhob.go) with the current browser payload,
+// since Google now rejects this older flag set on the category feed. It returns
+// no results once Google reports the token exhausted.
+func (c *Client) fetchMoreApps(ctx context.Context, token, lang, country string) ([]SearchResult, string, error) {
+	payload := fmt.Sprintf(
+		`[[["qnKhOb","[[null,[[10,[10,50]],true,null,[96,27,4,8,57,30,110,79,11,16,49,1,3,9,12,104,55,56,51,10,34,77]],[null,\"%s\"]]",null,"generic"]]]`,
+		token,
+	)
+
+	reqURL := fmt.Sprintf("%s/_/PlayStoreUi/data/batchexecute?rpcids=qnKhOb&hl=%s&gl=%s", BaseURL, lang, country)
+	body, err := c.post(ctx, reqURL, "application/x-www-form-urlencoded;charset=UTF-8", "f.req="+url.QueryEscape(payload))
+	if err != nil {
+		return nil, "", err
+	}
+
+	data, err := decodeBatchEnvelope(body)
+	if err != nil || data == nil {
+		return nil, "", err
+	}
+
+	var results []SearchResult
+	if apps, ok := getPath(data, 0, 0, 0).([]interface{}); ok {
+		for _, app := range apps {
+			if r := parseSearchResult(app); r.AppID != "" {
+				results = append(results, r)
+			}
+		}
+	}
+
+	nextToken := toString(getPath(data, 0, 0, 7, 1))
+	return results, nextToken, nil
+}
+
 func parseSearchPage(body []byte, num int) ([]SearchResult, string, error) {
 	dataBlocks := parseDataBlocks(body)
 	return extractSearchResults(dataBlocks)
@@ -266,163 +301,50 @@ func hasPackagePrefix(s string) bool {
 	return false
 }
 
-// parseSearchResultNew handles the new data format
-func parseSearchResultNew(item interface{}) SearchResult {
-	arr, ok := item.([]interface{})
-	if !ok {
-		return SearchResult{}
-	}
-
-	// Each item might be wrapped: [[actual_app_data]]
-	// Unwrap if needed
-	if len(arr) == 1 {
-		if inner, ok := arr[0].([]interface{}); ok {
-			arr = inner
-		}
-	}
-
-	result := SearchResult{}
-
-	// AppID: Try multiple paths
-	// Format 1: [0][0] is array like ["com.xxx", 7]
-	// Format 2: [0][0][0] for developer pages (after unwrap)
-	appIDPaths := [][]int{
+// searchGridPaths is the search/cluster grid row layout. Rows may arrive wrapped
+// ([[actual]]) and carry no price node (the grid never prices apps, so rows stay
+// free). The appID slot can hold non-package noise across the page variants, so
+// candidates are gated on a package-name prefix (requireAppID).
+var searchGridPaths = rowPaths{
+	unwrapSingleton: true,
+	requireAppID:    true,
+	appID: [][]int{
 		{0, 0, 0, 0}, // developer page format with extra wrap
 		{0, 0, 0},    // developer page format
 		{0, 0},       // search page format
-	}
-	for _, path := range appIDPaths {
-		if v := getPath(arr, path...); v != nil {
-			s := toString(v)
-			if hasPackagePrefix(s) {
-				result.AppID = s
-				break
-			}
-		}
-	}
+	},
+	title:     [][]int{{3}},
+	icon:      [][]int{{1, 3, 2}, {0, 1, 3, 2}},
+	developer: [][]int{{14}},
+	score:     [][]int{{4, 1}},
+	scoreText: [][]int{{4, 0}},
+}
 
-	// Title: [3]
-	if v := getPath(arr, 3); v != nil {
-		result.Title = toString(v)
-	}
+// parseSearchResultNew handles the search/cluster grid data format.
+func parseSearchResultNew(item interface{}) SearchResult {
+	return decodeResultRow(item, searchGridPaths)
+}
 
-	// Icon: Try multiple paths
-	iconPaths := [][]int{
-		{1, 3, 2},
-		{0, 1, 3, 2},
-	}
-	for _, path := range iconPaths {
-		if v := getPath(arr, path...); v != nil {
-			if s := toString(v); s != "" {
-				result.Icon = s
-				break
-			}
-		}
-	}
-
-	// Developer: [14]
-	if v := getPath(arr, 14); v != nil {
-		result.Developer = toString(v)
-	}
-
-	// Score: [4][1]
-	if v := getPath(arr, 4, 1); v != nil {
-		result.Score = toFloat64(v)
-	}
-
-	// ScoreText: [4][0]
-	if v := getPath(arr, 4, 0); v != nil {
-		result.ScoreText = toString(v)
-	}
-
-	// Free by default
-	result.Free = true
-
-	// URL
-	if result.AppID != "" {
-		result.URL = fmt.Sprintf("%s/store/apps/details?id=%s", BaseURL, result.AppID)
-	}
-
-	return result
+// qnKhObRowPaths is the legacy qnKhOb feed-pagination row layout — a distinct
+// shape from the grid: it carries a ready-made URL path, a developer link (the
+// only layout that surfaces DeveloperID), a deep price tuple and summary.
+var qnKhObRowPaths = rowPaths{
+	appID:           [][]int{{12, 0}},
+	title:           [][]int{{2}},
+	icon:            [][]int{{1, 1, 0, 3, 2}},
+	developer:       [][]int{{4, 0, 0, 0}},
+	developerIDLink: [][]int{{4, 0, 0, 1, 4, 2}},
+	summary:         [][]int{{4, 1, 1, 1, 1}},
+	score:           [][]int{{6, 0, 2, 1, 1}},
+	scoreText:       [][]int{{6, 0, 2, 1, 0}},
+	currency:        [][]int{{7, 0, 3, 2, 1, 0, 1}},
+	price:           [][]int{{7, 0, 3, 2, 1, 0, 0}},
+	urlPath:         [][]int{{9, 4, 2}},
+	urlPathOnly:     true,
 }
 
 func parseSearchResult(item interface{}) SearchResult {
-	arr, ok := item.([]interface{})
-	if !ok {
-		return SearchResult{}
-	}
-
-	result := SearchResult{}
-
-	// Title: [2]
-	if v := getPath(arr, 2); v != nil {
-		result.Title = toString(v)
-	}
-
-	// AppID: [12][0]
-	if v := getPath(arr, 12, 0); v != nil {
-		result.AppID = toString(v)
-	}
-
-	// URL: [9][4][2]
-	if v := getPath(arr, 9, 4, 2); v != nil {
-		path := toString(v)
-		if path != "" {
-			result.URL = BaseURL + path
-		}
-	}
-
-	// Icon: [1][1][0][3][2]
-	if v := getPath(arr, 1, 1, 0, 3, 2); v != nil {
-		result.Icon = toString(v)
-	}
-
-	// Developer: [4][0][0][0]
-	if v := getPath(arr, 4, 0, 0, 0); v != nil {
-		result.Developer = toString(v)
-	}
-
-	// DeveloperID: [4][0][0][1][4][2]
-	if v := getPath(arr, 4, 0, 0, 1, 4, 2); v != nil {
-		link := toString(v)
-		if strings.Contains(link, "?id=") {
-			parts := strings.Split(link, "?id=")
-			if len(parts) > 1 {
-				result.DeveloperID = parts[1]
-			}
-		}
-	}
-
-	// Currency: [7][0][3][2][1][0][1]
-	if v := getPath(arr, 7, 0, 3, 2, 1, 0, 1); v != nil {
-		result.Currency = toString(v)
-	}
-
-	// Price: [7][0][3][2][1][0][0]
-	if v := getPath(arr, 7, 0, 3, 2, 1, 0, 0); v != nil {
-		price := toFloat64(v)
-		result.Price = price / 1000000
-		result.Free = price == 0
-	} else {
-		result.Free = true
-	}
-
-	// Summary: [4][1][1][1][1]
-	if v := getPath(arr, 4, 1, 1, 1, 1); v != nil {
-		result.Summary = toString(v)
-	}
-
-	// ScoreText: [6][0][2][1][0]
-	if v := getPath(arr, 6, 0, 2, 1, 0); v != nil {
-		result.ScoreText = toString(v)
-	}
-
-	// Score: [6][0][2][1][1]
-	if v := getPath(arr, 6, 0, 2, 1, 1); v != nil {
-		result.Score = toFloat64(v)
-	}
-
-	return result
+	return decodeResultRow(item, qnKhObRowPaths)
 }
 
 // enrichSearchResults replaces each result with full App() details, fetched by

@@ -318,38 +318,3 @@ func withLangCountry(rawURL, lang, country string) string {
 	}
 	return fmt.Sprintf("%s%shl=%s&gl=%s", rawURL, sep, lang, country)
 }
-
-// fetchMoreApps requests the next page of search results via the qnKhOb RPC,
-// using the legacy compact payload. It is Search's pagination primitive only:
-// Cluster moved to fetchQnKhOb (qnkhob.go) with the current browser payload,
-// since Google now rejects this older flag set on the category feed. It returns
-// no results once Google reports the token exhausted.
-func (c *Client) fetchMoreApps(ctx context.Context, token, lang, country string) ([]SearchResult, string, error) {
-	payload := fmt.Sprintf(
-		`[[["qnKhOb","[[null,[[10,[10,50]],true,null,[96,27,4,8,57,30,110,79,11,16,49,1,3,9,12,104,55,56,51,10,34,77]],[null,\"%s\"]]",null,"generic"]]]`,
-		token,
-	)
-
-	reqURL := fmt.Sprintf("%s/_/PlayStoreUi/data/batchexecute?rpcids=qnKhOb&hl=%s&gl=%s", BaseURL, lang, country)
-	body, err := c.post(ctx, reqURL, "application/x-www-form-urlencoded;charset=UTF-8", "f.req="+url.QueryEscape(payload))
-	if err != nil {
-		return nil, "", err
-	}
-
-	data, err := decodeBatchEnvelope(body)
-	if err != nil || data == nil {
-		return nil, "", err
-	}
-
-	var results []SearchResult
-	if apps, ok := getPath(data, 0, 0, 0).([]interface{}); ok {
-		for _, app := range apps {
-			if r := parseSearchResult(app); r.AppID != "" {
-				results = append(results, r)
-			}
-		}
-	}
-
-	nextToken := toString(getPath(data, 0, 0, 7, 1))
-	return results, nextToken, nil
-}

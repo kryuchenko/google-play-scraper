@@ -153,33 +153,25 @@ func (c *Client) listViaBatch(ctx context.Context, cluster string, opts ListOpti
 	return results, nil
 }
 
+// clusterListAppPaths is the vyAe2 list-RPC row layout. Every field hangs off an
+// extra [0] wrapper compared with the top-charts HTML layout (listAppPaths).
+var clusterListAppPaths = rowPaths{
+	appID:     [][]int{{0, 0, 0}},
+	title:     [][]int{{0, 3}},
+	icon:      [][]int{{0, 1, 3, 2}},
+	developer: [][]int{{0, 14}},
+	summary:   [][]int{{0, 13, 1}},
+	score:     [][]int{{0, 4, 1}},
+	scoreText: [][]int{{0, 4, 0}},
+	currency:  [][]int{{0, 8, 1, 0, 1}},
+	price:     [][]int{{0, 8, 1, 0, 0}},
+	urlPath:   [][]int{{0, 10, 4, 2}},
+}
+
 // parseClusterListApp maps a single app entry from the vyAe2 response.
 // Index paths mirror the reference appsMappings.
 func parseClusterListApp(item interface{}) SearchResult {
-	r := SearchResult{Free: true}
-
-	r.Title = toString(getPath(item, 0, 3))
-	r.AppID = toString(getPath(item, 0, 0, 0))
-	r.Icon = toString(getPath(item, 0, 1, 3, 2))
-	r.Developer = toString(getPath(item, 0, 14))
-	r.Summary = toString(getPath(item, 0, 13, 1))
-	r.ScoreText = toString(getPath(item, 0, 4, 0))
-	r.Score = toFloat64(getPath(item, 0, 4, 1))
-	r.Currency = toString(getPath(item, 0, 8, 1, 0, 1))
-
-	if v := getPath(item, 0, 8, 1, 0, 0); v != nil {
-		price := toFloat64(v)
-		r.Price = price / 1000000
-		r.Free = price == 0
-	}
-
-	if path := toString(getPath(item, 0, 10, 4, 2)); path != "" {
-		r.URL = BaseURL + path
-	} else if r.AppID != "" {
-		r.URL = fmt.Sprintf("%s/store/apps/details?id=%s", BaseURL, r.AppID)
-	}
-
-	return r
+	return decodeResultRow(item, clusterListAppPaths)
 }
 
 // listViaHTML is the legacy fallback that scrapes the rendered top-charts page.
@@ -282,69 +274,24 @@ func parseListPage(body []byte, opts ListOptions) ([]SearchResult, error) {
 	return results, nil
 }
 
+// listAppPaths is the top-charts HTML row layout (the listViaHTML fallback). It
+// is the same shape as clusterListAppPaths without the leading [0] wrapper.
+//
+// Price lives under [8] as a tuple at [8][1][0][{0,1}]. getPath returns nil for
+// out-of-range indices, so the candidate paths reproduce the old len(priceArr)>1
+// guard exactly: a short or absent [8] node resolves to nil, leaving the row
+// free with no currency — identical to the previous explicit branching.
+var listAppPaths = rowPaths{
+	appID:     [][]int{{0, 0}},
+	title:     [][]int{{3}},
+	icon:      [][]int{{1, 3, 2}},
+	developer: [][]int{{14}},
+	score:     [][]int{{4, 1}},
+	scoreText: [][]int{{4, 0}},
+	currency:  [][]int{{8, 1, 0, 1}},
+	price:     [][]int{{8, 1, 0, 0}},
+}
+
 func parseListApp(item interface{}) SearchResult {
-	arr, ok := item.([]interface{})
-	if !ok {
-		return SearchResult{}
-	}
-
-	result := SearchResult{}
-
-	// AppID at [0][0]
-	if v := getPath(arr, 0, 0); v != nil {
-		result.AppID = toString(v)
-	}
-
-	// Title at [3]
-	if v := getPath(arr, 3); v != nil {
-		result.Title = toString(v)
-	}
-
-	// Icon at [1][3][2]
-	if v := getPath(arr, 1, 3, 2); v != nil {
-		result.Icon = toString(v)
-	}
-
-	// Developer at [14]
-	if v := getPath(arr, 14); v != nil {
-		result.Developer = toString(v)
-	}
-
-	// Score at [4][1]
-	if v := getPath(arr, 4, 1); v != nil {
-		result.Score = toFloat64(v)
-	}
-
-	// ScoreText at [4][0]
-	if v := getPath(arr, 4, 0); v != nil {
-		result.ScoreText = toString(v)
-	}
-
-	// Price info at [8]
-	if priceInfo := getPath(arr, 8); priceInfo != nil {
-		if priceArr, ok := priceInfo.([]interface{}); ok && len(priceArr) > 1 {
-			// Check if free
-			if v := getPath(priceArr, 1, 0, 0); v != nil {
-				price := toFloat64(v)
-				result.Price = price / 1000000
-				result.Free = price == 0
-			} else {
-				result.Free = true
-			}
-			// Currency
-			if v := getPath(priceArr, 1, 0, 1); v != nil {
-				result.Currency = toString(v)
-			}
-		} else {
-			result.Free = true
-		}
-	} else {
-		result.Free = true
-	}
-
-	if result.AppID != "" {
-		result.URL = fmt.Sprintf("%s/store/apps/details?id=%s", BaseURL, result.AppID)
-	}
-
-	return result
+	return decodeResultRow(item, listAppPaths)
 }
