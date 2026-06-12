@@ -345,15 +345,61 @@ clusters, err := client.ClusterURLs(ctx, googleplayscraper.ClusterURLsOptions{
 // clusters[i].Title, clusters[i].URL
 
 apps, err := client.Cluster(ctx, googleplayscraper.ClusterOptions{
-    Path: clusters[0].URL,
-    Num:  100,
+    Path:     clusters[0].URL,
+    Num:      100,
+    FeedMode: googleplayscraper.FeedLightweight, // follow the recommendation feed
 })
 ```
 
-> **Known limitation:** continuation-token pagination (the `qnKhOb` RPC) is
-> currently rejected by Google, so `Cluster` returns only the first page
-> (~20–50 apps). For the same reason `Search` is limited to its first page plus
-> inline results (a pre-existing limitation).
+#### Feed pagination (`FeedMode`)
+
+`Cluster` returns the page's initial grid (~20–50 apps) by default. A category
+page also carries a "recommended for you" feed that can extend that set;
+`ClusterOptions.FeedMode` chooses how far to follow it:
+
+| Mode | Depth (GAME_ACTION) | Cost |
+|------|---------------------|------|
+| `FeedNone` (default) | ~19 (initial grid) | one request, zero-dependency |
+| `FeedLightweight` | ~77 | one extra request per feed topic, zero-dependency |
+| `FeedBrowser` | ~130–149 | runs a headless browser (see below) |
+
+`FeedLightweight` is the stateless sweet spot: it follows each feed topic's
+`recs_topic` continuation token in one request apiece, in pure Go. (The legacy
+`FollowFeed: true` field is deprecated and maps to `FeedLightweight`.)
+
+A feed topic exhausts after ~3 pages server-side, and the deeper continuation
+cursor is computed by the page's JavaScript from render state — it is not
+present in any network response, so a stateless client cannot go past
+`FeedLightweight`. `FeedBrowser` runs a real (lightweight) browser to reach that
+depth; see [`lightfeed/`](lightfeed/) below.
+
+> Note: `Search` is still limited to its first page plus inline results — search
+> results have no feed and no working continuation token (a Google-side limit).
+
+#### `FeedBrowser` — deep pagination via Lightpanda (`lightfeed/`)
+
+`FeedBrowser` drives [Lightpanda](https://lightpanda.io) — a 64 MB headless
+browser (no Chromium) — over CDP to scroll the page and harvest the rendered
+DOM, reaching depth a stateless client cannot. It lives in the **optional
+`lightfeed` submodule** so the root package stays zero-dependency: you must
+inject a `FeedPaginator`, otherwise `Cluster` returns `ErrFeedPaginatorRequired`
+(no silent fallback — the strategy is always explicit).
+
+```go
+import "github.com/kryuchenko/google-play-scraper/lightfeed"
+
+pg, _ := lightfeed.New(lightfeed.WithLightpandaPath("/usr/local/bin/lightpanda"))
+defer pg.Close()
+
+apps, _ := client.Cluster(ctx, googleplayscraper.ClusterOptions{
+    Path:          "/store/apps/category/GAME_ACTION",
+    FeedMode:      googleplayscraper.FeedBrowser,
+    FeedPaginator: pg,
+})
+```
+
+`FeedBrowser` returns thin results (AppID/Title/URL/Icon); enrich via `App()` if
+you need full fields. See `lightfeed/README.md` for setup and trade-offs.
 
 ---
 
@@ -403,11 +449,12 @@ This library scrapes the **anonymous public web** interface of Google Play
 (`play.google.com`), so it is bound by what that interface exposes:
 
 - **Lists/charts cap at ~200 apps** per category × collection. Google does not
-  serve a full catalog, and continuation-token pagination (the `qnKhOb` RPC) is
-  currently rejected for lists/search — see the `Cluster` note above. This is a
-  server-side limit, not a library bug; the reference Node library
-  (`facundoolano/google-play-scraper`) and the Python libraries hit the same
-  wall.
+  serve a full catalog. List/search continuation-token pagination (the `qnKhOb`
+  RPC) is rejected for stateless clients, so `List`/`Search` return roughly one
+  page; the category **feed** is the exception — `Cluster` with `FeedMode` can
+  extend it (see the `Cluster` note above). This is a server-side design, not a
+  library bug; the reference Node library (`facundoolano/google-play-scraper`)
+  and the Python libraries hit the same wall.
 - **Get broad coverage by multiplying sources**, not by paginating deeper:
   iterate categories × collections × countries/languages, fetch each category's
   clusters, and crawl the app graph via `Similar` and `Developer`. Filter to
@@ -442,13 +489,16 @@ and `-no-search` to control the request budget.
 **Honest boundary:** this collects the *commercially visible* layer of a
 category — typically thousands of apps, **not the full catalog**. Apps with no
 ratings that never surface in any chart, search, or similarity graph are not
-reachable through the anonymous web at all (see the FDFE note below). Full
-pagination of a category remains impossible anonymously.
+reachable through the anonymous web at all (see the FDFE note below). Wiring a
+`FeedBrowser` paginator into the cluster phase (`ClusterFeedMode`) adds a modest
+number of extra apps the feed surfaces; everything else stays the same.
 
 ### Need deeper access? The mobile protobuf API (FDFE)
 
-If you need true deep pagination or batched detail lookups, the only known
-option beyond the web interface is Google Play's **mobile protobuf API** — the
+For browser-grade feed depth without leaving the anonymous web, use
+`FeedBrowser` (above). If you instead need **batched detail lookups** or
+catalog access beyond what the web exposes, the option is Google Play's
+**mobile protobuf API** — the
 same `android.clients.google.com/fdfe/` endpoints the Play Store app uses. It
 supports real `nextPageUrl` pagination and `bulkDetails` (hundreds of package
 names per request, ideal for fast catalog verification).
