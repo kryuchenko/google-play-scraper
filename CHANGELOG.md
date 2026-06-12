@@ -3,7 +3,7 @@
 All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [1.2.0] - 2026-06-13
 
 ### Added
 
@@ -23,17 +23,6 @@ All notable changes to this project are documented here. The format is based on
   root module stays zero-dependency, and `FeedBrowser` requires the caller to
   inject a `FeedPaginator` (else `ErrFeedPaginatorRequired`) — no silent
   fallback, so the chosen strategy is always explicit.
-
-### Fixed
-
-- `App.Histogram` was decoded with a wrong index mapping: the 5-star bucket (the
-  largest for most apps) was always 0 and the 1–4-star counts were reversed and
-  mislabeled, so the buckets did not sum to `Ratings`. It now correctly maps the
-  `[null, 1★, 2★, 3★, 4★, 5★]` node to `hist[0]=1-star .. hist[4]=5-star`;
-  verified live that the buckets sum to `Ratings`.
-
-### Added
-
 - `Availability(ctx, appID, opts)` and `AvailableCountries(ctx, appID, opts)`:
   probe an app's region availability across many Google Play countries and
   report a per-country `Status` (`StatusAvailable`, `StatusNotInRegion`,
@@ -52,6 +41,24 @@ All notable changes to this project are documented here. The format is based on
   per-category search-term dictionary, and the `examples/category-coverage` CLI.
   This maximizes coverage of the commercially visible layer of a category; it
   does not (and anonymously cannot) enumerate the full catalog.
+- 15 new `App` fields parsed from the detail page: monetization (`AdSupported`,
+  `OffersIAP`, `IAPRange`, `OriginalPrice`, `DiscountEndDate`), distribution
+  (`IsAvailableInPlayPass`, `Preregister`, `EarlyAccessEnabled`), media
+  (`Video`, `VideoImage`, `HeaderImage`, `PreviewVideo`), changelog
+  (`RecentChanges`), and EU-DSA trader info (`DeveloperLegal*`).
+- `WithHTTPClient`, `WithConcurrency`, and a typed `StatusError{Code}` (branch on
+  404 vs 429 via `errors.As`); offline parser fixtures so `go test -short` runs
+  fully without network.
+
+### Fixed
+
+- `App.Histogram` was decoded with a wrong index mapping: the 5-star bucket (the
+  largest for most apps) was always 0 and the 1–4-star counts were reversed and
+  mislabeled, so the buckets did not sum to `Ratings`. It now correctly maps the
+  `[null, 1★, 2★, 3★, 4★, 5★]` node to `hist[0]=1-star .. hist[4]=5-star`;
+  verified live that the buckets sum to `Ratings`.
+- `Search` now picks the data array with the most app entries instead of the
+  first depth-first match, fixing queries that returned a single garbage result.
 
 ### Behavior change (soft break)
 
@@ -77,6 +84,13 @@ All notable changes to this project are documented here. The format is based on
   (via `err.Error()`) instead of empty `{}` objects, making the JSON output and
   the OpenAPI `object,string` schema truthful. The Go-side `Errors` field stays
   `map[string]error`, so typed errors remain available to Go callers.
+- The four RPC row parsers (cluster/list/search-grid/qnKhOb) now share one
+  table-driven `decodeResultRow`, each declaring its own field→path map, so a
+  Google layout shift is fixed in one place. The request throttle was reworked
+  into a fair, context-cancellable token reservation. The `apidoc` submodule
+  publishes an OpenAPI 3.1 spec of Google's private endpoints (validated in CI);
+  PR CI runs `-short` (deterministic offline) with live drift checks in a
+  scheduled canary workflow.
 
 ## [1.1.0] - 2026-06-10
 
