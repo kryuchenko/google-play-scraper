@@ -68,6 +68,24 @@ type BatchExecuteEnvelope struct {
 	Payload string `json:"payload"`
 }
 
+// ErrorResponse documents the error shape the scraper surfaces to callers when a
+// Google Play endpoint does not answer with 200 OK. The root library returns a
+// typed *googleplayscraper.StatusError{Code:int} (see request.go), which callers
+// branch on with errors.As. StatusError carries no JSON tags and is never
+// serialized over the wire, so it cannot drive a generated schema directly; this
+// type exists only to give the spec a concrete error body to reference from the
+// @Failure responses below. The Code field mirrors StatusError.Code and equals
+// the upstream HTTP status (404, 429, 5xx). Message mirrors StatusError.Error(),
+// e.g. "unexpected status: 404".
+type ErrorResponse struct {
+	// Code is the upstream HTTP status the scraper observed, copied verbatim into
+	// StatusError.Code. 404 = listing not found, 429 = rate-limited / anti-bot,
+	// 5xx = upstream Google error.
+	Code int `json:"code" example:"404"`
+	// Message is the human-readable error string, matching StatusError.Error().
+	Message string `json:"message" example:"unexpected status: 404"`
+}
+
 // FReqBody documents the single form field sent to
 // POST /_/PlayStoreUi/data/batchexecute. It is encoded as
 // application/x-www-form-urlencoded with exactly one field, `f.req`, whose value

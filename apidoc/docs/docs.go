@@ -383,6 +383,21 @@ const docTemplate = `{
                 },
                 "type": "object"
             },
+            "apidoc.ErrorResponse": {
+                "properties": {
+                    "code": {
+                        "description": "Code is the upstream HTTP status the scraper observed, copied verbatim into\nStatusError.Code. 404 = listing not found, 429 = rate-limited / anti-bot,\n5xx = upstream Google error.",
+                        "example": 404,
+                        "type": "integer"
+                    },
+                    "message": {
+                        "description": "Message is the human-readable error string, matching StatusError.Error().",
+                        "example": "unexpected status: 404",
+                        "type": "string"
+                    }
+                },
+                "type": "object"
+            },
             "apidoc.Permission": {
                 "properties": {
                     "permission": {
@@ -654,11 +669,14 @@ const docTemplate = `{
                 "operationId": "batchSuggestIJ4APc",
                 "parameters": [
                     {
-                        "description": "IJ4APc",
+                        "description": "Fixed rpcid for this operation",
                         "in": "query",
                         "name": "rpcids",
                         "required": true,
                         "schema": {
+                            "enum": [
+                                "IJ4APc"
+                            ],
                             "type": "string"
                         }
                     }
@@ -694,7 +712,27 @@ const docTemplate = `{
                                 }
                             }
                         },
-                        "description": "Suggested terms decoded from batchexecute envelope"
+                        "description": "Suggested terms decoded from batchexecute envelope. An empty/null inner payload means no suggestions, not an error."
+                    },
+                    "429": {
+                        "content": {
+                            "text/plain": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/apidoc.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Rate-limited / anti-bot challenge. Google may return 429, or 200 redirecting to google.com/sorry (CAPTCHA). Sustained scraping from one IP triggers this."
+                    },
+                    "500": {
+                        "content": {
+                            "text/plain": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/apidoc.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Upstream Google error (any 5xx). Surfaced as StatusError with the observed code."
                     },
                     "x-response-encoding": "batchexecute-envelope",
                     "x-rpcid": "IJ4APc"
@@ -709,6 +747,33 @@ const docTemplate = `{
             "post": {
                 "description": "POST /_/PlayStoreUi/data/batchexecute. Unlike the other RPCs the\nscraper does NOT put rpcids in the query string; the rpcid lives\nonly inside the f.req body. Handles both the initial fetch and\npagination. Returns the batchexecute envelope; ReviewsResult\n(reviews + nextToken) is decoded from the inner payload.",
                 "operationId": "batchReviewsOCPfdb",
+                "parameters": [
+                    {
+                        "description": "Review sort order (Sort enum, constants.go): 1=helpfulness, 2=newest, 3=rating. Default 2 (newest). NOTE: not a real query field — this value is embedded inside the f.req inner args; it is documented as a parameter only to surface the enum.",
+                        "in": "query",
+                        "name": "sort",
+                        "schema": {
+                            "enum": [
+                                1,
+                                2,
+                                3
+                            ],
+                            "maximum": 3,
+                            "minimum": 1,
+                            "type": "integer"
+                        }
+                    },
+                    {
+                        "description": "Reviews per request; embedded in f.req, capped at 150 by Google (reviews.go). Documented as a parameter only to surface the limit.",
+                        "in": "query",
+                        "name": "count",
+                        "schema": {
+                            "maximum": 150,
+                            "minimum": 1,
+                            "type": "integer"
+                        }
+                    }
+                ],
                 "requestBody": {
                     "content": {
                         "application/x-www-form-urlencoded": {
@@ -725,7 +790,7 @@ const docTemplate = `{
                             }
                         }
                     },
-                    "description": "URL-encoded JSON envelope [[['oCPfdb','\u003cinner-args\u003e',null,'generic']]]",
+                    "description": "URL-encoded JSON envelope [[['oCPfdb','\u003cinner-args\u003e',null,'generic']]]. The sort order, page size and pagination token all live inside the inner args, NOT as query fields.",
                     "required": true
                 },
                 "responses": {
@@ -737,7 +802,27 @@ const docTemplate = `{
                                 }
                             }
                         },
-                        "description": "Decoded from batchexecute envelope"
+                        "description": "Decoded from batchexecute envelope. An empty/null inner payload means no more reviews (end of pagination), not an error; nextToken is then empty."
+                    },
+                    "429": {
+                        "content": {
+                            "text/plain": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/apidoc.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Rate-limited / anti-bot challenge. Google may return 429, or 200 redirecting to google.com/sorry (CAPTCHA). Sustained scraping from one IP triggers this."
+                    },
+                    "500": {
+                        "content": {
+                            "text/plain": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/apidoc.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Upstream Google error (any 5xx). Surfaced as StatusError with the observed code."
                     },
                     "x-response-encoding": "batchexecute-envelope",
                     "x-rpcid": "oCPfdb"
@@ -754,11 +839,14 @@ const docTemplate = `{
                 "operationId": "batchPaginateQnKhOb",
                 "parameters": [
                     {
-                        "description": "qnKhOb",
+                        "description": "Fixed rpcid for this operation",
                         "in": "query",
                         "name": "rpcids",
                         "required": true,
                         "schema": {
+                            "enum": [
+                                "qnKhOb"
+                            ],
                             "type": "string"
                         }
                     }
@@ -794,7 +882,27 @@ const docTemplate = `{
                                 }
                             }
                         },
-                        "description": "Decoded from batchexecute envelope; includes next token"
+                        "description": "Decoded from batchexecute envelope; includes next token. When pagination is exhausted Google returns 200 with a NULL inner payload (handled by decodeBatchEnvelope) — that signals end-of-data, not an error, and the next token is empty."
+                    },
+                    "429": {
+                        "content": {
+                            "text/plain": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/apidoc.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Rate-limited / anti-bot challenge. Google may return 429, or 200 redirecting to google.com/sorry (CAPTCHA). Sustained scraping from one IP triggers this."
+                    },
+                    "500": {
+                        "content": {
+                            "text/plain": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/apidoc.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Upstream Google error (any 5xx). Surfaced as StatusError with the observed code."
                     },
                     "x-response-encoding": "batchexecute-envelope",
                     "x-rpcid": "qnKhOb"
@@ -811,11 +919,14 @@ const docTemplate = `{
                 "operationId": "batchListVyAe2",
                 "parameters": [
                     {
-                        "description": "vyAe2",
+                        "description": "Fixed rpcid for this operation",
                         "in": "query",
                         "name": "rpcids",
                         "required": true,
                         "schema": {
+                            "enum": [
+                                "vyAe2"
+                            ],
                             "type": "string"
                         }
                     }
@@ -836,7 +947,7 @@ const docTemplate = `{
                             }
                         }
                     },
-                    "description": "URL-encoded JSON envelope [[['vyAe2','\u003cinner-args\u003e',null,'generic']]]",
+                    "description": "URL-encoded JSON envelope [[['vyAe2','\u003cinner-args\u003e',null,'generic']]]; inner __NUM__ is clamped to listMaxNum=660 (list.go)",
                     "required": true
                 },
                 "responses": {
@@ -851,7 +962,27 @@ const docTemplate = `{
                                 }
                             }
                         },
-                        "description": "Decoded from batchexecute envelope"
+                        "description": "Decoded from batchexecute envelope. An empty/null inner payload means no data (end of the collection), not an error."
+                    },
+                    "429": {
+                        "content": {
+                            "text/plain": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/apidoc.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Rate-limited / anti-bot challenge. Google may return 429, or 200 redirecting to google.com/sorry (CAPTCHA). Sustained scraping from one IP triggers this."
+                    },
+                    "500": {
+                        "content": {
+                            "text/plain": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/apidoc.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Upstream Google error (any 5xx). Surfaced as StatusError with the observed code."
                     },
                     "x-response-encoding": "batchexecute-envelope",
                     "x-rpcid": "vyAe2"
@@ -868,11 +999,14 @@ const docTemplate = `{
                 "operationId": "batchPermissionsXdSrCf",
                 "parameters": [
                     {
-                        "description": "xdSrCf",
+                        "description": "Fixed rpcid for this operation",
                         "in": "query",
                         "name": "rpcids",
                         "required": true,
                         "schema": {
+                            "enum": [
+                                "xdSrCf"
+                            ],
                             "type": "string"
                         }
                     }
@@ -908,7 +1042,27 @@ const docTemplate = `{
                                 }
                             }
                         },
-                        "description": "Decoded from batchexecute envelope"
+                        "description": "Decoded from batchexecute envelope. An empty/null inner payload means the app declares no permissions, not an error."
+                    },
+                    "429": {
+                        "content": {
+                            "text/plain": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/apidoc.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Rate-limited / anti-bot challenge. Google may return 429, or 200 redirecting to google.com/sorry (CAPTCHA). Sustained scraping from one IP triggers this."
+                    },
+                    "500": {
+                        "content": {
+                            "text/plain": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/apidoc.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Upstream Google error (any 5xx). Surfaced as StatusError with the observed code."
                     },
                     "x-response-encoding": "batchexecute-envelope",
                     "x-rpcid": "xdSrCf"
@@ -925,7 +1079,7 @@ const docTemplate = `{
                 "operationId": "categoryApps",
                 "parameters": [
                     {
-                        "description": "Category id, e.g. GAME or PRODUCTIVITY",
+                        "description": "Play category id, e.g. GAME, GAME_ACTION or PRODUCTIVITY. One of the 54 ids in AllCategories (constants.go); not enumerated here to avoid drift as Google adds/removes categories.",
                         "in": "path",
                         "name": "category",
                         "required": true,
@@ -934,18 +1088,22 @@ const docTemplate = `{
                         }
                     },
                     {
-                        "description": "UI language",
+                        "description": "UI language, ISO 639-1, e.g. en",
                         "in": "query",
                         "name": "hl",
                         "schema": {
+                            "maxLength": 5,
+                            "minLength": 2,
                             "type": "string"
                         }
                     },
                     {
-                        "description": "Country",
+                        "description": "Country, ISO 3166-1 alpha-2 lowercase (pattern ^[a-z]{2}$, descriptive only), e.g. us",
                         "in": "query",
                         "name": "gl",
                         "schema": {
+                            "maxLength": 2,
+                            "minLength": 2,
                             "type": "string"
                         }
                     }
@@ -963,6 +1121,36 @@ const docTemplate = `{
                             }
                         },
                         "description": "Category apps parsed from AF_initDataCallback"
+                    },
+                    "404": {
+                        "content": {
+                            "text/html": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/apidoc.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "No such category page — the {category} id is not a recognized Play category. Surfaced as StatusError{Code:404}."
+                    },
+                    "429": {
+                        "content": {
+                            "text/html": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/apidoc.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Rate-limited / anti-bot challenge. Google may return 429, or 200 redirecting to google.com/sorry (CAPTCHA). Sustained scraping from one IP triggers this."
+                    },
+                    "500": {
+                        "content": {
+                            "text/html": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/apidoc.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Upstream Google error (any 5xx). Surfaced as StatusError with the observed code."
                     },
                     "x-response-encoding": "AF_initDataCallback",
                     "x-rpcid": "none"
@@ -984,22 +1172,27 @@ const docTemplate = `{
                         "name": "clusterPath",
                         "required": true,
                         "schema": {
+                            "minLength": 1,
                             "type": "string"
                         }
                     },
                     {
-                        "description": "UI language",
+                        "description": "UI language, ISO 639-1, e.g. en",
                         "in": "query",
                         "name": "hl",
                         "schema": {
+                            "maxLength": 5,
+                            "minLength": 2,
                             "type": "string"
                         }
                     },
                     {
-                        "description": "Country",
+                        "description": "Country, ISO 3166-1 alpha-2 lowercase (pattern ^[a-z]{2}$, descriptive only), e.g. us",
                         "in": "query",
                         "name": "gl",
                         "schema": {
+                            "maxLength": 2,
+                            "minLength": 2,
                             "type": "string"
                         }
                     }
@@ -1018,6 +1211,36 @@ const docTemplate = `{
                         },
                         "description": "Cluster apps parsed from AF_initDataCallback"
                     },
+                    "404": {
+                        "content": {
+                            "text/html": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/apidoc.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Cluster/collection URL no longer valid — tokens expire and clusters rotate. Surfaced as StatusError{Code:404}."
+                    },
+                    "429": {
+                        "content": {
+                            "text/html": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/apidoc.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Rate-limited / anti-bot challenge. Google may return 429, or 200 redirecting to google.com/sorry (CAPTCHA). Sustained scraping from one IP triggers this."
+                    },
+                    "500": {
+                        "content": {
+                            "text/html": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/apidoc.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Upstream Google error (any 5xx). Surfaced as StatusError with the observed code."
+                    },
                     "x-response-encoding": "AF_initDataCallback",
                     "x-rpcid": "none"
                 },
@@ -1033,27 +1256,33 @@ const docTemplate = `{
                 "operationId": "getDataSafety",
                 "parameters": [
                     {
-                        "description": "App package id",
+                        "description": "App package id, reverse-domain form (pattern ^[a-zA-Z][a-zA-Z0-9_]*(\\.[a-zA-Z][a-zA-Z0-9_]*)+$, descriptive only), e.g. com.whatsapp",
                         "in": "query",
                         "name": "id",
                         "required": true,
                         "schema": {
+                            "maxLength": 255,
+                            "minLength": 3,
                             "type": "string"
                         }
                     },
                     {
-                        "description": "UI language",
+                        "description": "UI language, ISO 639-1, e.g. en",
                         "in": "query",
                         "name": "hl",
                         "schema": {
+                            "maxLength": 5,
+                            "minLength": 2,
                             "type": "string"
                         }
                     },
                     {
-                        "description": "Country",
+                        "description": "Country, ISO 3166-1 alpha-2 lowercase (pattern ^[a-z]{2}$, descriptive only), e.g. us",
                         "in": "query",
                         "name": "gl",
                         "schema": {
+                            "maxLength": 2,
+                            "minLength": 2,
                             "type": "string"
                         }
                     }
@@ -1067,7 +1296,37 @@ const docTemplate = `{
                                 }
                             }
                         },
-                        "description": "Data safety parsed from AF_initDataCallback ds:3"
+                        "description": "Data safety parsed from AF_initDataCallback ds:3. Unlike /store/apps/details, this page does NOT 404 for a removed or unknown app: it returns 200 with an empty ds:3 block and DataSafety() yields a zero-value result (nil error)."
+                    },
+                    "400": {
+                        "content": {
+                            "text/html": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/apidoc.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Missing the required id query parameter — Google returns 400 for this endpoint (not 404)."
+                    },
+                    "429": {
+                        "content": {
+                            "text/html": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/apidoc.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Rate-limited / anti-bot challenge. Google may return 429, or 200 redirecting to google.com/sorry (CAPTCHA). Sustained scraping from one IP triggers this."
+                    },
+                    "500": {
+                        "content": {
+                            "text/html": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/apidoc.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Upstream Google error (any 5xx). Surfaced as StatusError with the observed code."
                     },
                     "x-data-block": "ds:3",
                     "x-response-encoding": "AF_initDataCallback",
@@ -1085,27 +1344,33 @@ const docTemplate = `{
                 "operationId": "getAppDetails",
                 "parameters": [
                     {
-                        "description": "App package id, e.g. com.whatsapp",
+                        "description": "App package id, reverse-domain form, pattern ^[a-zA-Z][a-zA-Z0-9_]*(\\.[a-zA-Z][a-zA-Z0-9_]*)+$ (pattern is descriptive only; swag v2 does not emit @Param pattern), e.g. com.whatsapp",
                         "in": "query",
                         "name": "id",
                         "required": true,
                         "schema": {
+                            "maxLength": 255,
+                            "minLength": 3,
                             "type": "string"
                         }
                     },
                     {
-                        "description": "UI language (ISO 639), e.g. en",
+                        "description": "UI language, ISO 639-1, usually 2 lowercase letters but locale variants like pt-BR occur, e.g. en",
                         "in": "query",
                         "name": "hl",
                         "schema": {
+                            "maxLength": 5,
+                            "minLength": 2,
                             "type": "string"
                         }
                     },
                     {
-                        "description": "Country (ISO 3166), e.g. us",
+                        "description": "Country, ISO 3166-1 alpha-2 lowercase, pattern ^[a-z]{2}$ (descriptive only), e.g. us",
                         "in": "query",
                         "name": "gl",
                         "schema": {
+                            "maxLength": 2,
+                            "minLength": 2,
                             "type": "string"
                         }
                     }
@@ -1120,6 +1385,36 @@ const docTemplate = `{
                             }
                         },
                         "description": "App parsed from AF_initDataCallback ds:5[1][2]"
+                    },
+                    "404": {
+                        "content": {
+                            "text/html": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/apidoc.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "App/listing not found — removed, never existed, or not distributed in this country (gl). Surfaced as StatusError{Code:404}."
+                    },
+                    "429": {
+                        "content": {
+                            "text/html": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/apidoc.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Rate-limited / anti-bot challenge. Google may return 429, or 200 redirecting to google.com/sorry (CAPTCHA). Sustained scraping from one IP triggers this."
+                    },
+                    "500": {
+                        "content": {
+                            "text/html": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/apidoc.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Upstream Google error (any 5xx). Surfaced as StatusError with the observed code."
                     },
                     "x-data-block": "ds:5",
                     "x-payload-node": "[1][2]",
@@ -1138,28 +1433,34 @@ const docTemplate = `{
                 "operationId": "getAppAvailability",
                 "parameters": [
                     {
-                        "description": "App package id",
+                        "description": "App package id, reverse-domain form (pattern ^[a-zA-Z][a-zA-Z0-9_]*(\\.[a-zA-Z][a-zA-Z0-9_]*)+$, descriptive only), e.g. com.whatsapp",
                         "in": "query",
                         "name": "id",
                         "required": true,
                         "schema": {
+                            "maxLength": 255,
+                            "minLength": 3,
                             "type": "string"
                         }
                     },
                     {
-                        "description": "UI language",
+                        "description": "UI language, ISO 639-1, e.g. en",
                         "in": "query",
                         "name": "hl",
                         "schema": {
+                            "maxLength": 5,
+                            "minLength": 2,
                             "type": "string"
                         }
                     },
                     {
-                        "description": "Country to probe; one request per country",
+                        "description": "Country to probe, ISO 3166-1 alpha-2 lowercase (pattern ^[a-z]{2}$, descriptive only); one request per country, e.g. us",
                         "in": "query",
                         "name": "gl",
                         "required": true,
                         "schema": {
+                            "maxLength": 2,
+                            "minLength": 2,
                             "type": "string"
                         }
                     }
@@ -1174,6 +1475,36 @@ const docTemplate = `{
                             }
                         },
                         "description": "Aggregated availability sweep; per-country Status read from ds:5[1][2][18]"
+                    },
+                    "404": {
+                        "content": {
+                            "text/html": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/apidoc.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Probed country has no listing; at the per-country probe a 404 maps to Status not_found (StatusError{Code:404}) rather than failing the whole sweep."
+                    },
+                    "429": {
+                        "content": {
+                            "text/html": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/apidoc.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Rate-limited / anti-bot challenge. Google may return 429, or 200 redirecting to google.com/sorry (CAPTCHA). Sweeping many countries from one IP makes this likely; the failing country maps to Status error."
+                    },
+                    "500": {
+                        "content": {
+                            "text/html": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/apidoc.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Upstream Google error (any 5xx); the failing country maps to Status error."
                     },
                     "x-data-block": "ds:5",
                     "x-payload-node": "[1][2][18]",
@@ -1192,27 +1523,33 @@ const docTemplate = `{
                 "operationId": "developerAppsNumeric",
                 "parameters": [
                     {
-                        "description": "Numeric developer id",
+                        "description": "Numeric developer id, digits only (pattern ^[0-9]+$, descriptive only), e.g. 5700313618786177705",
                         "in": "query",
                         "name": "id",
                         "required": true,
                         "schema": {
+                            "maxLength": 32,
+                            "minLength": 1,
                             "type": "string"
                         }
                     },
                     {
-                        "description": "UI language",
+                        "description": "UI language, ISO 639-1, e.g. en",
                         "in": "query",
                         "name": "hl",
                         "schema": {
+                            "maxLength": 5,
+                            "minLength": 2,
                             "type": "string"
                         }
                     },
                     {
-                        "description": "Country",
+                        "description": "Country, ISO 3166-1 alpha-2 lowercase (pattern ^[a-z]{2}$, descriptive only), e.g. us",
                         "in": "query",
                         "name": "gl",
                         "schema": {
+                            "maxLength": 2,
+                            "minLength": 2,
                             "type": "string"
                         }
                     }
@@ -1230,6 +1567,36 @@ const docTemplate = `{
                             }
                         },
                         "description": "Developer apps parsed from AF_initDataCallback"
+                    },
+                    "404": {
+                        "content": {
+                            "text/html": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/apidoc.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "No such developer page — the numeric id does not exist or is not distributed in this country (gl). Surfaced as StatusError{Code:404}."
+                    },
+                    "429": {
+                        "content": {
+                            "text/html": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/apidoc.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Rate-limited / anti-bot challenge. Google may return 429, or 200 redirecting to google.com/sorry (CAPTCHA). Sustained scraping from one IP triggers this."
+                    },
+                    "500": {
+                        "content": {
+                            "text/html": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/apidoc.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Upstream Google error (any 5xx). Surfaced as StatusError with the observed code."
                     },
                     "x-response-encoding": "AF_initDataCallback",
                     "x-rpcid": "none"
@@ -1246,27 +1613,33 @@ const docTemplate = `{
                 "operationId": "developerAppsName",
                 "parameters": [
                     {
-                        "description": "String developer name",
+                        "description": "Human-readable developer name, e.g. Google LLC",
                         "in": "query",
                         "name": "id",
                         "required": true,
                         "schema": {
+                            "maxLength": 255,
+                            "minLength": 1,
                             "type": "string"
                         }
                     },
                     {
-                        "description": "UI language",
+                        "description": "UI language, ISO 639-1, e.g. en",
                         "in": "query",
                         "name": "hl",
                         "schema": {
+                            "maxLength": 5,
+                            "minLength": 2,
                             "type": "string"
                         }
                     },
                     {
-                        "description": "Country",
+                        "description": "Country, ISO 3166-1 alpha-2 lowercase (pattern ^[a-z]{2}$, descriptive only), e.g. us",
                         "in": "query",
                         "name": "gl",
                         "schema": {
+                            "maxLength": 2,
+                            "minLength": 2,
                             "type": "string"
                         }
                     }
@@ -1285,6 +1658,36 @@ const docTemplate = `{
                         },
                         "description": "Developer apps parsed from AF_initDataCallback"
                     },
+                    "404": {
+                        "content": {
+                            "text/html": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/apidoc.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "No such developer page — the name does not match a developer or is not distributed in this country (gl). Surfaced as StatusError{Code:404}."
+                    },
+                    "429": {
+                        "content": {
+                            "text/html": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/apidoc.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Rate-limited / anti-bot challenge. Google may return 429, or 200 redirecting to google.com/sorry (CAPTCHA). Sustained scraping from one IP triggers this."
+                    },
+                    "500": {
+                        "content": {
+                            "text/html": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/apidoc.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Upstream Google error (any 5xx). Surfaced as StatusError with the observed code."
+                    },
                     "x-response-encoding": "AF_initDataCallback",
                     "x-rpcid": "none"
                 },
@@ -1300,18 +1703,22 @@ const docTemplate = `{
                 "operationId": "topApps",
                 "parameters": [
                     {
-                        "description": "UI language",
+                        "description": "UI language, ISO 639-1, e.g. en",
                         "in": "query",
                         "name": "hl",
                         "schema": {
+                            "maxLength": 5,
+                            "minLength": 2,
                             "type": "string"
                         }
                     },
                     {
-                        "description": "Country",
+                        "description": "Country, ISO 3166-1 alpha-2 lowercase (pattern ^[a-z]{2}$, descriptive only), e.g. us",
                         "in": "query",
                         "name": "gl",
                         "schema": {
+                            "maxLength": 2,
+                            "minLength": 2,
                             "type": "string"
                         }
                     }
@@ -1330,6 +1737,26 @@ const docTemplate = `{
                         },
                         "description": "Top apps parsed from AF_initDataCallback"
                     },
+                    "429": {
+                        "content": {
+                            "text/html": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/apidoc.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Rate-limited / anti-bot challenge. Google may return 429, or 200 redirecting to google.com/sorry (CAPTCHA). Sustained scraping from one IP triggers this."
+                    },
+                    "500": {
+                        "content": {
+                            "text/html": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/apidoc.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Upstream Google error (any 5xx). Surfaced as StatusError with the observed code."
+                    },
                     "x-response-encoding": "AF_initDataCallback",
                     "x-rpcid": "none"
                 },
@@ -1345,11 +1772,13 @@ const docTemplate = `{
                 "operationId": "searchApps",
                 "parameters": [
                     {
-                        "description": "Search query",
+                        "description": "Search query term",
                         "in": "query",
                         "name": "q",
                         "required": true,
                         "schema": {
+                            "maxLength": 255,
+                            "minLength": 1,
                             "type": "string"
                         }
                     },
@@ -1359,30 +1788,44 @@ const docTemplate = `{
                         "name": "c",
                         "required": true,
                         "schema": {
+                            "enum": [
+                                "apps"
+                            ],
                             "type": "string"
                         }
                     },
                     {
-                        "description": "Price filter: 0=all, 1=free, 2=paid",
+                        "description": "Price filter: 0=all, 1=free, 2=paid (see search.go getPriceValue)",
                         "in": "query",
                         "name": "price",
                         "schema": {
+                            "enum": [
+                                0,
+                                1,
+                                2
+                            ],
+                            "maximum": 2,
+                            "minimum": 0,
                             "type": "integer"
                         }
                     },
                     {
-                        "description": "UI language",
+                        "description": "UI language, ISO 639-1, e.g. en",
                         "in": "query",
                         "name": "hl",
                         "schema": {
+                            "maxLength": 5,
+                            "minLength": 2,
                             "type": "string"
                         }
                     },
                     {
-                        "description": "Country",
+                        "description": "Country, ISO 3166-1 alpha-2 lowercase (pattern ^[a-z]{2}$, descriptive only), e.g. us",
                         "in": "query",
                         "name": "gl",
                         "schema": {
+                            "maxLength": 2,
+                            "minLength": 2,
                             "type": "string"
                         }
                     }
@@ -1399,7 +1842,27 @@ const docTemplate = `{
                                 }
                             }
                         },
-                        "description": "Search results parsed from AF_initDataCallback"
+                        "description": "Search results parsed from AF_initDataCallback. No match is NOT a 404: Google returns 200 with an empty result set, decoded as an empty array."
+                    },
+                    "429": {
+                        "content": {
+                            "text/html": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/apidoc.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Rate-limited / anti-bot challenge. Google may return 429, or 200 redirecting to google.com/sorry (CAPTCHA). Sustained scraping from one IP triggers this."
+                    },
+                    "500": {
+                        "content": {
+                            "text/html": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/apidoc.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Upstream Google error (any 5xx). Surfaced as StatusError with the observed code."
                     },
                     "x-response-encoding": "AF_initDataCallback",
                     "x-rpcid": "none"

@@ -31,10 +31,13 @@ package apidoc
 // @Id           getAppDetails
 // @Tags         html-endpoints
 // @Produce      html
-// @Param        id  query  string  true   "App package id, e.g. com.whatsapp"
-// @Param        hl  query  string  false  "UI language (ISO 639), e.g. en"
-// @Param        gl  query  string  false  "Country (ISO 3166), e.g. us"
+// @Param        id  query  string  true   "App package id, reverse-domain form, pattern ^[a-zA-Z][a-zA-Z0-9_]*(\.[a-zA-Z][a-zA-Z0-9_]*)+$ (pattern is descriptive only; swag v2 does not emit @Param pattern), e.g. com.whatsapp"  minlength(3)  maxlength(255)
+// @Param        hl  query  string  false  "UI language, ISO 639-1, usually 2 lowercase letters but locale variants like pt-BR occur, e.g. en"  minlength(2)  maxlength(5)
+// @Param        gl  query  string  false  "Country, ISO 3166-1 alpha-2 lowercase, pattern ^[a-z]{2}$ (descriptive only), e.g. us"  minlength(2)  maxlength(2)
 // @Success      200  {object}  App  "App parsed from AF_initDataCallback ds:5[1][2]"
+// @Failure      404  {object}  ErrorResponse  "App/listing not found — removed, never existed, or not distributed in this country (gl). Surfaced as StatusError{Code:404}."
+// @Failure      429  {object}  ErrorResponse  "Rate-limited / anti-bot challenge. Google may return 429, or 200 redirecting to google.com/sorry (CAPTCHA). Sustained scraping from one IP triggers this."
+// @Failure      500  {object}  ErrorResponse  "Upstream Google error (any 5xx). Surfaced as StatusError with the observed code."
 // @x-rpcid "none"
 // @x-data-block "ds:5"
 // @x-response-encoding "AF_initDataCallback"
@@ -54,10 +57,13 @@ func getAppDetails() {}
 // @Id           getAppAvailability
 // @Tags         html-endpoints
 // @Produce      html
-// @Param        id  query  string  true   "App package id"
-// @Param        hl  query  string  false  "UI language"
-// @Param        gl  query  string  true   "Country to probe; one request per country"
+// @Param        id  query  string  true   "App package id, reverse-domain form (pattern ^[a-zA-Z][a-zA-Z0-9_]*(\.[a-zA-Z][a-zA-Z0-9_]*)+$, descriptive only), e.g. com.whatsapp"  minlength(3)  maxlength(255)
+// @Param        hl  query  string  false  "UI language, ISO 639-1, e.g. en"  minlength(2)  maxlength(5)
+// @Param        gl  query  string  true   "Country to probe, ISO 3166-1 alpha-2 lowercase (pattern ^[a-z]{2}$, descriptive only); one request per country, e.g. us"  minlength(2)  maxlength(2)
 // @Success      200  {object}  AvailabilityResult  "Aggregated availability sweep; per-country Status read from ds:5[1][2][18]"
+// @Failure      404  {object}  ErrorResponse  "Probed country has no listing; at the per-country probe a 404 maps to Status not_found (StatusError{Code:404}) rather than failing the whole sweep."
+// @Failure      429  {object}  ErrorResponse  "Rate-limited / anti-bot challenge. Google may return 429, or 200 redirecting to google.com/sorry (CAPTCHA). Sweeping many countries from one IP makes this likely; the failing country maps to Status error."
+// @Failure      500  {object}  ErrorResponse  "Upstream Google error (any 5xx); the failing country maps to Status error."
 // @x-rpcid "none"
 // @x-data-block "ds:5"
 // @x-response-encoding "AF_initDataCallback"
@@ -73,12 +79,14 @@ func getAppAvailability() {}
 // @Id           searchApps
 // @Tags         html-endpoints
 // @Produce      html
-// @Param        q      query  string  true   "Search query"
-// @Param        c      query  string  true   "Corpus; the scraper always sends 'apps'"
-// @Param        price  query  int     false  "Price filter: 0=all, 1=free, 2=paid"
-// @Param        hl     query  string  false  "UI language"
-// @Param        gl     query  string  false  "Country"
-// @Success      200  {array}  SearchResult  "Search results parsed from AF_initDataCallback"
+// @Param        q      query  string  true   "Search query term"  minlength(1)  maxlength(255)
+// @Param        c      query  string  true   "Corpus; the scraper always sends 'apps'"  enums(apps)
+// @Param        price  query  int     false  "Price filter: 0=all, 1=free, 2=paid (see search.go getPriceValue)"  enums(0, 1, 2)  minimum(0)  maximum(2)
+// @Param        hl     query  string  false  "UI language, ISO 639-1, e.g. en"  minlength(2)  maxlength(5)
+// @Param        gl     query  string  false  "Country, ISO 3166-1 alpha-2 lowercase (pattern ^[a-z]{2}$, descriptive only), e.g. us"  minlength(2)  maxlength(2)
+// @Success      200  {array}  SearchResult  "Search results parsed from AF_initDataCallback. No match is NOT a 404: Google returns 200 with an empty result set, decoded as an empty array."
+// @Failure      429  {object}  ErrorResponse  "Rate-limited / anti-bot challenge. Google may return 429, or 200 redirecting to google.com/sorry (CAPTCHA). Sustained scraping from one IP triggers this."
+// @Failure      500  {object}  ErrorResponse  "Upstream Google error (any 5xx). Surfaced as StatusError with the observed code."
 // @x-rpcid "none"
 // @x-response-encoding "AF_initDataCallback"
 // @Router       /store/search [get]
@@ -92,9 +100,11 @@ func searchApps() {}
 // @Id           topApps
 // @Tags         html-endpoints
 // @Produce      html
-// @Param        hl  query  string  false  "UI language"
-// @Param        gl  query  string  false  "Country"
+// @Param        hl  query  string  false  "UI language, ISO 639-1, e.g. en"  minlength(2)  maxlength(5)
+// @Param        gl  query  string  false  "Country, ISO 3166-1 alpha-2 lowercase (pattern ^[a-z]{2}$, descriptive only), e.g. us"  minlength(2)  maxlength(2)
 // @Success      200  {array}  SearchResult  "Top apps parsed from AF_initDataCallback"
+// @Failure      429  {object}  ErrorResponse  "Rate-limited / anti-bot challenge. Google may return 429, or 200 redirecting to google.com/sorry (CAPTCHA). Sustained scraping from one IP triggers this."
+// @Failure      500  {object}  ErrorResponse  "Upstream Google error (any 5xx). Surfaced as StatusError with the observed code."
 // @x-rpcid "none"
 // @x-response-encoding "AF_initDataCallback"
 // @Router       /store/apps/top [get]
@@ -108,10 +118,13 @@ func topApps() {}
 // @Id           categoryApps
 // @Tags         html-endpoints
 // @Produce      html
-// @Param        category  path   string  true   "Category id, e.g. GAME or PRODUCTIVITY"
-// @Param        hl        query  string  false  "UI language"
-// @Param        gl        query  string  false  "Country"
+// @Param        category  path   string  true   "Play category id, e.g. GAME, GAME_ACTION or PRODUCTIVITY. One of the 54 ids in AllCategories (constants.go); not enumerated here to avoid drift as Google adds/removes categories."
+// @Param        hl        query  string  false  "UI language, ISO 639-1, e.g. en"  minlength(2)  maxlength(5)
+// @Param        gl        query  string  false  "Country, ISO 3166-1 alpha-2 lowercase (pattern ^[a-z]{2}$, descriptive only), e.g. us"  minlength(2)  maxlength(2)
 // @Success      200  {array}  SearchResult  "Category apps parsed from AF_initDataCallback"
+// @Failure      404  {object}  ErrorResponse  "No such category page — the {category} id is not a recognized Play category. Surfaced as StatusError{Code:404}."
+// @Failure      429  {object}  ErrorResponse  "Rate-limited / anti-bot challenge. Google may return 429, or 200 redirecting to google.com/sorry (CAPTCHA). Sustained scraping from one IP triggers this."
+// @Failure      500  {object}  ErrorResponse  "Upstream Google error (any 5xx). Surfaced as StatusError with the observed code."
 // @x-rpcid "none"
 // @x-response-encoding "AF_initDataCallback"
 // @Router       /store/apps/category/{category} [get]
@@ -125,10 +138,13 @@ func categoryApps() {}
 // @Id           developerAppsNumeric
 // @Tags         html-endpoints
 // @Produce      html
-// @Param        id  query  string  true   "Numeric developer id"
-// @Param        hl  query  string  false  "UI language"
-// @Param        gl  query  string  false  "Country"
+// @Param        id  query  string  true   "Numeric developer id, digits only (pattern ^[0-9]+$, descriptive only), e.g. 5700313618786177705"  minlength(1)  maxlength(32)
+// @Param        hl  query  string  false  "UI language, ISO 639-1, e.g. en"  minlength(2)  maxlength(5)
+// @Param        gl  query  string  false  "Country, ISO 3166-1 alpha-2 lowercase (pattern ^[a-z]{2}$, descriptive only), e.g. us"  minlength(2)  maxlength(2)
 // @Success      200  {array}  SearchResult  "Developer apps parsed from AF_initDataCallback"
+// @Failure      404  {object}  ErrorResponse  "No such developer page — the numeric id does not exist or is not distributed in this country (gl). Surfaced as StatusError{Code:404}."
+// @Failure      429  {object}  ErrorResponse  "Rate-limited / anti-bot challenge. Google may return 429, or 200 redirecting to google.com/sorry (CAPTCHA). Sustained scraping from one IP triggers this."
+// @Failure      500  {object}  ErrorResponse  "Upstream Google error (any 5xx). Surfaced as StatusError with the observed code."
 // @x-rpcid "none"
 // @x-response-encoding "AF_initDataCallback"
 // @Router       /store/apps/dev [get]
@@ -142,10 +158,13 @@ func developerAppsNumeric() {}
 // @Id           developerAppsName
 // @Tags         html-endpoints
 // @Produce      html
-// @Param        id  query  string  true   "String developer name"
-// @Param        hl  query  string  false  "UI language"
-// @Param        gl  query  string  false  "Country"
+// @Param        id  query  string  true   "Human-readable developer name, e.g. Google LLC"  minlength(1)  maxlength(255)
+// @Param        hl  query  string  false  "UI language, ISO 639-1, e.g. en"  minlength(2)  maxlength(5)
+// @Param        gl  query  string  false  "Country, ISO 3166-1 alpha-2 lowercase (pattern ^[a-z]{2}$, descriptive only), e.g. us"  minlength(2)  maxlength(2)
 // @Success      200  {array}  SearchResult  "Developer apps parsed from AF_initDataCallback"
+// @Failure      404  {object}  ErrorResponse  "No such developer page — the name does not match a developer or is not distributed in this country (gl). Surfaced as StatusError{Code:404}."
+// @Failure      429  {object}  ErrorResponse  "Rate-limited / anti-bot challenge. Google may return 429, or 200 redirecting to google.com/sorry (CAPTCHA). Sustained scraping from one IP triggers this."
+// @Failure      500  {object}  ErrorResponse  "Upstream Google error (any 5xx). Surfaced as StatusError with the observed code."
 // @x-rpcid "none"
 // @x-response-encoding "AF_initDataCallback"
 // @Router       /store/apps/developer [get]
@@ -159,10 +178,13 @@ func developerAppsName() {}
 // @Id           getDataSafety
 // @Tags         html-endpoints
 // @Produce      html
-// @Param        id  query  string  true   "App package id"
-// @Param        hl  query  string  false  "UI language"
-// @Param        gl  query  string  false  "Country"
-// @Success      200  {object}  DataSafety  "Data safety parsed from AF_initDataCallback ds:3"
+// @Param        id  query  string  true   "App package id, reverse-domain form (pattern ^[a-zA-Z][a-zA-Z0-9_]*(\.[a-zA-Z][a-zA-Z0-9_]*)+$, descriptive only), e.g. com.whatsapp"  minlength(3)  maxlength(255)
+// @Param        hl  query  string  false  "UI language, ISO 639-1, e.g. en"  minlength(2)  maxlength(5)
+// @Param        gl  query  string  false  "Country, ISO 3166-1 alpha-2 lowercase (pattern ^[a-z]{2}$, descriptive only), e.g. us"  minlength(2)  maxlength(2)
+// @Success      200  {object}  DataSafety  "Data safety parsed from AF_initDataCallback ds:3. Unlike /store/apps/details, this page does NOT 404 for a removed or unknown app: it returns 200 with an empty ds:3 block and DataSafety() yields a zero-value result (nil error)."
+// @Failure      400  {object}  ErrorResponse  "Missing the required id query parameter — Google returns 400 for this endpoint (not 404)."
+// @Failure      429  {object}  ErrorResponse  "Rate-limited / anti-bot challenge. Google may return 429, or 200 redirecting to google.com/sorry (CAPTCHA). Sustained scraping from one IP triggers this."
+// @Failure      500  {object}  ErrorResponse  "Upstream Google error (any 5xx). Surfaced as StatusError with the observed code."
 // @x-rpcid "none"
 // @x-data-block "ds:3"
 // @x-response-encoding "AF_initDataCallback"
@@ -179,10 +201,13 @@ func getDataSafety() {}
 // @Id           getCluster
 // @Tags         html-endpoints
 // @Produce      html
-// @Param        clusterPath  path   string  true   "Absolute cluster/collection path from a prior page"
-// @Param        hl           query  string  false  "UI language"
-// @Param        gl           query  string  false  "Country"
+// @Param        clusterPath  path   string  true   "Absolute cluster/collection path from a prior page"  minlength(1)
+// @Param        hl           query  string  false  "UI language, ISO 639-1, e.g. en"  minlength(2)  maxlength(5)
+// @Param        gl           query  string  false  "Country, ISO 3166-1 alpha-2 lowercase (pattern ^[a-z]{2}$, descriptive only), e.g. us"  minlength(2)  maxlength(2)
 // @Success      200  {array}  SearchResult  "Cluster apps parsed from AF_initDataCallback"
+// @Failure      404  {object}  ErrorResponse  "Cluster/collection URL no longer valid — tokens expire and clusters rotate. Surfaced as StatusError{Code:404}."
+// @Failure      429  {object}  ErrorResponse  "Rate-limited / anti-bot challenge. Google may return 429, or 200 redirecting to google.com/sorry (CAPTCHA). Sustained scraping from one IP triggers this."
+// @Failure      500  {object}  ErrorResponse  "Upstream Google error (any 5xx). Surfaced as StatusError with the observed code."
 // @x-rpcid "none"
 // @x-response-encoding "AF_initDataCallback"
 // @Router       /store/apps/collection/{clusterPath} [get]
@@ -201,9 +226,11 @@ func getCluster() {}
 // @Tags         batchexecute-rpc
 // @Accept       x-www-form-urlencoded
 // @Produce      plain
-// @Param        rpcids  query     string  true   "vyAe2"
-// @Param        f.req   formData  string  true   "URL-encoded JSON envelope [[['vyAe2','<inner-args>',null,'generic']]]"
-// @Success      200     {array}   SearchResult  "Decoded from batchexecute envelope"
+// @Param        rpcids  query     string  true   "Fixed rpcid for this operation"  enums(vyAe2)
+// @Param        f.req   formData  string  true   "URL-encoded JSON envelope [[['vyAe2','<inner-args>',null,'generic']]]; inner __NUM__ is clamped to listMaxNum=660 (list.go)"
+// @Success      200     {array}   SearchResult  "Decoded from batchexecute envelope. An empty/null inner payload means no data (end of the collection), not an error."
+// @Failure      429     {object}  ErrorResponse  "Rate-limited / anti-bot challenge. Google may return 429, or 200 redirecting to google.com/sorry (CAPTCHA). Sustained scraping from one IP triggers this."
+// @Failure      500     {object}  ErrorResponse  "Upstream Google error (any 5xx). Surfaced as StatusError with the observed code."
 // @x-rpcid "vyAe2"
 // @x-response-encoding "batchexecute-envelope"
 // @Router       /_/PlayStoreUi/data/batchexecute(vyAe2) [post]
@@ -220,9 +247,11 @@ func batchListVyAe2() {}
 // @Tags         batchexecute-rpc
 // @Accept       x-www-form-urlencoded
 // @Produce      plain
-// @Param        rpcids  query     string  true   "qnKhOb"
+// @Param        rpcids  query     string  true   "Fixed rpcid for this operation"  enums(qnKhOb)
 // @Param        f.req   formData  string  true   "URL-encoded JSON carrying the continuation token"
-// @Success      200     {array}   SearchResult  "Decoded from batchexecute envelope; includes next token"
+// @Success      200     {array}   SearchResult  "Decoded from batchexecute envelope; includes next token. When pagination is exhausted Google returns 200 with a NULL inner payload (handled by decodeBatchEnvelope) — that signals end-of-data, not an error, and the next token is empty."
+// @Failure      429     {object}  ErrorResponse  "Rate-limited / anti-bot challenge. Google may return 429, or 200 redirecting to google.com/sorry (CAPTCHA). Sustained scraping from one IP triggers this."
+// @Failure      500     {object}  ErrorResponse  "Upstream Google error (any 5xx). Surfaced as StatusError with the observed code."
 // @x-rpcid "qnKhOb"
 // @x-response-encoding "batchexecute-envelope"
 // @Router       /_/PlayStoreUi/data/batchexecute(qnKhOb) [post]
@@ -240,8 +269,12 @@ func batchPaginateQnKhOb() {}
 // @Tags         batchexecute-rpc
 // @Accept       x-www-form-urlencoded
 // @Produce      plain
-// @Param        f.req  formData  string  true   "URL-encoded JSON envelope [[['oCPfdb','<inner-args>',null,'generic']]]"
-// @Success      200    {object}  ReviewsResult  "Decoded from batchexecute envelope"
+// @Param        sort   query     int       false  "Review sort order (Sort enum, constants.go): 1=helpfulness, 2=newest, 3=rating. Default 2 (newest). NOTE: not a real query field — this value is embedded inside the f.req inner args; it is documented as a parameter only to surface the enum."  enums(1, 2, 3)  minimum(1)  maximum(3)
+// @Param        count  query     int       false  "Reviews per request; embedded in f.req, capped at 150 by Google (reviews.go). Documented as a parameter only to surface the limit."  minimum(1)  maximum(150)
+// @Param        f.req  formData  string    true   "URL-encoded JSON envelope [[['oCPfdb','<inner-args>',null,'generic']]]. The sort order, page size and pagination token all live inside the inner args, NOT as query fields."
+// @Success      200    {object}  ReviewsResult  "Decoded from batchexecute envelope. An empty/null inner payload means no more reviews (end of pagination), not an error; nextToken is then empty."
+// @Failure      429    {object}  ErrorResponse  "Rate-limited / anti-bot challenge. Google may return 429, or 200 redirecting to google.com/sorry (CAPTCHA). Sustained scraping from one IP triggers this."
+// @Failure      500    {object}  ErrorResponse  "Upstream Google error (any 5xx). Surfaced as StatusError with the observed code."
 // @x-rpcid "oCPfdb"
 // @x-response-encoding "batchexecute-envelope"
 // @Router       /_/PlayStoreUi/data/batchexecute(oCPfdb) [post]
@@ -257,9 +290,11 @@ func batchReviewsOCPfdb() {}
 // @Tags         batchexecute-rpc
 // @Accept       x-www-form-urlencoded
 // @Produce      plain
-// @Param        rpcids  query     string  true   "xdSrCf"
+// @Param        rpcids  query     string  true   "Fixed rpcid for this operation"  enums(xdSrCf)
 // @Param        f.req   formData  string  true   "URL-encoded JSON envelope [[['xdSrCf','<inner-args>',null,'1']]]"
-// @Success      200     {array}   Permission  "Decoded from batchexecute envelope"
+// @Success      200     {array}   Permission  "Decoded from batchexecute envelope. An empty/null inner payload means the app declares no permissions, not an error."
+// @Failure      429     {object}  ErrorResponse  "Rate-limited / anti-bot challenge. Google may return 429, or 200 redirecting to google.com/sorry (CAPTCHA). Sustained scraping from one IP triggers this."
+// @Failure      500     {object}  ErrorResponse  "Upstream Google error (any 5xx). Surfaced as StatusError with the observed code."
 // @x-rpcid "xdSrCf"
 // @x-response-encoding "batchexecute-envelope"
 // @Router       /_/PlayStoreUi/data/batchexecute(xdSrCf) [post]
@@ -275,9 +310,11 @@ func batchPermissionsXdSrCf() {}
 // @Tags         batchexecute-rpc
 // @Accept       x-www-form-urlencoded
 // @Produce      plain
-// @Param        rpcids  query     string  true   "IJ4APc"
+// @Param        rpcids  query     string  true   "Fixed rpcid for this operation"  enums(IJ4APc)
 // @Param        f.req   formData  string  true   "URL-encoded JSON envelope [[['IJ4APc','<inner-args>']]]"
-// @Success      200     {array}   string  "Suggested terms decoded from batchexecute envelope"
+// @Success      200     {array}   string  "Suggested terms decoded from batchexecute envelope. An empty/null inner payload means no suggestions, not an error."
+// @Failure      429     {object}  ErrorResponse  "Rate-limited / anti-bot challenge. Google may return 429, or 200 redirecting to google.com/sorry (CAPTCHA). Sustained scraping from one IP triggers this."
+// @Failure      500     {object}  ErrorResponse  "Upstream Google error (any 5xx). Surfaced as StatusError with the observed code."
 // @x-rpcid "IJ4APc"
 // @x-response-encoding "batchexecute-envelope"
 // @Router       /_/PlayStoreUi/data/batchexecute(IJ4APc) [post]
