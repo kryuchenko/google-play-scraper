@@ -72,7 +72,7 @@ func TestParseTimestamp(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			ts := parseTimestamp(tt.arr)
-			if tt.arr == nil || len(tt.arr) == 0 {
+			if len(tt.arr) == 0 {
 				if !ts.IsZero() {
 					t.Error("expected zero time for empty array")
 				}

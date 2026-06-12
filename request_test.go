@@ -286,7 +286,7 @@ func TestBuildURL(t *testing.T) {
 	for _, tt := range tests {
 		got := buildURL(tt.path, tt.params)
 		// For single param, exact match; for multiple, just check contains
-		if tt.params == nil || len(tt.params) <= 1 {
+		if len(tt.params) <= 1 {
 			if got != tt.want {
 				t.Errorf("buildURL(%q, %v) = %q, want %q", tt.path, tt.params, got, tt.want)
 			}
