@@ -38,8 +38,12 @@ jobs:
       - name: Run go vet
         run: go vet ./...
 
+      # -short keeps CI deterministic: it skips the live-network tests (which
+      # hit play.google.com and flake on Google's jitter / rate limits) and
+      # runs the offline, fixture-backed suite. Live drift detection lives in
+      # the scheduled canary workflow instead.
       - name: Run tests with coverage
-        run: go test -v -race -coverprofile=coverage.out -covermode=atomic ./...
+        run: go test -short -v -race -coverprofile=coverage.out -covermode=atomic ./...
 
       # The OpenAPI spec for Google's endpoints lives in the isolated apidoc
       # submodule (keeps the root zero-dependency), so the root test run above
