@@ -386,7 +386,7 @@ app, _ := client.App(ctx, appID, googleplayscraper.AppOptions{
 
 ## API documentation
 
-The [`apidoc/`](apidoc/) directory holds an auto-generated **OpenAPI/Swagger**
+The [`apidoc/`](apidoc/) directory holds an auto-generated **OpenAPI 3.1**
 specification of the *private, undocumented* Google Play HTTP endpoints this
 library calls (the `/store/...` HTML pages and the `batchexecute` RPCs). It lives
 in a **separate nested Go module** so the root library stays

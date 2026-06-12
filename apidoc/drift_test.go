@@ -12,7 +12,7 @@ import (
 	// Imported so the swag toolchain stays in go.mod/go.sum even though the
 	// annotations it parses are plain comments. This keeps the generator
 	// reproducible and lets `go test` fail loudly if the dependency drifts.
-	_ "github.com/swaggo/swag"
+	_ "github.com/swaggo/swag/v2"
 )
 
 // knownRPCIDs is the set of batchexecute rpcid literals the scraper is expected
@@ -166,9 +166,9 @@ func TestSpecIsFresh(t *testing.T) {
 
 	tmp := t.TempDir()
 	cmd := exec.Command("go", "run",
-		"github.com/swaggo/swag/cmd/swag@v1.16.4",
+		"github.com/swaggo/swag/v2/cmd/swag@v2.0.0-rc5",
 		"init", "-g", "doc.go", "-o", tmp,
-		"--parseDependency", "--parseInternal")
+		"--parseDependency", "--parseInternal", "--v3.1")
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Skipf("cannot run swag to verify freshness (treat ./gen.sh as the source of truth): %v\n%s", err, out)
 	}

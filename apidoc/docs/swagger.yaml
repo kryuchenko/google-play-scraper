@@ -1,246 +1,252 @@
-basePath: /
-definitions:
-  apidoc.App:
-    properties:
-      IAPRange:
-        type: string
-      adSupported:
-        description: Monetization
-        type: boolean
-      androidVersion:
-        type: string
-      appId:
-        type: string
-      available:
-        type: boolean
-      categories:
-        items:
+components:
+  schemas:
+    apidoc.App:
+      properties:
+        IAPRange:
           type: string
-        type: array
-      contentRating:
-        type: string
-      contentRatingDescription:
-        type: string
-      currency:
-        type: string
-      description:
-        type: string
-      descriptionHTML:
-        type: string
-      developer:
-        type: string
-      developerAddress:
-        type: string
-      developerEmail:
-        type: string
-      developerId:
-        type: string
-      developerInternalID:
-        description: Developer (EU DSA trader info; absent for non-EU traders)
-        type: string
-      developerLegalAddress:
-        type: string
-      developerLegalEmail:
-        type: string
-      developerLegalName:
-        type: string
-      developerLegalPhoneNumber:
-        type: string
-      developerWebsite:
-        type: string
-      discountEndDate:
-        type: integer
-      earlyAccessEnabled:
-        type: boolean
-      free:
-        type: boolean
-      genre:
-        type: string
-      genreId:
-        type: string
-      headerImage:
-        type: string
-      histogram:
-        items:
+        adSupported:
+          description: Monetization
+          type: boolean
+        androidVersion:
+          type: string
+        appId:
+          type: string
+        available:
+          type: boolean
+        categories:
+          items:
+            type: string
+          type: array
+          uniqueItems: false
+        contentRating:
+          type: string
+        contentRatingDescription:
+          type: string
+        currency:
+          type: string
+        description:
+          type: string
+        descriptionHTML:
+          type: string
+        developer:
+          type: string
+        developerAddress:
+          type: string
+        developerEmail:
+          type: string
+        developerId:
+          type: string
+        developerInternalID:
+          description: Developer (EU DSA trader info; absent for non-EU traders)
+          type: string
+        developerLegalAddress:
+          type: string
+        developerLegalEmail:
+          type: string
+        developerLegalName:
+          type: string
+        developerLegalPhoneNumber:
+          type: string
+        developerWebsite:
+          type: string
+        discountEndDate:
           type: integer
-        type: array
-      icon:
-        type: string
-      installs:
-        type: string
-      isAvailableInPlayPass:
-        description: Distribution / availability
-        type: boolean
-      maxInstalls:
-        type: integer
-      minInstalls:
-        type: integer
-      offersIAP:
-        type: boolean
-      originalPrice:
-        type: number
-      preregister:
-        type: boolean
-      previewVideo:
-        type: string
-      price:
-        type: number
-      priceText:
-        type: string
-      privacyPolicy:
-        type: string
-      ratings:
-        type: integer
-      recentChanges:
-        description: Content & changelog
-        type: string
-      released:
-        type: string
-      reviews:
-        type: integer
-      score:
-        type: number
-      scoreText:
-        type: string
-      screenshots:
-        items:
+        earlyAccessEnabled:
+          type: boolean
+        free:
+          type: boolean
+        genre:
           type: string
-        type: array
-      summary:
-        type: string
-      title:
-        type: string
-      updated:
-        type: integer
-      url:
-        type: string
-      version:
-        type: string
-      video:
-        type: string
-      videoImage:
-        type: string
-    type: object
-  apidoc.DataSafety:
-    properties:
-      collectedData:
-        items:
-          $ref: '#/definitions/googleplayscraper.DataSafetyEntry'
-        type: array
-      privacyPolicyUrl:
-        type: string
-      securityPractices:
-        items:
-          $ref: '#/definitions/googleplayscraper.SecurityPractice'
-        type: array
-      sharedData:
-        items:
-          $ref: '#/definitions/googleplayscraper.DataSafetyEntry'
-        type: array
-    type: object
-  apidoc.Permission:
-    properties:
-      permission:
-        type: string
-      type:
-        type: string
-    type: object
-  apidoc.ReviewsResult:
-    properties:
-      nextToken:
-        type: string
-      reviews:
-        items:
-          $ref: '#/definitions/googleplayscraper.Review'
-        type: array
-    type: object
-  apidoc.SearchResult:
-    properties:
-      appId:
-        type: string
-      currency:
-        type: string
-      developer:
-        type: string
-      developerId:
-        type: string
-      free:
-        type: boolean
-      icon:
-        type: string
-      price:
-        type: number
-      score:
-        type: number
-      scoreText:
-        type: string
-      summary:
-        type: string
-      title:
-        type: string
-      url:
-        type: string
-    type: object
-  googleplayscraper.Criteria:
-    properties:
-      name:
-        type: string
-      rating:
-        type: integer
-    type: object
-  googleplayscraper.DataSafetyEntry:
-    properties:
-      data:
-        type: string
-      optional:
-        type: boolean
-      purpose:
-        type: string
-      type:
-        type: string
-    type: object
-  googleplayscraper.Review:
-    properties:
-      criterias:
-        items:
-          $ref: '#/definitions/googleplayscraper.Criteria'
-        type: array
-      date:
-        type: string
-      id:
-        type: string
-      replyDate:
-        type: string
-      replyText:
-        type: string
-      score:
-        type: integer
-      text:
-        type: string
-      thumbsUp:
-        type: integer
-      url:
-        type: string
-      userImage:
-        type: string
-      userName:
-        type: string
-      version:
-        type: string
-    type: object
-  googleplayscraper.SecurityPractice:
-    properties:
-      description:
-        type: string
-      practice:
-        type: string
-    type: object
+        genreId:
+          type: string
+        headerImage:
+          type: string
+        histogram:
+          items:
+            type: integer
+          type: array
+          uniqueItems: false
+        icon:
+          type: string
+        installs:
+          type: string
+        isAvailableInPlayPass:
+          description: Distribution / availability
+          type: boolean
+        maxInstalls:
+          type: integer
+        minInstalls:
+          type: integer
+        offersIAP:
+          type: boolean
+        originalPrice:
+          type: number
+        preregister:
+          type: boolean
+        previewVideo:
+          type: string
+        price:
+          type: number
+        priceText:
+          type: string
+        privacyPolicy:
+          type: string
+        ratings:
+          type: integer
+        recentChanges:
+          description: Content & changelog
+          type: string
+        released:
+          type: string
+        reviews:
+          type: integer
+        score:
+          type: number
+        scoreText:
+          type: string
+        screenshots:
+          items:
+            type: string
+          type: array
+          uniqueItems: false
+        summary:
+          type: string
+        title:
+          type: string
+        updated:
+          type: integer
+        url:
+          type: string
+        version:
+          type: string
+        video:
+          type: string
+        videoImage:
+          type: string
+      type: object
+    apidoc.DataSafety:
+      properties:
+        collectedData:
+          items:
+            $ref: '#/components/schemas/googleplayscraper.DataSafetyEntry'
+          type: array
+          uniqueItems: false
+        privacyPolicyUrl:
+          type: string
+        securityPractices:
+          items:
+            $ref: '#/components/schemas/googleplayscraper.SecurityPractice'
+          type: array
+          uniqueItems: false
+        sharedData:
+          items:
+            $ref: '#/components/schemas/googleplayscraper.DataSafetyEntry'
+          type: array
+          uniqueItems: false
+      type: object
+    apidoc.Permission:
+      properties:
+        permission:
+          type: string
+        type:
+          type: string
+      type: object
+    apidoc.ReviewsResult:
+      properties:
+        nextToken:
+          type: string
+        reviews:
+          items:
+            $ref: '#/components/schemas/googleplayscraper.Review'
+          type: array
+          uniqueItems: false
+      type: object
+    apidoc.SearchResult:
+      properties:
+        appId:
+          type: string
+        currency:
+          type: string
+        developer:
+          type: string
+        developerId:
+          type: string
+        free:
+          type: boolean
+        icon:
+          type: string
+        price:
+          type: number
+        score:
+          type: number
+        scoreText:
+          type: string
+        summary:
+          type: string
+        title:
+          type: string
+        url:
+          type: string
+      type: object
+    googleplayscraper.Criteria:
+      properties:
+        name:
+          type: string
+        rating:
+          type: integer
+      type: object
+    googleplayscraper.DataSafetyEntry:
+      properties:
+        data:
+          type: string
+        optional:
+          type: boolean
+        purpose:
+          type: string
+        type:
+          type: string
+      type: object
+    googleplayscraper.Review:
+      properties:
+        criterias:
+          items:
+            $ref: '#/components/schemas/googleplayscraper.Criteria'
+          type: array
+          uniqueItems: false
+        date:
+          type: string
+        id:
+          type: string
+        replyDate:
+          type: string
+        replyText:
+          type: string
+        score:
+          type: integer
+        text:
+          type: string
+        thumbsUp:
+          type: integer
+        url:
+          type: string
+        userImage:
+          type: string
+        userName:
+          type: string
+        version:
+          type: string
+      type: object
+    googleplayscraper.SecurityPractice:
+      properties:
+        description:
+          type: string
+        practice:
+          type: string
+      type: object
 externalDocs:
   description: google-play-scraper source
   url: https://github.com/kryuchenko/google-play-scraper
-host: play.google.com
 info:
-  contact: {}
   description: |-
     Reverse-engineered description of the PRIVATE, undocumented
     HTTP endpoints of the Google Play Store web frontend that the
@@ -266,11 +272,10 @@ info:
     url: https://github.com/kryuchenko/google-play-scraper/blob/main/LICENSE
   title: Google Play Store private HTTP API (reverse-engineered)
   version: 1.0.0
+openapi: 3.1.0
 paths:
   /_/PlayStoreUi/data/batchexecute(IJ4APc):
     post:
-      consumes:
-      - application/x-www-form-urlencoded
       description: |-
         POST /_/PlayStoreUi/data/batchexecute?rpcids=IJ4APc. Returns the
         batchexecute envelope; a []string of suggested query terms is
@@ -281,30 +286,34 @@ paths:
         in: query
         name: rpcids
         required: true
-        type: string
-      - description: URL-encoded JSON envelope [[['IJ4APc','<inner-args>']]]
-        in: formData
-        name: f.req
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              oneOf:
+              - type: string
+              - title: f.req
+                type: string
+        description: URL-encoded JSON envelope [[['IJ4APc','<inner-args>']]]
         required: true
-        type: string
-      produces:
-      - text/plain
       responses:
         "200":
+          content:
+            text/plain:
+              schema:
+                items:
+                  type: string
+                type: array
           description: Suggested terms decoded from batchexecute envelope
-          schema:
-            items:
-              type: string
-            type: array
+        x-response-encoding: batchexecute-envelope
+        x-rpcid: IJ4APc
       summary: Search suggestions RPC (IJ4APc)
       tags:
       - batchexecute-rpc
-      x-response-encoding: batchexecute-envelope
-      x-rpcid: IJ4APc
   /_/PlayStoreUi/data/batchexecute(oCPfdb):
     post:
-      consumes:
-      - application/x-www-form-urlencoded
       description: |-
         POST /_/PlayStoreUi/data/batchexecute. Unlike the other RPCs the
         scraper does NOT put rpcids in the query string; the rpcid lives
@@ -312,28 +321,30 @@ paths:
         pagination. Returns the batchexecute envelope; ReviewsResult
         (reviews + nextToken) is decoded from the inner payload.
       operationId: batchReviewsOCPfdb
-      parameters:
-      - description: URL-encoded JSON envelope [[['oCPfdb','<inner-args>',null,'generic']]]
-        in: formData
-        name: f.req
+      requestBody:
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              oneOf:
+              - type: string
+              - title: f.req
+                type: string
+        description: URL-encoded JSON envelope [[['oCPfdb','<inner-args>',null,'generic']]]
         required: true
-        type: string
-      produces:
-      - text/plain
       responses:
         "200":
+          content:
+            text/plain:
+              schema:
+                $ref: '#/components/schemas/apidoc.ReviewsResult'
           description: Decoded from batchexecute envelope
-          schema:
-            $ref: '#/definitions/apidoc.ReviewsResult'
+        x-response-encoding: batchexecute-envelope
+        x-rpcid: oCPfdb
       summary: Reviews RPC (oCPfdb)
       tags:
       - batchexecute-rpc
-      x-response-encoding: batchexecute-envelope
-      x-rpcid: oCPfdb
   /_/PlayStoreUi/data/batchexecute(qnKhOb):
     post:
-      consumes:
-      - application/x-www-form-urlencoded
       description: |-
         POST /_/PlayStoreUi/data/batchexecute?rpcids=qnKhOb. Advances a
         list, cluster or search result set using a continuation token.
@@ -345,30 +356,34 @@ paths:
         in: query
         name: rpcids
         required: true
-        type: string
-      - description: URL-encoded JSON carrying the continuation token
-        in: formData
-        name: f.req
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              oneOf:
+              - type: string
+              - title: f.req
+                type: string
+        description: URL-encoded JSON carrying the continuation token
         required: true
-        type: string
-      produces:
-      - text/plain
       responses:
         "200":
+          content:
+            text/plain:
+              schema:
+                items:
+                  $ref: '#/components/schemas/apidoc.SearchResult'
+                type: array
           description: Decoded from batchexecute envelope; includes next token
-          schema:
-            items:
-              $ref: '#/definitions/apidoc.SearchResult'
-            type: array
+        x-response-encoding: batchexecute-envelope
+        x-rpcid: qnKhOb
       summary: Paginate list/cluster/search RPC (qnKhOb)
       tags:
       - batchexecute-rpc
-      x-response-encoding: batchexecute-envelope
-      x-rpcid: qnKhOb
   /_/PlayStoreUi/data/batchexecute(vyAe2):
     post:
-      consumes:
-      - application/x-www-form-urlencoded
       description: |-
         POST /_/PlayStoreUi/data/batchexecute?rpcids=vyAe2. Body is the
         url-encoded f.req from list_payload.txt with __NUM__,
@@ -382,30 +397,34 @@ paths:
         in: query
         name: rpcids
         required: true
-        type: string
-      - description: URL-encoded JSON envelope [[['vyAe2','<inner-args>',null,'generic']]]
-        in: formData
-        name: f.req
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              oneOf:
+              - type: string
+              - title: f.req
+                type: string
+        description: URL-encoded JSON envelope [[['vyAe2','<inner-args>',null,'generic']]]
         required: true
-        type: string
-      produces:
-      - text/plain
       responses:
         "200":
+          content:
+            text/plain:
+              schema:
+                items:
+                  $ref: '#/components/schemas/apidoc.SearchResult'
+                type: array
           description: Decoded from batchexecute envelope
-          schema:
-            items:
-              $ref: '#/definitions/apidoc.SearchResult'
-            type: array
+        x-response-encoding: batchexecute-envelope
+        x-rpcid: vyAe2
       summary: List apps RPC (vyAe2)
       tags:
       - batchexecute-rpc
-      x-response-encoding: batchexecute-envelope
-      x-rpcid: vyAe2
   /_/PlayStoreUi/data/batchexecute(xdSrCf):
     post:
-      consumes:
-      - application/x-www-form-urlencoded
       description: |-
         POST /_/PlayStoreUi/data/batchexecute?rpcids=xdSrCf. Returns the
         batchexecute envelope; []Permission is decoded from the inner
@@ -416,26 +435,32 @@ paths:
         in: query
         name: rpcids
         required: true
-        type: string
-      - description: URL-encoded JSON envelope [[['xdSrCf','<inner-args>',null,'1']]]
-        in: formData
-        name: f.req
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              oneOf:
+              - type: string
+              - title: f.req
+                type: string
+        description: URL-encoded JSON envelope [[['xdSrCf','<inner-args>',null,'1']]]
         required: true
-        type: string
-      produces:
-      - text/plain
       responses:
         "200":
+          content:
+            text/plain:
+              schema:
+                items:
+                  $ref: '#/components/schemas/apidoc.Permission'
+                type: array
           description: Decoded from batchexecute envelope
-          schema:
-            items:
-              $ref: '#/definitions/apidoc.Permission'
-            type: array
+        x-response-encoding: batchexecute-envelope
+        x-rpcid: xdSrCf
       summary: Permissions RPC (xdSrCf)
       tags:
       - batchexecute-rpc
-      x-response-encoding: batchexecute-envelope
-      x-rpcid: xdSrCf
   /store/apps/category/{category}:
     get:
       description: |-
@@ -447,29 +472,32 @@ paths:
         in: path
         name: category
         required: true
-        type: string
+        schema:
+          type: string
       - description: UI language
         in: query
         name: hl
-        type: string
+        schema:
+          type: string
       - description: Country
         in: query
         name: gl
-        type: string
-      produces:
-      - text/html
+        schema:
+          type: string
       responses:
         "200":
+          content:
+            text/html:
+              schema:
+                items:
+                  $ref: '#/components/schemas/apidoc.SearchResult'
+                type: array
           description: Category apps parsed from AF_initDataCallback
-          schema:
-            items:
-              $ref: '#/definitions/apidoc.SearchResult'
-            type: array
+        x-response-encoding: AF_initDataCallback
+        x-rpcid: none
       summary: Category page (HTML)
       tags:
       - html-endpoints
-      x-response-encoding: AF_initDataCallback
-      x-rpcid: none
   /store/apps/collection/{clusterPath}:
     get:
       description: |-
@@ -483,29 +511,32 @@ paths:
         in: path
         name: clusterPath
         required: true
-        type: string
+        schema:
+          type: string
       - description: UI language
         in: query
         name: hl
-        type: string
+        schema:
+          type: string
       - description: Country
         in: query
         name: gl
-        type: string
-      produces:
-      - text/html
+        schema:
+          type: string
       responses:
         "200":
+          content:
+            text/html:
+              schema:
+                items:
+                  $ref: '#/components/schemas/apidoc.SearchResult'
+                type: array
           description: Cluster apps parsed from AF_initDataCallback
-          schema:
-            items:
-              $ref: '#/definitions/apidoc.SearchResult'
-            type: array
+        x-response-encoding: AF_initDataCallback
+        x-rpcid: none
       summary: Cluster page (HTML, absolute URL)
       tags:
       - html-endpoints
-      x-response-encoding: AF_initDataCallback
-      x-rpcid: none
   /store/apps/datasafety:
     get:
       description: |-
@@ -517,28 +548,31 @@ paths:
         in: query
         name: id
         required: true
-        type: string
+        schema:
+          type: string
       - description: UI language
         in: query
         name: hl
-        type: string
+        schema:
+          type: string
       - description: Country
         in: query
         name: gl
-        type: string
-      produces:
-      - text/html
+        schema:
+          type: string
       responses:
         "200":
+          content:
+            text/html:
+              schema:
+                $ref: '#/components/schemas/apidoc.DataSafety'
           description: Data safety parsed from AF_initDataCallback ds:3
-          schema:
-            $ref: '#/definitions/apidoc.DataSafety'
+        x-data-block: ds:3
+        x-response-encoding: AF_initDataCallback
+        x-rpcid: none
       summary: Data safety (HTML, ds:3)
       tags:
       - html-endpoints
-      x-data-block: ds:3
-      x-response-encoding: AF_initDataCallback
-      x-rpcid: none
   /store/apps/details:
     get:
       description: |-
@@ -550,29 +584,32 @@ paths:
         in: query
         name: id
         required: true
-        type: string
+        schema:
+          type: string
       - description: UI language (ISO 639), e.g. en
         in: query
         name: hl
-        type: string
+        schema:
+          type: string
       - description: Country (ISO 3166), e.g. us
         in: query
         name: gl
-        type: string
-      produces:
-      - text/html
+        schema:
+          type: string
       responses:
         "200":
+          content:
+            text/html:
+              schema:
+                $ref: '#/components/schemas/apidoc.App'
           description: App parsed from AF_initDataCallback ds:5[1][2]
-          schema:
-            $ref: '#/definitions/apidoc.App'
+        x-data-block: ds:5
+        x-payload-node: '[1][2]'
+        x-response-encoding: AF_initDataCallback
+        x-rpcid: none
       summary: App details (HTML, ds:5)
       tags:
       - html-endpoints
-      x-data-block: ds:5
-      x-payload-node: '[1][2]'
-      x-response-encoding: AF_initDataCallback
-      x-rpcid: none
   /store/apps/details(availability):
     get:
       description: |-
@@ -586,30 +623,33 @@ paths:
         in: query
         name: id
         required: true
-        type: string
+        schema:
+          type: string
       - description: UI language
         in: query
         name: hl
-        type: string
+        schema:
+          type: string
       - description: Country to probe; one request per country
         in: query
         name: gl
         required: true
-        type: string
-      produces:
-      - text/html
+        schema:
+          type: string
       responses:
         "200":
+          content:
+            text/html:
+              schema:
+                $ref: '#/components/schemas/apidoc.App'
           description: Availability read from ds:5[1][2][18]
-          schema:
-            $ref: '#/definitions/apidoc.App'
+        x-data-block: ds:5
+        x-payload-node: '[1][2][18]'
+        x-response-encoding: AF_initDataCallback
+        x-rpcid: none
       summary: App availability probe (HTML, ds:5 node [18])
       tags:
       - html-endpoints
-      x-data-block: ds:5
-      x-payload-node: '[1][2][18]'
-      x-response-encoding: AF_initDataCallback
-      x-rpcid: none
   /store/apps/dev:
     get:
       description: |-
@@ -621,29 +661,32 @@ paths:
         in: query
         name: id
         required: true
-        type: string
+        schema:
+          type: string
       - description: UI language
         in: query
         name: hl
-        type: string
+        schema:
+          type: string
       - description: Country
         in: query
         name: gl
-        type: string
-      produces:
-      - text/html
+        schema:
+          type: string
       responses:
         "200":
+          content:
+            text/html:
+              schema:
+                items:
+                  $ref: '#/components/schemas/apidoc.SearchResult'
+                type: array
           description: Developer apps parsed from AF_initDataCallback
-          schema:
-            items:
-              $ref: '#/definitions/apidoc.SearchResult'
-            type: array
+        x-response-encoding: AF_initDataCallback
+        x-rpcid: none
       summary: Developer apps by numeric id (HTML)
       tags:
       - html-endpoints
-      x-response-encoding: AF_initDataCallback
-      x-rpcid: none
   /store/apps/developer:
     get:
       description: |-
@@ -655,29 +698,32 @@ paths:
         in: query
         name: id
         required: true
-        type: string
+        schema:
+          type: string
       - description: UI language
         in: query
         name: hl
-        type: string
+        schema:
+          type: string
       - description: Country
         in: query
         name: gl
-        type: string
-      produces:
-      - text/html
+        schema:
+          type: string
       responses:
         "200":
+          content:
+            text/html:
+              schema:
+                items:
+                  $ref: '#/components/schemas/apidoc.SearchResult'
+                type: array
           description: Developer apps parsed from AF_initDataCallback
-          schema:
-            items:
-              $ref: '#/definitions/apidoc.SearchResult'
-            type: array
+        x-response-encoding: AF_initDataCallback
+        x-rpcid: none
       summary: Developer apps by name (HTML)
       tags:
       - html-endpoints
-      x-response-encoding: AF_initDataCallback
-      x-rpcid: none
   /store/apps/top:
     get:
       description: |-
@@ -688,25 +734,27 @@ paths:
       - description: UI language
         in: query
         name: hl
-        type: string
+        schema:
+          type: string
       - description: Country
         in: query
         name: gl
-        type: string
-      produces:
-      - text/html
+        schema:
+          type: string
       responses:
         "200":
+          content:
+            text/html:
+              schema:
+                items:
+                  $ref: '#/components/schemas/apidoc.SearchResult'
+                type: array
           description: Top apps parsed from AF_initDataCallback
-          schema:
-            items:
-              $ref: '#/definitions/apidoc.SearchResult'
-            type: array
+        x-response-encoding: AF_initDataCallback
+        x-rpcid: none
       summary: Top charts page (HTML)
       tags:
       - html-endpoints
-      x-response-encoding: AF_initDataCallback
-      x-rpcid: none
   /store/search:
     get:
       description: |-
@@ -718,38 +766,42 @@ paths:
         in: query
         name: q
         required: true
-        type: string
+        schema:
+          type: string
       - description: Corpus; the scraper always sends 'apps'
         in: query
         name: c
         required: true
-        type: string
+        schema:
+          type: string
       - description: 'Price filter: 0=all, 1=free, 2=paid'
         in: query
         name: price
-        type: integer
+        schema:
+          type: integer
       - description: UI language
         in: query
         name: hl
-        type: string
+        schema:
+          type: string
       - description: Country
         in: query
         name: gl
-        type: string
-      produces:
-      - text/html
+        schema:
+          type: string
       responses:
         "200":
+          content:
+            text/html:
+              schema:
+                items:
+                  $ref: '#/components/schemas/apidoc.SearchResult'
+                type: array
           description: Search results parsed from AF_initDataCallback
-          schema:
-            items:
-              $ref: '#/definitions/apidoc.SearchResult'
-            type: array
+        x-response-encoding: AF_initDataCallback
+        x-rpcid: none
       summary: Search apps (HTML)
       tags:
       - html-endpoints
-      x-response-encoding: AF_initDataCallback
-      x-rpcid: none
-schemes:
-- https
-swagger: "2.0"
+servers:
+- url: play.google.com/

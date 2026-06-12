@@ -1,12 +1,13 @@
 # apidoc — OpenAPI spec for Google Play's private endpoints
 
 This is a **documentation-only, nested Go module**. It holds an auto-generated
-OpenAPI 2.0 (Swagger) description of the **private, undocumented** Google Play
-Store HTTP endpoints that the root `google-play-scraper` library calls.
+OpenAPI 3.1 description of the **private, undocumented** Google Play Store HTTP
+endpoints that the root `google-play-scraper` library calls.
 
 It lives in its own module so the root library can stay **zero-dependency**: only
-this directory depends on [swaggo/swag](https://github.com/swaggo/swag). The
-dependency direction is `apidoc → root`; nothing in the root imports `apidoc`.
+this directory depends on [swaggo/swag](https://github.com/swaggo/swag) (the
+`/v2` line, which emits OpenAPI 3.1 via `--v3.1`). The dependency direction is
+`apidoc → root`; nothing in the root imports `apidoc`.
 
 > **Disclaimer.** These endpoints are not a public, supported Google API. This
 > project is not affiliated with or endorsed by Google. The endpoints are
@@ -40,6 +41,17 @@ with a synthetic trailing `(rpcid)` segment (e.g.
 `/_/PlayStoreUi/data/batchexecute(vyAe2)`). That segment is **not** part of the
 real request — the true path, rpcid, and response encoding are restated in each
 operation's description and in `x-rpcid` / `x-response-encoding` extensions.
+
+Two notes on the OpenAPI 3.1 output produced by swag v2 (`--v3.1`):
+
+- The `f.req` form body is emitted as a `requestBody` with
+  `content: application/x-www-form-urlencoded` (3.1 replaces the 2.0
+  `formData` parameter style), driven by the `@Accept x-www-form-urlencoded`
+  + `@Param f.req formData` annotations.
+- swag v2-rc5 attaches operation `@x-*` vendor extensions to the operation's
+  `responses` object rather than the operation object itself. They remain valid
+  3.1 specification extensions and the same facts are repeated in each
+  description, so no information is lost.
 
 ## Regenerate
 

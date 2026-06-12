@@ -41,5 +41,5 @@
 // @externalDocs.description  google-play-scraper source
 // @externalDocs.url          https://github.com/kryuchenko/google-play-scraper
 //
-//go:generate go run github.com/swaggo/swag/cmd/swag@v1.16.4 init -g doc.go -o docs --parseDependency --parseInternal
+//go:generate go run github.com/swaggo/swag/v2/cmd/swag@v2.0.0-rc5 init -g doc.go -o docs --parseDependency --parseInternal --v3.1
 package apidoc
