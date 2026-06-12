@@ -39,6 +39,20 @@ type ClusterOptions struct {
 	// will paginate", bounded by clusterPaginationGuard. Values above 5000
 	// (clusterPaginationGuard) are clamped to 5000.
 	Num int
+	// FeedMode selects how the page's "recommended for you" feed is followed
+	// (see FeedMode for the trade-offs). The zero value, FeedNone, returns only
+	// the initial grid. FeedBrowser additionally requires FeedPaginator.
+	//
+	// FeedMode supersedes FollowFeed. When FeedMode is left at FeedNone but
+	// FollowFeed is true, it is treated as FeedLightweight for backward
+	// compatibility (see effectiveFeedMode).
+	FeedMode FeedMode
+
+	// FeedPaginator supplies the browser-driven deep paginator used by
+	// FeedBrowser. It is ignored in other modes. The implementation lives in the
+	// lightfeed submodule so the root package stays dependency-free.
+	FeedPaginator FeedPaginator
+
 	// FollowFeed opts into extending the result set with the page's qnKhOb
 	// recommendation topics (paginateQnKhOb). When set, each "recommended for
 	// you" section on the cluster/category page is fetched as one extra request,
@@ -54,6 +68,8 @@ type ClusterOptions struct {
 	// app they return is already in that cluster's own grid, so the extra request
 	// adds 0 unique apps. CategoryApps therefore leaves it off: its cluster sweep
 	// already covers everything the feed would surface (verified live 2026-06-12).
+	//
+	// Deprecated: use FeedMode (FollowFeed:true == FeedMode:FeedLightweight).
 	FollowFeed bool
 }
 
@@ -143,6 +159,14 @@ func (c *Client) Cluster(ctx context.Context, opts ClusterOptions) ([]SearchResu
 		limit = clusterPaginationGuard
 	}
 
+	// Validate the feed configuration up front so a misconfigured FeedBrowser
+	// call fails fast regardless of how many apps the initial grid happens to
+	// hold (rather than silently succeeding when Num <= grid size).
+	mode := opts.effectiveFeedMode()
+	if mode == FeedBrowser && opts.FeedPaginator == nil {
+		return nil, ErrFeedPaginatorRequired
+	}
+
 	body, err := c.get(ctx, withLangCountry(absoluteURL(opts.Path), opts.Lang, opts.Country))
 	if err != nil {
 		return nil, fmt.Errorf("request failed: %w", err)
@@ -153,8 +177,16 @@ func (c *Client) Cluster(ctx context.Context, opts ClusterOptions) ([]SearchResu
 		return nil, err
 	}
 
-	if opts.FollowFeed && len(results) < limit {
-		results = c.paginateQnKhOb(ctx, results, body, opts, limit)
+	if len(results) < limit {
+		switch mode {
+		case FeedLightweight:
+			results = c.paginateQnKhOb(ctx, results, body, opts, limit)
+		case FeedBrowser:
+			results, err = c.paginateBrowser(ctx, results, body, opts, limit)
+			if err != nil {
+				return nil, fmt.Errorf("browser feed pagination failed: %w", err)
+			}
+		}
 	}
 
 	if opts.Num > 0 && len(results) > opts.Num {

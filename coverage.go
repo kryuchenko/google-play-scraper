@@ -108,6 +108,22 @@ type CoverageOptions struct {
 	// always run in full.
 	SaturationThreshold float64
 
+	// ClusterFeedMode opts the cluster sweep into deep feed pagination. Only
+	// FeedBrowser is meaningful here: it runs one browser-driven deep scroll of
+	// the category landing page per locale (browserFeedPhase), surfacing apps the
+	// stateless cluster sweep misses. The default (FeedNone) leaves the phase off,
+	// so a coverage run stays dependency-free unless the caller opts in.
+	//
+	// FeedLightweight is intentionally NOT wired here: on the cluster URLs
+	// ClusterURLs returns, the lightweight feed adds zero unique apps (full
+	// overlap with each cluster's own grid; verified live 2026-06-12).
+	ClusterFeedMode FeedMode
+
+	// ClusterFeedPaginator supplies the browser paginator for ClusterFeedMode ==
+	// FeedBrowser. When nil, browserFeedPhase is a no-op. The implementation lives
+	// in the lightfeed submodule.
+	ClusterFeedPaginator FeedPaginator
+
 	// Progress, if set, is called after every source with that source's label,
 	// the number of new unique apps it contributed, and the running total.
 	Progress func(CoverageProgress)
@@ -136,10 +152,12 @@ type CoverageResult struct {
 //
 //  1. Core: List over Collections × Locales × Ages.
 //  2. Clusters: ClusterURLs(Category) → Cluster, per locale.
-//  3. Search: each term (optionally Suggest-expanded) × locale × price.
-//  4. Graph: BFS over Similar/Developer from the highest-scoring apps.
+//  3. Browser feed: one deep browser scroll of the category page per locale,
+//     opt-in via ClusterFeedMode == FeedBrowser (no-op otherwise).
+//  4. Search: each term (optionally Suggest-expanded) × locale × price.
+//  5. Graph: BFS over Similar/Developer from the highest-scoring apps.
 //
-// Saturation only short-circuits the expensive tail (phases 3–4); phases 1–2
+// Saturation only short-circuits the expensive tail (phases 4–5); phases 1–3
 // always run in full. Failure of an individual source is logged (as zero new
 // apps) and the run continues — only context cancellation aborts and returns an
 // error.
@@ -157,6 +175,9 @@ func (c *Client) CategoryApps(ctx context.Context, opts CoverageOptions) (Covera
 		return run.result(), err
 	}
 	if err := run.clusterPhase(ctx); err != nil {
+		return run.result(), err
+	}
+	if err := run.browserFeedPhase(ctx); err != nil {
 		return run.result(), err
 	}
 	if err := run.searchPhase(ctx); err != nil {
@@ -350,6 +371,43 @@ func (r *coverageRun) clusterPhase(ctx context.Context) error {
 			})
 			r.record(sourceLabel("cluster", cl.Title, loc, ""), batch, cErr, false)
 		}
+	}
+	return nil
+}
+
+// browserFeedPhase runs one browser-driven deep scroll of the category landing
+// page per locale, unioning the apps it surfaces into the result set. It is the
+// opt-in counterpart to clusterPhase: where the stateless cluster sweep tops out
+// around the initial grids plus their feed tokens, a real browser scroll reaches
+// the lazily-loaded tail (verified live 2026-06-12: GAME_ACTION yields ~130 apps
+// vs ~77 stateless). Dedup through the shared resultSet means record() reports
+// only the NEW apps beyond what earlier phases collected.
+//
+// It is a no-op unless ClusterFeedMode == FeedBrowser AND a paginator is set, so
+// a default coverage run pulls in no browser dependency. Always runs in full
+// (not a tail phase): one request per locale cannot dominate the budget.
+func (r *coverageRun) browserFeedPhase(ctx context.Context) error {
+	if r.opts.ClusterFeedMode != FeedBrowser || r.opts.ClusterFeedPaginator == nil {
+		return nil
+	}
+
+	for _, loc := range r.opts.Locales {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if r.capReached() {
+			return nil
+		}
+
+		batch, err := r.client.Cluster(ctx, ClusterOptions{
+			Path:          "/store/apps/category/" + string(r.opts.Category),
+			Lang:          loc.Lang,
+			Country:       loc.Country,
+			Num:           coverageClusterNum,
+			FeedMode:      FeedBrowser,
+			FeedPaginator: r.opts.ClusterFeedPaginator,
+		})
+		r.record(sourceLabel("feed-browser", string(r.opts.Category), loc, ""), batch, err, false)
 	}
 	return nil
 }

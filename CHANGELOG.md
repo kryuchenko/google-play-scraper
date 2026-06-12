@@ -5,6 +5,25 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+
+- `ClusterOptions.FeedMode` (and `CoverageOptions.ClusterFeedMode`) selects how a
+  category/cluster page's recommendation feed is followed: `FeedNone` (initial
+  grid only), `FeedLightweight` (the stateless +1 page, what `FollowFeed: true`
+  did — kept), or `FeedBrowser` (browser-driven deep scroll). `FollowFeed bool`
+  is deprecated and maps to `FeedLightweight`.
+- `FeedBrowser` reaches depth a stateless client cannot — the feed's deeper
+  continuation cursor is computed by the page's JS from render state and is not
+  recoverable from the network responses (verified exhaustively). It is driven
+  through the optional `lightfeed` submodule, which runs **Lightpanda** (a 64 MB
+  headless browser, no Chromium) over CDP: a GAME_ACTION category page yields
+  ~130–149 apps vs ~77 with `FeedLightweight`. In a full `CategoryApps` sweep it
+  adds ~16–24 genuinely new apps beyond the core/cluster/search phases.
+- The `lightfeed` submodule keeps its `chromedp` dependency out of the root: the
+  root module stays zero-dependency, and `FeedBrowser` requires the caller to
+  inject a `FeedPaginator` (else `ErrFeedPaginatorRequired`) — no silent
+  fallback, so the chosen strategy is always explicit.
+
 ### Fixed
 
 - `App.Histogram` was decoded with a wrong index mapping: the 5-star bucket (the

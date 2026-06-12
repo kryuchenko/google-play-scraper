@@ -125,6 +125,88 @@ func TestCategoryAppsGraphDeveloperWalk(t *testing.T) {
 	}
 }
 
+// fakeFeedPaginator is an offline FeedPaginator for coverage tests: it returns a
+// fixed batch and counts its invocations.
+type fakeFeedPaginator struct {
+	out  []SearchResult
+	hits int
+}
+
+func (f *fakeFeedPaginator) PaginateFeed(_ context.Context, _ FeedRequest) ([]SearchResult, error) {
+	f.hits++
+	return f.out, nil
+}
+
+// TestBrowserFeedPhaseUnionsNewApps drives browserFeedPhase with a paginator
+// that surfaces an app no other phase has. The phase must fetch the category
+// page, run the paginator, and fold the new app into the union.
+func TestBrowserFeedPhaseUnionsNewApps(t *testing.T) {
+	// Category page carries one app in its grid; the browser scroll adds another.
+	categoryPage := clusterHTMLPage(t, []string{"com.grid"}, "GAME")
+
+	routes := []routeFunc{
+		routeQuery(pathBatch, map[string]string{"rpcids": "qnKhOb"},
+			[]byte(")]}'\n\n[[\"wrb.fr\",\"qnKhOb\",null,null,null,null,\"generic\"]]")),
+		routeQuery(pathBatch, map[string]string{"rpcids": "vyAe2"}, readFixture(t, "list_vyae2.bin")),
+		func(req *http.Request) (mockResponse, bool) {
+			if len(req.URL.Path) >= len(pathCategory) && req.URL.Path[:len(pathCategory)] == pathCategory {
+				return mockResponse{Body: categoryPage}, true
+			}
+			return mockResponse{}, false
+		},
+		routePathStatus(pathTop, http.StatusInternalServerError),
+		routePath("/store/search", readFixture(t, "search_page.html")),
+	}
+	c := newMockClient(t, routes...)
+
+	paginator := &fakeFeedPaginator{out: []SearchResult{
+		{AppID: "com.grid"},                       // already in the grid — must not double-count
+		{AppID: "com.browseronly", Title: "Deep"}, // new, only the browser scroll finds it
+	}}
+
+	res, err := c.CategoryApps(context.Background(), CoverageOptions{
+		Category:             CategoryGameAction,
+		SearchTerms:          []string{"shooter"},
+		ClusterFeedMode:      FeedBrowser,
+		ClusterFeedPaginator: paginator,
+	})
+	if err != nil {
+		t.Fatalf("CategoryApps: %v", err)
+	}
+
+	if paginator.hits == 0 {
+		t.Fatal("browser feed paginator never ran")
+	}
+	if !containsAppID(res.Apps, "com.browseronly") {
+		t.Error("browser-only app missing from the union; browserFeedPhase did not contribute it")
+	}
+}
+
+// TestBrowserFeedPhaseNilPaginatorNoOp confirms the phase is a no-op (no
+// category browser fetch, no error) when no paginator is configured.
+func TestBrowserFeedPhaseNilPaginatorNoOp(t *testing.T) {
+	run := &coverageRun{
+		client:  newMockClient(t),
+		opts:    CoverageOptions{Category: CategoryGameAction, ClusterFeedMode: FeedBrowser},
+		results: newResultSet(),
+	}
+	if err := run.browserFeedPhase(context.Background()); err != nil {
+		t.Fatalf("browserFeedPhase with nil paginator: %v", err)
+	}
+	if run.requests != 0 {
+		t.Errorf("nil-paginator phase made %d requests, want 0 (no-op)", run.requests)
+	}
+}
+
+func containsAppID(rs []SearchResult, id string) bool {
+	for _, r := range rs {
+		if r.AppID == id {
+			return true
+		}
+	}
+	return false
+}
+
 // TestEnrichOneFallbackOnError verifies enrichOne keeps the original result when
 // the App() detail fetch fails for that item.
 func TestEnrichOneFallbackOnError(t *testing.T) {
