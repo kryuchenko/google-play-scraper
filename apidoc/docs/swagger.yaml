@@ -709,6 +709,7 @@ paths:
           2=newest, 3=rating. Default 2 (newest). NOTE: not a real query field — this
           value is embedded inside the f.req inner args; it is documented as a parameter
           only to surface the enum.'
+        example: 2
         in: query
         name: sort
         schema:
@@ -721,6 +722,7 @@ paths:
           type: integer
       - description: Reviews per request; embedded in f.req, capped at 150 by Google
           (reviews.go). Documented as a parameter only to surface the limit.
+        example: 100
         in: query
         name: count
         schema:
@@ -970,12 +972,14 @@ paths:
       - description: Play category id, e.g. GAME, GAME_ACTION or PRODUCTIVITY. One
           of the 54 ids in AllCategories (constants.go); not enumerated here to avoid
           drift as Google adds/removes categories.
+        example: GAME_ACTION
         in: path
         name: category
         required: true
         schema:
           type: string
       - description: UI language, ISO 639-1, e.g. en
+        example: en
         in: query
         name: hl
         schema:
@@ -984,6 +988,7 @@ paths:
           type: string
       - description: Country, ISO 3166-1 alpha-2 lowercase (pattern ^[a-z]{2}$, descriptive
           only), e.g. us
+        example: us
         in: query
         name: gl
         schema:
@@ -1043,6 +1048,7 @@ paths:
           minLength: 1
           type: string
       - description: UI language, ISO 639-1, e.g. en
+        example: en
         in: query
         name: hl
         schema:
@@ -1051,6 +1057,7 @@ paths:
           type: string
       - description: Country, ISO 3166-1 alpha-2 lowercase (pattern ^[a-z]{2}$, descriptive
           only), e.g. us
+        example: us
         in: query
         name: gl
         schema:
@@ -1102,6 +1109,7 @@ paths:
       parameters:
       - description: App package id, reverse-domain form (pattern ^[a-zA-Z][a-zA-Z0-9_]*(\.[a-zA-Z][a-zA-Z0-9_]*)+$,
           descriptive only), e.g. com.whatsapp
+        example: com.spotify.music
         in: query
         name: id
         required: true
@@ -1110,6 +1118,7 @@ paths:
           minLength: 3
           type: string
       - description: UI language, ISO 639-1, e.g. en
+        example: en
         in: query
         name: hl
         schema:
@@ -1118,6 +1127,7 @@ paths:
           type: string
       - description: Country, ISO 3166-1 alpha-2 lowercase (pattern ^[a-z]{2}$, descriptive
           only), e.g. us
+        example: us
         in: query
         name: gl
         schema:
@@ -1171,6 +1181,7 @@ paths:
       - description: App package id, reverse-domain form, pattern ^[a-zA-Z][a-zA-Z0-9_]*(\.[a-zA-Z][a-zA-Z0-9_]*)+$
           (pattern is descriptive only; swag v2 does not emit @Param pattern), e.g.
           com.whatsapp
+        example: com.spotify.music
         in: query
         name: id
         required: true
@@ -1180,6 +1191,7 @@ paths:
           type: string
       - description: UI language, ISO 639-1, usually 2 lowercase letters but locale
           variants like pt-BR occur, e.g. en
+        example: en
         in: query
         name: hl
         schema:
@@ -1188,6 +1200,7 @@ paths:
           type: string
       - description: Country, ISO 3166-1 alpha-2 lowercase, pattern ^[a-z]{2}$ (descriptive
           only), e.g. us
+        example: us
         in: query
         name: gl
         schema:
@@ -1241,6 +1254,7 @@ paths:
       parameters:
       - description: App package id, reverse-domain form (pattern ^[a-zA-Z][a-zA-Z0-9_]*(\.[a-zA-Z][a-zA-Z0-9_]*)+$,
           descriptive only), e.g. com.whatsapp
+        example: com.spotify.music
         in: query
         name: id
         required: true
@@ -1249,6 +1263,7 @@ paths:
           minLength: 3
           type: string
       - description: UI language, ISO 639-1, e.g. en
+        example: en
         in: query
         name: hl
         schema:
@@ -1257,6 +1272,7 @@ paths:
           type: string
       - description: Country to probe, ISO 3166-1 alpha-2 lowercase (pattern ^[a-z]{2}$,
           descriptive only); one request per country, e.g. us
+        example: us
         in: query
         name: gl
         required: true
@@ -1311,6 +1327,7 @@ paths:
       parameters:
       - description: Numeric developer id, digits only (pattern ^[0-9]+$, descriptive
           only), e.g. 5700313618786177705
+        example: "5700313618786177705"
         in: query
         name: id
         required: true
@@ -1319,6 +1336,7 @@ paths:
           minLength: 1
           type: string
       - description: UI language, ISO 639-1, e.g. en
+        example: en
         in: query
         name: hl
         schema:
@@ -1327,6 +1345,7 @@ paths:
           type: string
       - description: Country, ISO 3166-1 alpha-2 lowercase (pattern ^[a-z]{2}$, descriptive
           only), e.g. us
+        example: us
         in: query
         name: gl
         schema:
@@ -1377,6 +1396,7 @@ paths:
       operationId: developerAppsName
       parameters:
       - description: Human-readable developer name, e.g. Google LLC
+        example: Google LLC
         in: query
         name: id
         required: true
@@ -1385,6 +1405,7 @@ paths:
           minLength: 1
           type: string
       - description: UI language, ISO 639-1, e.g. en
+        example: en
         in: query
         name: hl
         schema:
@@ -1393,6 +1414,7 @@ paths:
           type: string
       - description: Country, ISO 3166-1 alpha-2 lowercase (pattern ^[a-z]{2}$, descriptive
           only), e.g. us
+        example: us
         in: query
         name: gl
         schema:
@@ -1445,6 +1467,7 @@ paths:
       operationId: topApps
       parameters:
       - description: UI language, ISO 639-1, e.g. en
+        example: en
         in: query
         name: hl
         schema:
@@ -1453,6 +1476,7 @@ paths:
           type: string
       - description: Country, ISO 3166-1 alpha-2 lowercase (pattern ^[a-z]{2}$, descriptive
           only), e.g. us
+        example: us
         in: query
         name: gl
         schema:
@@ -1500,6 +1524,7 @@ paths:
       operationId: searchApps
       parameters:
       - description: Search query term
+        example: minecraft
         in: query
         name: q
         required: true
@@ -1508,6 +1533,7 @@ paths:
           minLength: 1
           type: string
       - description: Corpus; the scraper always sends 'apps'
+        example: apps
         in: query
         name: c
         required: true
@@ -1516,6 +1542,7 @@ paths:
           - apps
           type: string
       - description: 'Price filter: 0=all, 1=free, 2=paid (see search.go getPriceValue)'
+        example: 0
         in: query
         name: price
         schema:
@@ -1527,6 +1554,7 @@ paths:
           minimum: 0
           type: integer
       - description: UI language, ISO 639-1, e.g. en
+        example: en
         in: query
         name: hl
         schema:
@@ -1535,6 +1563,7 @@ paths:
           type: string
       - description: Country, ISO 3166-1 alpha-2 lowercase (pattern ^[a-z]{2}$, descriptive
           only), e.g. us
+        example: us
         in: query
         name: gl
         schema:

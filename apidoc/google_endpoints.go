@@ -31,9 +31,9 @@ package apidoc
 // @Id           getAppDetails
 // @Tags         html-endpoints
 // @Produce      html
-// @Param        id  query  string  true   "App package id, reverse-domain form, pattern ^[a-zA-Z][a-zA-Z0-9_]*(\.[a-zA-Z][a-zA-Z0-9_]*)+$ (pattern is descriptive only; swag v2 does not emit @Param pattern), e.g. com.whatsapp"  minlength(3)  maxlength(255)
-// @Param        hl  query  string  false  "UI language, ISO 639-1, usually 2 lowercase letters but locale variants like pt-BR occur, e.g. en"  minlength(2)  maxlength(5)
-// @Param        gl  query  string  false  "Country, ISO 3166-1 alpha-2 lowercase, pattern ^[a-z]{2}$ (descriptive only), e.g. us"  minlength(2)  maxlength(2)
+// @Param        id  query  string  true   "App package id, reverse-domain form, pattern ^[a-zA-Z][a-zA-Z0-9_]*(\.[a-zA-Z][a-zA-Z0-9_]*)+$ (pattern is descriptive only; swag v2 does not emit @Param pattern), e.g. com.whatsapp"  minlength(3)  maxlength(255)  example(com.spotify.music)
+// @Param        hl  query  string  false  "UI language, ISO 639-1, usually 2 lowercase letters but locale variants like pt-BR occur, e.g. en"  minlength(2)  maxlength(5)  example(en)
+// @Param        gl  query  string  false  "Country, ISO 3166-1 alpha-2 lowercase, pattern ^[a-z]{2}$ (descriptive only), e.g. us"  minlength(2)  maxlength(2)  example(us)
 // @Success      200  {object}  App  "App parsed from AF_initDataCallback ds:5[1][2]"
 // @Failure      404  {object}  ErrorResponse  "App/listing not found — removed, never existed, or not distributed in this country (gl). Surfaced as StatusError{Code:404}."
 // @Failure      429  {object}  ErrorResponse  "Rate-limited / anti-bot challenge. Google may return 429, or 200 redirecting to google.com/sorry (CAPTCHA). Sustained scraping from one IP triggers this."
@@ -57,9 +57,9 @@ func getAppDetails() {}
 // @Id           getAppAvailability
 // @Tags         html-endpoints
 // @Produce      html
-// @Param        id  query  string  true   "App package id, reverse-domain form (pattern ^[a-zA-Z][a-zA-Z0-9_]*(\.[a-zA-Z][a-zA-Z0-9_]*)+$, descriptive only), e.g. com.whatsapp"  minlength(3)  maxlength(255)
-// @Param        hl  query  string  false  "UI language, ISO 639-1, e.g. en"  minlength(2)  maxlength(5)
-// @Param        gl  query  string  true   "Country to probe, ISO 3166-1 alpha-2 lowercase (pattern ^[a-z]{2}$, descriptive only); one request per country, e.g. us"  minlength(2)  maxlength(2)
+// @Param        id  query  string  true   "App package id, reverse-domain form (pattern ^[a-zA-Z][a-zA-Z0-9_]*(\.[a-zA-Z][a-zA-Z0-9_]*)+$, descriptive only), e.g. com.whatsapp"  minlength(3)  maxlength(255)  example(com.spotify.music)
+// @Param        hl  query  string  false  "UI language, ISO 639-1, e.g. en"  minlength(2)  maxlength(5)  example(en)
+// @Param        gl  query  string  true   "Country to probe, ISO 3166-1 alpha-2 lowercase (pattern ^[a-z]{2}$, descriptive only); one request per country, e.g. us"  minlength(2)  maxlength(2)  example(us)
 // @Success      200  {object}  AvailabilityResult  "Aggregated availability sweep; per-country Status read from ds:5[1][2][18]"
 // @Failure      404  {object}  ErrorResponse  "Probed country has no listing; at the per-country probe a 404 maps to Status not_found (StatusError{Code:404}) rather than failing the whole sweep."
 // @Failure      429  {object}  ErrorResponse  "Rate-limited / anti-bot challenge. Google may return 429, or 200 redirecting to google.com/sorry (CAPTCHA). Sweeping many countries from one IP makes this likely; the failing country maps to Status error."
@@ -83,11 +83,11 @@ func getAppAvailability() {}
 // @Id           searchApps
 // @Tags         html-endpoints
 // @Produce      html
-// @Param        q      query  string  true   "Search query term"  minlength(1)  maxlength(255)
-// @Param        c      query  string  true   "Corpus; the scraper always sends 'apps'"  enums(apps)
-// @Param        price  query  int     false  "Price filter: 0=all, 1=free, 2=paid (see search.go getPriceValue)"  enums(0, 1, 2)  minimum(0)  maximum(2)
-// @Param        hl     query  string  false  "UI language, ISO 639-1, e.g. en"  minlength(2)  maxlength(5)
-// @Param        gl     query  string  false  "Country, ISO 3166-1 alpha-2 lowercase (pattern ^[a-z]{2}$, descriptive only), e.g. us"  minlength(2)  maxlength(2)
+// @Param        q      query  string  true   "Search query term"  minlength(1)  maxlength(255)  example(minecraft)
+// @Param        c      query  string  true   "Corpus; the scraper always sends 'apps'"  enums(apps)  example(apps)
+// @Param        price  query  int     false  "Price filter: 0=all, 1=free, 2=paid (see search.go getPriceValue)"  enums(0, 1, 2)  minimum(0)  maximum(2)  example(0)
+// @Param        hl     query  string  false  "UI language, ISO 639-1, e.g. en"  minlength(2)  maxlength(5)  example(en)
+// @Param        gl     query  string  false  "Country, ISO 3166-1 alpha-2 lowercase (pattern ^[a-z]{2}$, descriptive only), e.g. us"  minlength(2)  maxlength(2)  example(us)
 // @Success      200  {array}  SearchResult  "Search results parsed from AF_initDataCallback. No match is NOT a 404: Google returns 200 with an empty result set, decoded as an empty array."
 // @Failure      429  {object}  ErrorResponse  "Rate-limited / anti-bot challenge. Google may return 429, or 200 redirecting to google.com/sorry (CAPTCHA). Sustained scraping from one IP triggers this."
 // @Failure      500  {object}  ErrorResponse  "Upstream Google error (any 5xx). Surfaced as StatusError with the observed code."
@@ -106,8 +106,8 @@ func searchApps() {}
 // @Id           topApps
 // @Tags         html-endpoints
 // @Produce      html
-// @Param        hl  query  string  false  "UI language, ISO 639-1, e.g. en"  minlength(2)  maxlength(5)
-// @Param        gl  query  string  false  "Country, ISO 3166-1 alpha-2 lowercase (pattern ^[a-z]{2}$, descriptive only), e.g. us"  minlength(2)  maxlength(2)
+// @Param        hl  query  string  false  "UI language, ISO 639-1, e.g. en"  minlength(2)  maxlength(5)  example(en)
+// @Param        gl  query  string  false  "Country, ISO 3166-1 alpha-2 lowercase (pattern ^[a-z]{2}$, descriptive only), e.g. us"  minlength(2)  maxlength(2)  example(us)
 // @Success      200  {array}  SearchResult  "Top apps parsed from AF_initDataCallback"
 // @Failure      429  {object}  ErrorResponse  "Rate-limited / anti-bot challenge. Google may return 429, or 200 redirecting to google.com/sorry (CAPTCHA). Sustained scraping from one IP triggers this."
 // @Failure      500  {object}  ErrorResponse  "Upstream Google error (any 5xx). Surfaced as StatusError with the observed code."
@@ -124,9 +124,9 @@ func topApps() {}
 // @Id           categoryApps
 // @Tags         html-endpoints
 // @Produce      html
-// @Param        category  path   string  true   "Play category id, e.g. GAME, GAME_ACTION or PRODUCTIVITY. One of the 54 ids in AllCategories (constants.go); not enumerated here to avoid drift as Google adds/removes categories."
-// @Param        hl        query  string  false  "UI language, ISO 639-1, e.g. en"  minlength(2)  maxlength(5)
-// @Param        gl        query  string  false  "Country, ISO 3166-1 alpha-2 lowercase (pattern ^[a-z]{2}$, descriptive only), e.g. us"  minlength(2)  maxlength(2)
+// @Param        category  path   string  true   "Play category id, e.g. GAME, GAME_ACTION or PRODUCTIVITY. One of the 54 ids in AllCategories (constants.go); not enumerated here to avoid drift as Google adds/removes categories."  example(GAME_ACTION)
+// @Param        hl        query  string  false  "UI language, ISO 639-1, e.g. en"  minlength(2)  maxlength(5)  example(en)
+// @Param        gl        query  string  false  "Country, ISO 3166-1 alpha-2 lowercase (pattern ^[a-z]{2}$, descriptive only), e.g. us"  minlength(2)  maxlength(2)  example(us)
 // @Success      200  {array}  SearchResult  "Category apps parsed from AF_initDataCallback"
 // @Failure      404  {object}  ErrorResponse  "No such category page — the {category} id is not a recognized Play category. Surfaced as StatusError{Code:404}."
 // @Failure      429  {object}  ErrorResponse  "Rate-limited / anti-bot challenge. Google may return 429, or 200 redirecting to google.com/sorry (CAPTCHA). Sustained scraping from one IP triggers this."
@@ -144,9 +144,9 @@ func categoryApps() {}
 // @Id           developerAppsNumeric
 // @Tags         html-endpoints
 // @Produce      html
-// @Param        id  query  string  true   "Numeric developer id, digits only (pattern ^[0-9]+$, descriptive only), e.g. 5700313618786177705"  minlength(1)  maxlength(32)
-// @Param        hl  query  string  false  "UI language, ISO 639-1, e.g. en"  minlength(2)  maxlength(5)
-// @Param        gl  query  string  false  "Country, ISO 3166-1 alpha-2 lowercase (pattern ^[a-z]{2}$, descriptive only), e.g. us"  minlength(2)  maxlength(2)
+// @Param        id  query  string  true   "Numeric developer id, digits only (pattern ^[0-9]+$, descriptive only), e.g. 5700313618786177705"  minlength(1)  maxlength(32)  example(5700313618786177705)
+// @Param        hl  query  string  false  "UI language, ISO 639-1, e.g. en"  minlength(2)  maxlength(5)  example(en)
+// @Param        gl  query  string  false  "Country, ISO 3166-1 alpha-2 lowercase (pattern ^[a-z]{2}$, descriptive only), e.g. us"  minlength(2)  maxlength(2)  example(us)
 // @Success      200  {array}  SearchResult  "Developer apps parsed from AF_initDataCallback"
 // @Failure      404  {object}  ErrorResponse  "No such developer page — the numeric id does not exist or is not distributed in this country (gl). Surfaced as StatusError{Code:404}."
 // @Failure      429  {object}  ErrorResponse  "Rate-limited / anti-bot challenge. Google may return 429, or 200 redirecting to google.com/sorry (CAPTCHA). Sustained scraping from one IP triggers this."
@@ -164,9 +164,9 @@ func developerAppsNumeric() {}
 // @Id           developerAppsName
 // @Tags         html-endpoints
 // @Produce      html
-// @Param        id  query  string  true   "Human-readable developer name, e.g. Google LLC"  minlength(1)  maxlength(255)
-// @Param        hl  query  string  false  "UI language, ISO 639-1, e.g. en"  minlength(2)  maxlength(5)
-// @Param        gl  query  string  false  "Country, ISO 3166-1 alpha-2 lowercase (pattern ^[a-z]{2}$, descriptive only), e.g. us"  minlength(2)  maxlength(2)
+// @Param        id  query  string  true   "Human-readable developer name, e.g. Google LLC"  minlength(1)  maxlength(255)  example(Google LLC)
+// @Param        hl  query  string  false  "UI language, ISO 639-1, e.g. en"  minlength(2)  maxlength(5)  example(en)
+// @Param        gl  query  string  false  "Country, ISO 3166-1 alpha-2 lowercase (pattern ^[a-z]{2}$, descriptive only), e.g. us"  minlength(2)  maxlength(2)  example(us)
 // @Success      200  {array}  SearchResult  "Developer apps parsed from AF_initDataCallback"
 // @Failure      404  {object}  ErrorResponse  "No such developer page — the name does not match a developer or is not distributed in this country (gl). Surfaced as StatusError{Code:404}."
 // @Failure      429  {object}  ErrorResponse  "Rate-limited / anti-bot challenge. Google may return 429, or 200 redirecting to google.com/sorry (CAPTCHA). Sustained scraping from one IP triggers this."
@@ -184,9 +184,9 @@ func developerAppsName() {}
 // @Id           getDataSafety
 // @Tags         html-endpoints
 // @Produce      html
-// @Param        id  query  string  true   "App package id, reverse-domain form (pattern ^[a-zA-Z][a-zA-Z0-9_]*(\.[a-zA-Z][a-zA-Z0-9_]*)+$, descriptive only), e.g. com.whatsapp"  minlength(3)  maxlength(255)
-// @Param        hl  query  string  false  "UI language, ISO 639-1, e.g. en"  minlength(2)  maxlength(5)
-// @Param        gl  query  string  false  "Country, ISO 3166-1 alpha-2 lowercase (pattern ^[a-z]{2}$, descriptive only), e.g. us"  minlength(2)  maxlength(2)
+// @Param        id  query  string  true   "App package id, reverse-domain form (pattern ^[a-zA-Z][a-zA-Z0-9_]*(\.[a-zA-Z][a-zA-Z0-9_]*)+$, descriptive only), e.g. com.whatsapp"  minlength(3)  maxlength(255)  example(com.spotify.music)
+// @Param        hl  query  string  false  "UI language, ISO 639-1, e.g. en"  minlength(2)  maxlength(5)  example(en)
+// @Param        gl  query  string  false  "Country, ISO 3166-1 alpha-2 lowercase (pattern ^[a-z]{2}$, descriptive only), e.g. us"  minlength(2)  maxlength(2)  example(us)
 // @Success      200  {object}  DataSafety  "Data safety parsed from AF_initDataCallback ds:3. Unlike /store/apps/details, this page does NOT 404 for a removed or unknown app: it returns 200 with an empty ds:3 block and DataSafety() yields a zero-value result (nil error)."
 // @Failure      400  {object}  ErrorResponse  "Missing the required id query parameter — Google returns 400 for this endpoint (not 404)."
 // @Failure      429  {object}  ErrorResponse  "Rate-limited / anti-bot challenge. Google may return 429, or 200 redirecting to google.com/sorry (CAPTCHA). Sustained scraping from one IP triggers this."
@@ -208,8 +208,8 @@ func getDataSafety() {}
 // @Tags         html-endpoints
 // @Produce      html
 // @Param        clusterPath  path   string  true   "Absolute cluster/collection path from a prior page"  minlength(1)
-// @Param        hl           query  string  false  "UI language, ISO 639-1, e.g. en"  minlength(2)  maxlength(5)
-// @Param        gl           query  string  false  "Country, ISO 3166-1 alpha-2 lowercase (pattern ^[a-z]{2}$, descriptive only), e.g. us"  minlength(2)  maxlength(2)
+// @Param        hl           query  string  false  "UI language, ISO 639-1, e.g. en"  minlength(2)  maxlength(5)  example(en)
+// @Param        gl           query  string  false  "Country, ISO 3166-1 alpha-2 lowercase (pattern ^[a-z]{2}$, descriptive only), e.g. us"  minlength(2)  maxlength(2)  example(us)
 // @Success      200  {array}  SearchResult  "Cluster apps parsed from AF_initDataCallback"
 // @Failure      404  {object}  ErrorResponse  "Cluster/collection URL no longer valid — tokens expire and clusters rotate. Surfaced as StatusError{Code:404}."
 // @Failure      429  {object}  ErrorResponse  "Rate-limited / anti-bot challenge. Google may return 429, or 200 redirecting to google.com/sorry (CAPTCHA). Sustained scraping from one IP triggers this."
@@ -289,8 +289,8 @@ func batchPaginateQnKhOb() {}
 // @Tags         batchexecute-rpc
 // @Accept       x-www-form-urlencoded
 // @Produce      plain
-// @Param        sort   query     int       false  "Review sort order (Sort enum, constants.go): 1=helpfulness, 2=newest, 3=rating. Default 2 (newest). NOTE: not a real query field — this value is embedded inside the f.req inner args; it is documented as a parameter only to surface the enum."  enums(1, 2, 3)  minimum(1)  maximum(3)
-// @Param        count  query     int       false  "Reviews per request; embedded in f.req, capped at 150 by Google (reviews.go). Documented as a parameter only to surface the limit."  minimum(1)  maximum(150)
+// @Param        sort   query     int       false  "Review sort order (Sort enum, constants.go): 1=helpfulness, 2=newest, 3=rating. Default 2 (newest). NOTE: not a real query field — this value is embedded inside the f.req inner args; it is documented as a parameter only to surface the enum."  enums(1, 2, 3)  minimum(1)  maximum(3)  example(2)
+// @Param        count  query     int       false  "Reviews per request; embedded in f.req, capped at 150 by Google (reviews.go). Documented as a parameter only to surface the limit."  minimum(1)  maximum(150)  example(100)
 // @Param        f.req  formData  string    true   "URL-encoded JSON envelope [[['oCPfdb','<inner-args>',null,'generic']]]. The sort order, page size and pagination token all live inside the inner args, NOT as query fields."
 // @Success      200    {object}  ReviewsResult  "Decoded from batchexecute envelope. An empty/null inner payload means no more reviews (end of pagination), not an error; nextToken is then empty."
 // @Failure      429    {object}  ErrorResponse  "Rate-limited / anti-bot challenge. Google may return 429, or 200 redirecting to google.com/sorry (CAPTCHA). Sustained scraping from one IP triggers this."

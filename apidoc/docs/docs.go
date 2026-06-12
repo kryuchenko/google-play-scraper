@@ -750,6 +750,7 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "description": "Review sort order (Sort enum, constants.go): 1=helpfulness, 2=newest, 3=rating. Default 2 (newest). NOTE: not a real query field — this value is embedded inside the f.req inner args; it is documented as a parameter only to surface the enum.",
+                        "example": 2,
                         "in": "query",
                         "name": "sort",
                         "schema": {
@@ -765,6 +766,7 @@ const docTemplate = `{
                     },
                     {
                         "description": "Reviews per request; embedded in f.req, capped at 150 by Google (reviews.go). Documented as a parameter only to surface the limit.",
+                        "example": 100,
                         "in": "query",
                         "name": "count",
                         "schema": {
@@ -1080,6 +1082,7 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "description": "Play category id, e.g. GAME, GAME_ACTION or PRODUCTIVITY. One of the 54 ids in AllCategories (constants.go); not enumerated here to avoid drift as Google adds/removes categories.",
+                        "example": "GAME_ACTION",
                         "in": "path",
                         "name": "category",
                         "required": true,
@@ -1089,6 +1092,7 @@ const docTemplate = `{
                     },
                     {
                         "description": "UI language, ISO 639-1, e.g. en",
+                        "example": "en",
                         "in": "query",
                         "name": "hl",
                         "schema": {
@@ -1099,6 +1103,7 @@ const docTemplate = `{
                     },
                     {
                         "description": "Country, ISO 3166-1 alpha-2 lowercase (pattern ^[a-z]{2}$, descriptive only), e.g. us",
+                        "example": "us",
                         "in": "query",
                         "name": "gl",
                         "schema": {
@@ -1178,6 +1183,7 @@ const docTemplate = `{
                     },
                     {
                         "description": "UI language, ISO 639-1, e.g. en",
+                        "example": "en",
                         "in": "query",
                         "name": "hl",
                         "schema": {
@@ -1188,6 +1194,7 @@ const docTemplate = `{
                     },
                     {
                         "description": "Country, ISO 3166-1 alpha-2 lowercase (pattern ^[a-z]{2}$, descriptive only), e.g. us",
+                        "example": "us",
                         "in": "query",
                         "name": "gl",
                         "schema": {
@@ -1257,6 +1264,7 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "description": "App package id, reverse-domain form (pattern ^[a-zA-Z][a-zA-Z0-9_]*(\\.[a-zA-Z][a-zA-Z0-9_]*)+$, descriptive only), e.g. com.whatsapp",
+                        "example": "com.spotify.music",
                         "in": "query",
                         "name": "id",
                         "required": true,
@@ -1268,6 +1276,7 @@ const docTemplate = `{
                     },
                     {
                         "description": "UI language, ISO 639-1, e.g. en",
+                        "example": "en",
                         "in": "query",
                         "name": "hl",
                         "schema": {
@@ -1278,6 +1287,7 @@ const docTemplate = `{
                     },
                     {
                         "description": "Country, ISO 3166-1 alpha-2 lowercase (pattern ^[a-z]{2}$, descriptive only), e.g. us",
+                        "example": "us",
                         "in": "query",
                         "name": "gl",
                         "schema": {
@@ -1345,6 +1355,7 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "description": "App package id, reverse-domain form, pattern ^[a-zA-Z][a-zA-Z0-9_]*(\\.[a-zA-Z][a-zA-Z0-9_]*)+$ (pattern is descriptive only; swag v2 does not emit @Param pattern), e.g. com.whatsapp",
+                        "example": "com.spotify.music",
                         "in": "query",
                         "name": "id",
                         "required": true,
@@ -1356,6 +1367,7 @@ const docTemplate = `{
                     },
                     {
                         "description": "UI language, ISO 639-1, usually 2 lowercase letters but locale variants like pt-BR occur, e.g. en",
+                        "example": "en",
                         "in": "query",
                         "name": "hl",
                         "schema": {
@@ -1366,6 +1378,7 @@ const docTemplate = `{
                     },
                     {
                         "description": "Country, ISO 3166-1 alpha-2 lowercase, pattern ^[a-z]{2}$ (descriptive only), e.g. us",
+                        "example": "us",
                         "in": "query",
                         "name": "gl",
                         "schema": {
@@ -1434,6 +1447,7 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "description": "App package id, reverse-domain form (pattern ^[a-zA-Z][a-zA-Z0-9_]*(\\.[a-zA-Z][a-zA-Z0-9_]*)+$, descriptive only), e.g. com.whatsapp",
+                        "example": "com.spotify.music",
                         "in": "query",
                         "name": "id",
                         "required": true,
@@ -1445,6 +1459,7 @@ const docTemplate = `{
                     },
                     {
                         "description": "UI language, ISO 639-1, e.g. en",
+                        "example": "en",
                         "in": "query",
                         "name": "hl",
                         "schema": {
@@ -1455,6 +1470,7 @@ const docTemplate = `{
                     },
                     {
                         "description": "Country to probe, ISO 3166-1 alpha-2 lowercase (pattern ^[a-z]{2}$, descriptive only); one request per country, e.g. us",
+                        "example": "us",
                         "in": "query",
                         "name": "gl",
                         "required": true,
@@ -1524,6 +1540,7 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "description": "Numeric developer id, digits only (pattern ^[0-9]+$, descriptive only), e.g. 5700313618786177705",
+                        "example": "5700313618786177705",
                         "in": "query",
                         "name": "id",
                         "required": true,
@@ -1535,6 +1552,7 @@ const docTemplate = `{
                     },
                     {
                         "description": "UI language, ISO 639-1, e.g. en",
+                        "example": "en",
                         "in": "query",
                         "name": "hl",
                         "schema": {
@@ -1545,6 +1563,7 @@ const docTemplate = `{
                     },
                     {
                         "description": "Country, ISO 3166-1 alpha-2 lowercase (pattern ^[a-z]{2}$, descriptive only), e.g. us",
+                        "example": "us",
                         "in": "query",
                         "name": "gl",
                         "schema": {
@@ -1614,6 +1633,7 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "description": "Human-readable developer name, e.g. Google LLC",
+                        "example": "Google LLC",
                         "in": "query",
                         "name": "id",
                         "required": true,
@@ -1625,6 +1645,7 @@ const docTemplate = `{
                     },
                     {
                         "description": "UI language, ISO 639-1, e.g. en",
+                        "example": "en",
                         "in": "query",
                         "name": "hl",
                         "schema": {
@@ -1635,6 +1656,7 @@ const docTemplate = `{
                     },
                     {
                         "description": "Country, ISO 3166-1 alpha-2 lowercase (pattern ^[a-z]{2}$, descriptive only), e.g. us",
+                        "example": "us",
                         "in": "query",
                         "name": "gl",
                         "schema": {
@@ -1704,6 +1726,7 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "description": "UI language, ISO 639-1, e.g. en",
+                        "example": "en",
                         "in": "query",
                         "name": "hl",
                         "schema": {
@@ -1714,6 +1737,7 @@ const docTemplate = `{
                     },
                     {
                         "description": "Country, ISO 3166-1 alpha-2 lowercase (pattern ^[a-z]{2}$, descriptive only), e.g. us",
+                        "example": "us",
                         "in": "query",
                         "name": "gl",
                         "schema": {
@@ -1773,6 +1797,7 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "description": "Search query term",
+                        "example": "minecraft",
                         "in": "query",
                         "name": "q",
                         "required": true,
@@ -1784,6 +1809,7 @@ const docTemplate = `{
                     },
                     {
                         "description": "Corpus; the scraper always sends 'apps'",
+                        "example": "apps",
                         "in": "query",
                         "name": "c",
                         "required": true,
@@ -1796,6 +1822,7 @@ const docTemplate = `{
                     },
                     {
                         "description": "Price filter: 0=all, 1=free, 2=paid (see search.go getPriceValue)",
+                        "example": 0,
                         "in": "query",
                         "name": "price",
                         "schema": {
@@ -1811,6 +1838,7 @@ const docTemplate = `{
                     },
                     {
                         "description": "UI language, ISO 639-1, e.g. en",
+                        "example": "en",
                         "in": "query",
                         "name": "hl",
                         "schema": {
@@ -1821,6 +1849,7 @@ const docTemplate = `{
                     },
                     {
                         "description": "Country, ISO 3166-1 alpha-2 lowercase (pattern ^[a-z]{2}$, descriptive only), e.g. us",
+                        "example": "us",
                         "in": "query",
                         "name": "gl",
                         "schema": {
