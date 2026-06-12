@@ -733,9 +733,7 @@ const docTemplate = `{
                             }
                         },
                         "description": "Upstream Google error (any 5xx). Surfaced as StatusError with the observed code."
-                    },
-                    "x-response-encoding": "batchexecute-envelope",
-                    "x-rpcid": "IJ4APc"
+                    }
                 },
                 "summary": "Search suggestions RPC (IJ4APc)",
                 "tags": [
@@ -825,9 +823,7 @@ const docTemplate = `{
                             }
                         },
                         "description": "Upstream Google error (any 5xx). Surfaced as StatusError with the observed code."
-                    },
-                    "x-response-encoding": "batchexecute-envelope",
-                    "x-rpcid": "oCPfdb"
+                    }
                 },
                 "summary": "Reviews RPC (oCPfdb)",
                 "tags": [
@@ -905,9 +901,7 @@ const docTemplate = `{
                             }
                         },
                         "description": "Upstream Google error (any 5xx). Surfaced as StatusError with the observed code."
-                    },
-                    "x-response-encoding": "batchexecute-envelope",
-                    "x-rpcid": "qnKhOb"
+                    }
                 },
                 "summary": "Paginate list/cluster/search RPC (qnKhOb)",
                 "tags": [
@@ -985,9 +979,7 @@ const docTemplate = `{
                             }
                         },
                         "description": "Upstream Google error (any 5xx). Surfaced as StatusError with the observed code."
-                    },
-                    "x-response-encoding": "batchexecute-envelope",
-                    "x-rpcid": "vyAe2"
+                    }
                 },
                 "summary": "List apps RPC (vyAe2)",
                 "tags": [
@@ -1065,9 +1057,7 @@ const docTemplate = `{
                             }
                         },
                         "description": "Upstream Google error (any 5xx). Surfaced as StatusError with the observed code."
-                    },
-                    "x-response-encoding": "batchexecute-envelope",
-                    "x-rpcid": "xdSrCf"
+                    }
                 },
                 "summary": "Permissions RPC (xdSrCf)",
                 "tags": [
@@ -1156,9 +1146,7 @@ const docTemplate = `{
                             }
                         },
                         "description": "Upstream Google error (any 5xx). Surfaced as StatusError with the observed code."
-                    },
-                    "x-response-encoding": "AF_initDataCallback",
-                    "x-rpcid": "none"
+                    }
                 },
                 "summary": "Category page (HTML)",
                 "tags": [
@@ -1247,9 +1235,7 @@ const docTemplate = `{
                             }
                         },
                         "description": "Upstream Google error (any 5xx). Surfaced as StatusError with the observed code."
-                    },
-                    "x-response-encoding": "AF_initDataCallback",
-                    "x-rpcid": "none"
+                    }
                 },
                 "summary": "Cluster page (HTML, absolute URL)",
                 "tags": [
@@ -1337,10 +1323,7 @@ const docTemplate = `{
                             }
                         },
                         "description": "Upstream Google error (any 5xx). Surfaced as StatusError with the observed code."
-                    },
-                    "x-data-block": "ds:3",
-                    "x-response-encoding": "AF_initDataCallback",
-                    "x-rpcid": "none"
+                    }
                 },
                 "summary": "Data safety (HTML, ds:3)",
                 "tags": [
@@ -1428,11 +1411,7 @@ const docTemplate = `{
                             }
                         },
                         "description": "Upstream Google error (any 5xx). Surfaced as StatusError with the observed code."
-                    },
-                    "x-data-block": "ds:5",
-                    "x-payload-node": "[1][2]",
-                    "x-response-encoding": "AF_initDataCallback",
-                    "x-rpcid": "none"
+                    }
                 },
                 "summary": "App details (HTML, ds:5)",
                 "tags": [
@@ -1521,11 +1500,7 @@ const docTemplate = `{
                             }
                         },
                         "description": "Upstream Google error (any 5xx); the failing country maps to Status error."
-                    },
-                    "x-data-block": "ds:5",
-                    "x-payload-node": "[1][2][18]",
-                    "x-response-encoding": "AF_initDataCallback",
-                    "x-rpcid": "none"
+                    }
                 },
                 "summary": "App availability probe (HTML, ds:5 node [18])",
                 "tags": [
@@ -1616,9 +1591,7 @@ const docTemplate = `{
                             }
                         },
                         "description": "Upstream Google error (any 5xx). Surfaced as StatusError with the observed code."
-                    },
-                    "x-response-encoding": "AF_initDataCallback",
-                    "x-rpcid": "none"
+                    }
                 },
                 "summary": "Developer apps by numeric id (HTML)",
                 "tags": [
@@ -1709,9 +1682,7 @@ const docTemplate = `{
                             }
                         },
                         "description": "Upstream Google error (any 5xx). Surfaced as StatusError with the observed code."
-                    },
-                    "x-response-encoding": "AF_initDataCallback",
-                    "x-rpcid": "none"
+                    }
                 },
                 "summary": "Developer apps by name (HTML)",
                 "tags": [
@@ -1780,9 +1751,7 @@ const docTemplate = `{
                             }
                         },
                         "description": "Upstream Google error (any 5xx). Surfaced as StatusError with the observed code."
-                    },
-                    "x-response-encoding": "AF_initDataCallback",
-                    "x-rpcid": "none"
+                    }
                 },
                 "summary": "Top charts page (HTML)",
                 "tags": [
@@ -1892,9 +1861,7 @@ const docTemplate = `{
                             }
                         },
                         "description": "Upstream Google error (any 5xx). Surfaced as StatusError with the observed code."
-                    },
-                    "x-response-encoding": "AF_initDataCallback",
-                    "x-rpcid": "none"
+                    }
                 },
                 "summary": "Search apps (HTML)",
                 "tags": [

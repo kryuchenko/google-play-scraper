@@ -38,10 +38,6 @@ package apidoc
 // @Failure      404  {object}  ErrorResponse  "App/listing not found — removed, never existed, or not distributed in this country (gl). Surfaced as StatusError{Code:404}."
 // @Failure      429  {object}  ErrorResponse  "Rate-limited / anti-bot challenge. Google may return 429, or 200 redirecting to google.com/sorry (CAPTCHA). Sustained scraping from one IP triggers this."
 // @Failure      500  {object}  ErrorResponse  "Upstream Google error (any 5xx). Surfaced as StatusError with the observed code."
-// @x-rpcid "none"
-// @x-data-block "ds:5"
-// @x-response-encoding "AF_initDataCallback"
-// @x-payload-node "[1][2]"
 // @Router       /store/apps/details [get]
 func getAppDetails() {}
 
@@ -64,10 +60,6 @@ func getAppDetails() {}
 // @Failure      404  {object}  ErrorResponse  "Probed country has no listing; at the per-country probe a 404 maps to Status not_found (StatusError{Code:404}) rather than failing the whole sweep."
 // @Failure      429  {object}  ErrorResponse  "Rate-limited / anti-bot challenge. Google may return 429, or 200 redirecting to google.com/sorry (CAPTCHA). Sweeping many countries from one IP makes this likely; the failing country maps to Status error."
 // @Failure      500  {object}  ErrorResponse  "Upstream Google error (any 5xx); the failing country maps to Status error."
-// @x-rpcid "none"
-// @x-data-block "ds:5"
-// @x-response-encoding "AF_initDataCallback"
-// @x-payload-node "[1][2][18]"
 // @Router       /store/apps/details(availability) [get]
 func getAppAvailability() {}
 
@@ -91,8 +83,6 @@ func getAppAvailability() {}
 // @Success      200  {array}  SearchResult  "Search results parsed from AF_initDataCallback. No match is NOT a 404: Google returns 200 with an empty result set, decoded as an empty array."
 // @Failure      429  {object}  ErrorResponse  "Rate-limited / anti-bot challenge. Google may return 429, or 200 redirecting to google.com/sorry (CAPTCHA). Sustained scraping from one IP triggers this."
 // @Failure      500  {object}  ErrorResponse  "Upstream Google error (any 5xx). Surfaced as StatusError with the observed code."
-// @x-rpcid "none"
-// @x-response-encoding "AF_initDataCallback"
 // @Router       /store/search [get]
 func searchApps() {}
 
@@ -111,8 +101,6 @@ func searchApps() {}
 // @Success      200  {array}  SearchResult  "Top apps parsed from AF_initDataCallback"
 // @Failure      429  {object}  ErrorResponse  "Rate-limited / anti-bot challenge. Google may return 429, or 200 redirecting to google.com/sorry (CAPTCHA). Sustained scraping from one IP triggers this."
 // @Failure      500  {object}  ErrorResponse  "Upstream Google error (any 5xx). Surfaced as StatusError with the observed code."
-// @x-rpcid "none"
-// @x-response-encoding "AF_initDataCallback"
 // @Router       /store/apps/top [get]
 func topApps() {}
 
@@ -131,8 +119,6 @@ func topApps() {}
 // @Failure      404  {object}  ErrorResponse  "No such category page — the {category} id is not a recognized Play category. Surfaced as StatusError{Code:404}."
 // @Failure      429  {object}  ErrorResponse  "Rate-limited / anti-bot challenge. Google may return 429, or 200 redirecting to google.com/sorry (CAPTCHA). Sustained scraping from one IP triggers this."
 // @Failure      500  {object}  ErrorResponse  "Upstream Google error (any 5xx). Surfaced as StatusError with the observed code."
-// @x-rpcid "none"
-// @x-response-encoding "AF_initDataCallback"
 // @Router       /store/apps/category/{category} [get]
 func categoryApps() {}
 
@@ -151,8 +137,6 @@ func categoryApps() {}
 // @Failure      404  {object}  ErrorResponse  "No such developer page — the numeric id does not exist or is not distributed in this country (gl). Surfaced as StatusError{Code:404}."
 // @Failure      429  {object}  ErrorResponse  "Rate-limited / anti-bot challenge. Google may return 429, or 200 redirecting to google.com/sorry (CAPTCHA). Sustained scraping from one IP triggers this."
 // @Failure      500  {object}  ErrorResponse  "Upstream Google error (any 5xx). Surfaced as StatusError with the observed code."
-// @x-rpcid "none"
-// @x-response-encoding "AF_initDataCallback"
 // @Router       /store/apps/dev [get]
 func developerAppsNumeric() {}
 
@@ -171,8 +155,6 @@ func developerAppsNumeric() {}
 // @Failure      404  {object}  ErrorResponse  "No such developer page — the name does not match a developer or is not distributed in this country (gl). Surfaced as StatusError{Code:404}."
 // @Failure      429  {object}  ErrorResponse  "Rate-limited / anti-bot challenge. Google may return 429, or 200 redirecting to google.com/sorry (CAPTCHA). Sustained scraping from one IP triggers this."
 // @Failure      500  {object}  ErrorResponse  "Upstream Google error (any 5xx). Surfaced as StatusError with the observed code."
-// @x-rpcid "none"
-// @x-response-encoding "AF_initDataCallback"
 // @Router       /store/apps/developer [get]
 func developerAppsName() {}
 
@@ -191,9 +173,6 @@ func developerAppsName() {}
 // @Failure      400  {object}  ErrorResponse  "Missing the required id query parameter — Google returns 400 for this endpoint (not 404)."
 // @Failure      429  {object}  ErrorResponse  "Rate-limited / anti-bot challenge. Google may return 429, or 200 redirecting to google.com/sorry (CAPTCHA). Sustained scraping from one IP triggers this."
 // @Failure      500  {object}  ErrorResponse  "Upstream Google error (any 5xx). Surfaced as StatusError with the observed code."
-// @x-rpcid "none"
-// @x-data-block "ds:3"
-// @x-response-encoding "AF_initDataCallback"
 // @Router       /store/apps/datasafety [get]
 func getDataSafety() {}
 
@@ -214,8 +193,6 @@ func getDataSafety() {}
 // @Failure      404  {object}  ErrorResponse  "Cluster/collection URL no longer valid — tokens expire and clusters rotate. Surfaced as StatusError{Code:404}."
 // @Failure      429  {object}  ErrorResponse  "Rate-limited / anti-bot challenge. Google may return 429, or 200 redirecting to google.com/sorry (CAPTCHA). Sustained scraping from one IP triggers this."
 // @Failure      500  {object}  ErrorResponse  "Upstream Google error (any 5xx). Surfaced as StatusError with the observed code."
-// @x-rpcid "none"
-// @x-response-encoding "AF_initDataCallback"
 // @Router       /store/apps/collection/{clusterPath} [get]
 func getCluster() {}
 
@@ -237,8 +214,6 @@ func getCluster() {}
 // @Success      200     {array}   SearchResult  "Decoded from batchexecute envelope. Empirical limit: Google returns at most ~200 apps per collection regardless of __NUM__ (660 is only the request-side clamp). An empty/null inner payload means no data (end of the collection), not an error."
 // @Failure      429     {object}  ErrorResponse  "Rate-limited / anti-bot challenge. Google may return 429, or 200 redirecting to google.com/sorry (CAPTCHA). Sustained scraping from one IP triggers this."
 // @Failure      500     {object}  ErrorResponse  "Upstream Google error (any 5xx). Surfaced as StatusError with the observed code."
-// @x-rpcid "vyAe2"
-// @x-response-encoding "batchexecute-envelope"
 // @Router       /_/PlayStoreUi/data/batchexecute(vyAe2) [post]
 func batchListVyAe2() {}
 
@@ -272,8 +247,6 @@ func batchListVyAe2() {}
 // @Success      200     {array}   SearchResult  "Decoded from batchexecute envelope; includes next token. When pagination is exhausted Google returns 200 with a NULL inner payload (handled by decodeBatchEnvelope) — that signals end-of-data, not an error, and the next token is empty."
 // @Failure      429     {object}  ErrorResponse  "Rate-limited / anti-bot challenge. Google may return 429, or 200 redirecting to google.com/sorry (CAPTCHA). Sustained scraping from one IP triggers this."
 // @Failure      500     {object}  ErrorResponse  "Upstream Google error (any 5xx). Surfaced as StatusError with the observed code."
-// @x-rpcid "qnKhOb"
-// @x-response-encoding "batchexecute-envelope"
 // @Router       /_/PlayStoreUi/data/batchexecute(qnKhOb) [post]
 func batchPaginateQnKhOb() {}
 
@@ -295,8 +268,6 @@ func batchPaginateQnKhOb() {}
 // @Success      200    {object}  ReviewsResult  "Decoded from batchexecute envelope. An empty/null inner payload means no more reviews (end of pagination), not an error; nextToken is then empty."
 // @Failure      429    {object}  ErrorResponse  "Rate-limited / anti-bot challenge. Google may return 429, or 200 redirecting to google.com/sorry (CAPTCHA). Sustained scraping from one IP triggers this."
 // @Failure      500    {object}  ErrorResponse  "Upstream Google error (any 5xx). Surfaced as StatusError with the observed code."
-// @x-rpcid "oCPfdb"
-// @x-response-encoding "batchexecute-envelope"
 // @Router       /_/PlayStoreUi/data/batchexecute(oCPfdb) [post]
 func batchReviewsOCPfdb() {}
 
@@ -315,8 +286,6 @@ func batchReviewsOCPfdb() {}
 // @Success      200     {array}   Permission  "Decoded from batchexecute envelope. An empty/null inner payload means the app declares no permissions, not an error."
 // @Failure      429     {object}  ErrorResponse  "Rate-limited / anti-bot challenge. Google may return 429, or 200 redirecting to google.com/sorry (CAPTCHA). Sustained scraping from one IP triggers this."
 // @Failure      500     {object}  ErrorResponse  "Upstream Google error (any 5xx). Surfaced as StatusError with the observed code."
-// @x-rpcid "xdSrCf"
-// @x-response-encoding "batchexecute-envelope"
 // @Router       /_/PlayStoreUi/data/batchexecute(xdSrCf) [post]
 func batchPermissionsXdSrCf() {}
 
@@ -335,7 +304,5 @@ func batchPermissionsXdSrCf() {}
 // @Success      200     {array}   string  "Suggested terms decoded from batchexecute envelope. An empty/null inner payload means no suggestions, not an error."
 // @Failure      429     {object}  ErrorResponse  "Rate-limited / anti-bot challenge. Google may return 429, or 200 redirecting to google.com/sorry (CAPTCHA). Sustained scraping from one IP triggers this."
 // @Failure      500     {object}  ErrorResponse  "Upstream Google error (any 5xx). Surfaced as StatusError with the observed code."
-// @x-rpcid "IJ4APc"
-// @x-response-encoding "batchexecute-envelope"
 // @Router       /_/PlayStoreUi/data/batchexecute(IJ4APc) [post]
 func batchSuggestIJ4APc() {}

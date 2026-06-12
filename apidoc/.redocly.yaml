@@ -1,0 +1,10 @@
+# Lint config for the reverse-engineered Google Play spec.
+#
+# These are Google's private, UNAUTHENTICATED web endpoints — the scraper sends
+# no API key, OAuth token or cookie (verified empirically). There is therefore
+# no security scheme to declare, so the recommended `security-defined` rule does
+# not apply here. Everything else uses Redocly's recommended ruleset.
+extends:
+  - recommended
+rules:
+  security-defined: off
