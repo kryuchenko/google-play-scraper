@@ -1058,6 +1058,189 @@
                 ]
             }
         },
+        "/robots.txt": {
+            "get": {
+                "description": "GET /robots.txt. Returns text/plain. The catalog enumerator\n(SitemapIndexURLs) parses the `Sitemap:` directives, currently\ntwo indexes under /sitemaps/, which together list all ~80,945\nshards. Read live so it tracks Google's own advertisement.",
+                "operationId": "getRobotsTxt",
+                "responses": {
+                    "200": {
+                        "content": {
+                            "text/plain": {
+                                "schema": {
+                                    "items": {
+                                        "type": "string"
+                                    },
+                                    "type": "array"
+                                }
+                            }
+                        },
+                        "description": "Sitemap index URLs extracted from the Sitemap: directives"
+                    },
+                    "429": {
+                        "content": {
+                            "text/plain": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/apidoc.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Rate-limited / anti-bot challenge."
+                    },
+                    "500": {
+                        "content": {
+                            "text/plain": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/apidoc.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Upstream Google error (any 5xx). Surfaced as StatusError with the observed code."
+                    }
+                },
+                "summary": "Robots / sitemap discovery (text)",
+                "tags": [
+                    "sitemap-endpoints"
+                ]
+            }
+        },
+        "/sitemaps/sitemaps-index-{n}.xml": {
+            "get": {
+                "description": "GET /sitemaps/sitemaps-index-{n}.xml. Returns application/xml: a\n\u003csitemapindex\u003e whose \u003csitemap\u003e\u003cloc\u003e entries point at the\nper-shard .xml.gz files (…-NNNNN-of-80945.xml.gz). index-0 lists\nshards 00000..49999, index-1 lists 50000..80944. SitemapShards\nparses the loc list.",
+                "operationId": "getSitemapIndex",
+                "parameters": [
+                    {
+                        "description": "Index number advertised in robots.txt (0 or 1)",
+                        "example": 0,
+                        "in": "path",
+                        "name": "n",
+                        "required": true,
+                        "schema": {
+                            "enum": [
+                                0,
+                                1
+                            ],
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "text/xml": {
+                                "schema": {
+                                    "items": {
+                                        "type": "string"
+                                    },
+                                    "type": "array"
+                                }
+                            }
+                        },
+                        "description": "Shard URLs parsed from \u003csitemapindex\u003e/\u003csitemap\u003e/\u003cloc\u003e"
+                    },
+                    "404": {
+                        "content": {
+                            "text/xml": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/apidoc.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "No such index number."
+                    },
+                    "429": {
+                        "content": {
+                            "text/xml": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/apidoc.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Rate-limited / anti-bot challenge."
+                    },
+                    "500": {
+                        "content": {
+                            "text/xml": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/apidoc.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Upstream Google error (any 5xx). Surfaced as StatusError with the observed code."
+                    }
+                },
+                "summary": "Sitemap index (XML)",
+                "tags": [
+                    "sitemap-endpoints"
+                ]
+            }
+        },
+        "/sitemaps/{shard}.xml.gz": {
+            "get": {
+                "description": "GET /sitemaps/{shard}.xml.gz. Returns a gzip-compressed \u003curlset\u003e\nof whole-store URLs (books, movies, music AND apps interleaved).\nSitemapShardPackages gunzips it and keeps only the\n/store/apps/details?id=PKG locs — ~30–55 of ~400 URLs per shard,\nso a full sweep yields on the order of 3 million app ids.",
+                "operationId": "getSitemapShard",
+                "parameters": [
+                    {
+                        "description": "Shard file name, e.g. play_sitemaps_2026-06-08_1780977767-00000-of-80945",
+                        "example": "play_sitemaps_2026-06-08_1780977767-00000-of-80945",
+                        "in": "path",
+                        "name": "shard",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/gzip": {
+                                "schema": {
+                                    "items": {
+                                        "type": "string"
+                                    },
+                                    "type": "array"
+                                }
+                            }
+                        },
+                        "description": "App package ids extracted from the shard's /store/apps/details locs"
+                    },
+                    "404": {
+                        "content": {
+                            "application/gzip": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/apidoc.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "No such shard."
+                    },
+                    "429": {
+                        "content": {
+                            "application/gzip": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/apidoc.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Rate-limited / anti-bot challenge."
+                    },
+                    "500": {
+                        "content": {
+                            "application/gzip": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/apidoc.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Upstream Google error (any 5xx). Surfaced as StatusError with the observed code."
+                    }
+                },
+                "summary": "Sitemap shard (gzipped XML)",
+                "tags": [
+                    "sitemap-endpoints"
+                ]
+            }
+        },
         "/store/apps/category/{category}": {
             "get": {
                 "description": "Returns text/html for a single category; parsed like the top\ncharts page into []SearchResult plus cluster URLs.",

@@ -71,6 +71,7 @@ func TestCanary(t *testing.T) {
 	t.Run("Categories", func(t *testing.T) { canaryCategories(t, client) })
 	t.Run("CategoryApps", func(t *testing.T) { canaryCategoryApps(t, client) })
 	t.Run("Availability", func(t *testing.T) { canaryAvailability(t, client) })
+	t.Run("Sitemap", func(t *testing.T) { canarySitemap(t, client) })
 }
 
 // ---------------------------------------------------------------------------
@@ -701,6 +702,103 @@ func canaryAvailability(t *testing.T, client *googleplayscraper.Client) {
 		}
 		if !res.GloballyRemoved {
 			t.Error("Availability(nonexistent): GloballyRemoved = false, want true — every checked country 404'd")
+		}
+	})
+}
+
+// ---------------------------------------------------------------------------
+// Sitemap / full-catalog enumeration
+// ---------------------------------------------------------------------------
+
+func canarySitemap(t *testing.T, client *googleplayscraper.Client) {
+	// robots.txt must still advertise at least one sitemap index, all under the
+	// /sitemaps/ path. If Google moves or drops the directive, discovery breaks
+	// at the root and this fails first.
+	t.Run("index_discovery", func(t *testing.T) {
+		ctx, cancel := canaryCtx(t)
+		defer cancel()
+
+		indexes, err := client.SitemapIndexURLs(ctx)
+		if err != nil {
+			t.Fatalf("SitemapIndexURLs: %v", err)
+		}
+		if len(indexes) == 0 {
+			t.Fatal("SitemapIndexURLs: 0 indexes — robots.txt no longer advertises Sitemap directives")
+		}
+		for _, u := range indexes {
+			if !strings.HasPrefix(u, "https://play.google.com/sitemaps/") {
+				t.Errorf("SitemapIndexURLs: %q is not under https://play.google.com/sitemaps/ — index location moved", u)
+			}
+		}
+	})
+
+	// The first index must parse into a large shard list (Google ships tens of
+	// thousands). A handful would mean the <sitemapindex>/<loc> shape changed.
+	t.Run("shard_listing", func(t *testing.T) {
+		ctx, cancel := canaryCtx(t)
+		defer cancel()
+
+		indexes, err := client.SitemapIndexURLs(ctx)
+		if err != nil {
+			t.Fatalf("SitemapIndexURLs: %v", err)
+		}
+		shards, err := client.SitemapShards(ctx, indexes[0])
+		if err != nil {
+			t.Fatalf("SitemapShards(%s): %v", indexes[0], err)
+		}
+		if len(shards) < 1000 {
+			t.Errorf("SitemapShards(%s): %d shards, want >=1000 — the sitemapindex shape may have changed", indexes[0], len(shards))
+		}
+		if len(shards) > 0 && !strings.Contains(shards[0], ".xml.gz") {
+			t.Errorf("SitemapShards: first shard %q is not a .xml.gz — shard URL shape changed", shards[0])
+		}
+	})
+
+	// A single shard must decompress, parse, and yield real app package ids
+	// mixed in among the books/movies/music URLs. Zero apps would mean either
+	// the gzip/urlset handling broke or the /store/apps/details filter no longer
+	// matches.
+	t.Run("shard_packages", func(t *testing.T) {
+		ctx, cancel := canaryCtx(t)
+		defer cancel()
+
+		indexes, err := client.SitemapIndexURLs(ctx)
+		if err != nil {
+			t.Fatalf("SitemapIndexURLs: %v", err)
+		}
+		shards, err := client.SitemapShards(ctx, indexes[0])
+		if err != nil {
+			t.Fatalf("SitemapShards: %v", err)
+		}
+		pkgs, err := client.SitemapShardPackages(ctx, shards[0])
+		if err != nil {
+			t.Fatalf("SitemapShardPackages(%s): %v", shards[0], err)
+		}
+		if len(pkgs) == 0 {
+			t.Fatalf("SitemapShardPackages(%s): 0 app packages — gzip/urlset parse or /store/apps/details filter broke", shards[0])
+		}
+		for _, p := range pkgs {
+			if !strings.Contains(p, ".") {
+				t.Errorf("SitemapShardPackages: %q does not look like a package id — id extraction off", p)
+			}
+		}
+	})
+
+	// EnumerateCatalog over a tiny shard subset must wire discovery -> fetch ->
+	// emit end to end and produce ids.
+	t.Run("enumerate_subset", func(t *testing.T) {
+		ctx, cancel := canaryCtx(t)
+		defer cancel()
+
+		var n int
+		err := client.EnumerateCatalog(ctx, func(string) { n++ }, googleplayscraper.CatalogOptions{
+			Shards: []int{0, 1},
+		})
+		if err != nil {
+			t.Fatalf("EnumerateCatalog(shards 0,1): %v", err)
+		}
+		if n == 0 {
+			t.Error("EnumerateCatalog(shards 0,1): emitted 0 packages — orchestration produced nothing")
 		}
 	})
 }

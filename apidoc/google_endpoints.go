@@ -306,3 +306,58 @@ func batchPermissionsXdSrCf() {}
 // @Failure      500     {object}  ErrorResponse  "Upstream Google error (any 5xx). Surfaced as StatusError with the observed code."
 // @Router       /_/PlayStoreUi/data/batchexecute(IJ4APc) [post]
 func batchSuggestIJ4APc() {}
+
+// getRobotsTxt documents sitemap discovery: the catalog crawler reads the
+// `Sitemap:` directives from robots.txt rather than hardcoding the index URLs.
+//
+// @Summary      Robots / sitemap discovery (text)
+// @Description  GET /robots.txt. Returns text/plain. The catalog enumerator
+// @Description  (SitemapIndexURLs) parses the `Sitemap:` directives, currently
+// @Description  two indexes under /sitemaps/, which together list all ~80,945
+// @Description  shards. Read live so it tracks Google's own advertisement.
+// @Id           getRobotsTxt
+// @Tags         sitemap-endpoints
+// @Produce      plain
+// @Success      200  {array}   string  "Sitemap index URLs extracted from the Sitemap: directives"
+// @Failure      429  {object}  ErrorResponse  "Rate-limited / anti-bot challenge."
+// @Failure      500  {object}  ErrorResponse  "Upstream Google error (any 5xx). Surfaced as StatusError with the observed code."
+// @Router       /robots.txt [get]
+func getRobotsTxt() {}
+
+// getSitemapIndex documents one sitemap-index file (a <sitemapindex> of shards).
+//
+// @Summary      Sitemap index (XML)
+// @Description  GET /sitemaps/sitemaps-index-{n}.xml. Returns application/xml: a
+// @Description  <sitemapindex> whose <sitemap><loc> entries point at the
+// @Description  per-shard .xml.gz files (…-NNNNN-of-80945.xml.gz). index-0 lists
+// @Description  shards 00000..49999, index-1 lists 50000..80944. SitemapShards
+// @Description  parses the loc list.
+// @Id           getSitemapIndex
+// @Tags         sitemap-endpoints
+// @Produce      xml
+// @Param        n  path  int  true  "Index number advertised in robots.txt (0 or 1)"  enums(0, 1)  example(0)
+// @Success      200  {array}   string  "Shard URLs parsed from <sitemapindex>/<sitemap>/<loc>"
+// @Failure      404  {object}  ErrorResponse  "No such index number."
+// @Failure      429  {object}  ErrorResponse  "Rate-limited / anti-bot challenge."
+// @Failure      500  {object}  ErrorResponse  "Upstream Google error (any 5xx). Surfaced as StatusError with the observed code."
+// @Router       /sitemaps/sitemaps-index-{n}.xml [get]
+func getSitemapIndex() {}
+
+// getSitemapShard documents one gzipped sitemap shard (a <urlset> of store URLs).
+//
+// @Summary      Sitemap shard (gzipped XML)
+// @Description  GET /sitemaps/{shard}.xml.gz. Returns a gzip-compressed <urlset>
+// @Description  of whole-store URLs (books, movies, music AND apps interleaved).
+// @Description  SitemapShardPackages gunzips it and keeps only the
+// @Description  /store/apps/details?id=PKG locs — ~30–55 of ~400 URLs per shard,
+// @Description  so a full sweep yields on the order of 3 million app ids.
+// @Id           getSitemapShard
+// @Tags         sitemap-endpoints
+// @Produce      application/gzip
+// @Param        shard  path  string  true  "Shard file name, e.g. play_sitemaps_2026-06-08_1780977767-00000-of-80945"  example(play_sitemaps_2026-06-08_1780977767-00000-of-80945)
+// @Success      200  {array}   string  "App package ids extracted from the shard's /store/apps/details locs"
+// @Failure      404  {object}  ErrorResponse  "No such shard."
+// @Failure      429  {object}  ErrorResponse  "Rate-limited / anti-bot challenge."
+// @Failure      500  {object}  ErrorResponse  "Upstream Google error (any 5xx). Surfaced as StatusError with the observed code."
+// @Router       /sitemaps/{shard}.xml.gz [get]
+func getSitemapShard() {}

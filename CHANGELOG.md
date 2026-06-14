@@ -3,6 +3,36 @@
 All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Added
+
+- Full-catalog enumeration via Google Play's public sitemaps — the one
+  anonymous channel that lists the *entire* store rather than the
+  commercially-visible top of it. `EnumerateCatalog(ctx, emit, CatalogOptions)`
+  sweeps every shard and calls `emit` once per app package id (on the order of 3
+  million). `robots.txt` advertises two sitemap indexes covering ~80,945 gzipped
+  shards; each shard is a `<urlset>` of whole-store URLs (books/movies/music and
+  apps interleaved) from which only the `/store/apps/details?id=` locs are kept.
+  The lower-level steps are exported too — `SitemapIndexURLs`,
+  `SitemapShards`/`AllSitemapShards`, and `SitemapShardPackages` — so callers can
+  drive or resume the crawl themselves. `CatalogOptions` exposes `Concurrency`, a
+  `Shards` subset (sampling/resume), and serialized `OnShardDone`/`OnShardError`
+  callbacks. The sweep reuses the client throttle (no new `Client` field), is
+  context-cancellable into a partial result, and skips a failed shard rather than
+  aborting. Ships with the `examples/catalog-crawler` CLI (writes ids to a file,
+  optional `-resolve` sanity check) and `apidoc` stubs for `/robots.txt`,
+  `/sitemaps/sitemaps-index-{n}.xml`, and `/sitemaps/{shard}.xml.gz`. Zero new
+  dependencies (`encoding/xml` + `compress/gzip`).
+
+### Internal
+
+- Locked the unified row decoder's byte-equivalence in CI: golden tests assert
+  the full `SearchResult` for each of the four row layouts
+  (cluster/list/search-grid/qnKhOb) plus the `requireAppID` and
+  no-price-path edge rules, so a future path-map or candidate-priority change is
+  caught offline rather than only by the live canary.
+
 ## [1.2.0] - 2026-06-13
 
 ### Added

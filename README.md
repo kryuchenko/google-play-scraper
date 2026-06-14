@@ -21,6 +21,8 @@ Inspired by [facundoolano/google-play-scraper](https://github.com/facundoolano/g
 - **Data Safety** — get privacy/data collection info
 - **Suggestions** — get search autocomplete suggestions
 - **Top Charts** — get top free/paid/grossing apps by category
+- **Category Coverage** — union many slices of one category to beat the ~200-app request ceiling
+- **Full Catalog** — enumerate every app id in the store via Google's public sitemaps (~3M ids)
 - **Categories** — list all Play Store categories
 - **Localization** — support for 50+ languages and countries
 - **Rate Limiting** — built-in throttling to avoid blocks
@@ -497,19 +499,67 @@ and `-no-search` to control the request budget.
 **Honest boundary:** this collects the *commercially visible* layer of a
 category — typically thousands of apps, **not the full catalog**. Apps with no
 ratings that never surface in any chart, search, or similarity graph are not
-reachable through the anonymous web at all (see the FDFE note below). Wiring a
-`FeedBrowser` paginator into the cluster phase (`ClusterFeedMode`) adds a modest
-number of extra apps the feed surfaces; everything else stays the same.
+reachable through the category/search/graph channels. To enumerate the *entire*
+store — including those never-charted apps — use `EnumerateCatalog` below, which
+reads Google's own sitemaps. Wiring a `FeedBrowser` paginator into the cluster
+phase (`ClusterFeedMode`) adds a modest number of extra apps the feed surfaces;
+everything else stays the same.
+
+### EnumerateCatalog — the full catalog via sitemaps
+
+Where `CategoryApps` maximizes one category, `EnumerateCatalog` walks Google's
+**public sitemaps** — the one anonymous channel that lists the *whole* store.
+`robots.txt` advertises two sitemap indexes; together they point at ~80,945
+gzipped shards, each a `<urlset>` of whole-store URLs (books, movies, music
+**and** apps interleaved). The crawler keeps only the `/store/apps/details?id=`
+locs, yielding on the order of **3 million** app package ids.
+
+```go
+client := googleplayscraper.NewClient(googleplayscraper.WithThrottle(200 * time.Millisecond))
+
+err := client.EnumerateCatalog(ctx, func(pkg string) {
+    // called once per app id, serially — append/insert without locking
+    fmt.Println(pkg)
+}, googleplayscraper.CatalogOptions{
+    Concurrency: 8,          // parallel shard fetches (throttle still applies)
+    Shards:      []int{0, 1}, // optional: a subset of shards for sampling/resume; nil = all
+    OnShardDone: func(idx int, url string, n int) { /* progress */ },
+})
+```
+
+The lower-level steps are exported too, so you can drive the crawl yourself:
+`SitemapIndexURLs` (read the indexes from `robots.txt`), `AllSitemapShards`
+(the full ~80,945-entry work list), and `SitemapShardPackages` (fetch + gunzip +
+filter one shard). `emit` is **not** deduplicated across shards (ids are unique
+within a shard); deduplicate on your side if needed. The sweep is
+context-cancellable and returns a partial catalog on cancel; a single shard's
+failure is reported via `OnShardError` and skipped, never aborting the run.
+
+A full sweep is large (tens of thousands of requests) — be polite with
+`WithThrottle` and a sane `Concurrency`. The CLI
+(`examples/catalog-crawler`) writes ids to a file and can `-resolve` the first N
+to titles as a sanity check:
+
+```sh
+go run ./examples/catalog-crawler -shards 50 -concurrency 4 -out catalog.txt
+go run ./examples/catalog-crawler -shards 0  -concurrency 8 -throttle 200ms -out catalog.txt   # everything
+```
+
+**What this gives you:** package ids only — the sitemap carries no ratings,
+titles, or rankings. Pair it with `App()` (optionally `WithConcurrency`) to
+resolve the ids you care about. It is the breadth channel; `CategoryApps` is the
+ranked-and-enriched channel.
 
 ### Need deeper access? The mobile protobuf API (FDFE)
 
 For browser-grade feed depth without leaving the anonymous web, use
-`FeedBrowser` (above). If you instead need **batched detail lookups** or
-catalog access beyond what the web exposes, the option is Google Play's
-**mobile protobuf API** — the
+`FeedBrowser` (above); for the full list of app ids, use `EnumerateCatalog`
+(above). If you instead need **batched detail lookups** — resolving thousands of
+ids to metadata far faster than one `App()` call each — the option is Google
+Play's **mobile protobuf API**, the
 same `android.clients.google.com/fdfe/` endpoints the Play Store app uses. It
 supports real `nextPageUrl` pagination and `bulkDetails` (hundreds of package
-names per request, ideal for fast catalog verification).
+names per request, a natural companion to a sitemap id dump).
 
 This library does **not** implement it, because it requires a different (and
 heavier) setup with a different risk profile:

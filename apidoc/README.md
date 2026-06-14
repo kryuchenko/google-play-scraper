@@ -34,6 +34,10 @@ this directory depends on [swaggo/swag](https://github.com/swaggo/swag) (the
 - **POST** `/_/PlayStoreUi/data/batchexecute` RPCs (one operation each):
   `vyAe2` (lists), `qnKhOb` (pagination), `oCPfdb` (reviews), `xdSrCf`
   (permissions), `IJ4APc` (suggestions).
+- **GET** sitemap / full-catalog enumeration: `/robots.txt` (sitemap
+  discovery), `/sitemaps/sitemaps-index-{n}.xml` (shard index), and
+  `/sitemaps/{shard}.xml.gz` (gzipped `<urlset>` of whole-store URLs from which
+  `/store/apps/details?id=` app ids are extracted).
 
 Because OpenAPI keys operations by path, and swaggo rejects `#`/`?` in router
 paths, the five `batchexecute` RPCs and the availability probe are disambiguated

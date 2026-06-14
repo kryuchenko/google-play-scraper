@@ -81,6 +81,9 @@ func TestPathCoverage(t *testing.T) {
 		"/store/apps/developer",
 		"/store/apps/datasafety",
 		"/_/PlayStoreUi/data/batchexecute",
+		"/robots.txt",
+		"/sitemaps/sitemaps-index-{n}.xml",
+		"/sitemaps/{shard}.xml.gz",
 	}
 	for _, p := range want {
 		if !hasPathPrefix(paths, p) {
