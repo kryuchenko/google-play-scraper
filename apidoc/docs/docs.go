@@ -804,6 +804,10 @@ const docTemplate = `{
         }
     },
     "info": {
+        "contact": {
+            "name": "google-play-scraper (issues)",
+            "url": "https://github.com/kryuchenko/google-play-scraper/issues"
+        },
         "description": "{{escape .Description}}",
         "license": {
             "name": "MIT",
@@ -2208,6 +2212,20 @@ const docTemplate = `{
         }
     },
     "openapi": "3.1.0",
+    "tags": [
+        {
+            "description": "GET pages that return text/html embedding AF_initDataCallback ds:N data blocks.",
+            "name": "html-endpoints"
+        },
+        {
+            "description": "POST /_/PlayStoreUi/data/batchexecute RPCs returning the wrb.fr envelope.",
+            "name": "batchexecute-rpc"
+        },
+        {
+            "description": "Public sitemaps (robots.txt, index, gzipped shards) used for full-catalog enumeration.",
+            "name": "sitemap-endpoints"
+        }
+    ],
     "servers": [
         {
             "url": "https://play.google.com"

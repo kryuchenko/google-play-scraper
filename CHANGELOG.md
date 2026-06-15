@@ -15,6 +15,11 @@ All notable changes to this project are documented here. The format is based on
   leaving the still-valid Parameter Object `example` fields under `paths`
   untouched. A drift test asserts no deprecated schema `example` survives. This
   is a docs-only artifact change; the Go library API is unaffected.
+- The generated spec now lints clean under both Redocly (recommended ruleset)
+  and Spectral (`spectral:oas`): global `tags` and an `info.contact` were added
+  to the generator, and the Redocly config was renamed to `redocly.yaml` (with a
+  quoted `"off"` severity) so it is auto-discovered. No deprecation warnings
+  remain.
 
 ## [1.3.0] - 2026-06-15
 

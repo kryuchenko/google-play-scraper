@@ -7,4 +7,6 @@
 extends:
   - recommended
 rules:
-  security-defined: off
+  # Quoted: bare `off` is YAML boolean false, which newer Redocly does not
+  # accept as a severity; the string "off" is the correct disable value.
+  security-defined: "off"

@@ -33,8 +33,18 @@
 //
 // @servers.url  https://play.google.com
 //
+// @contact.name  google-play-scraper (issues)
+// @contact.url   https://github.com/kryuchenko/google-play-scraper/issues
+//
 // @license.name  MIT
 // @license.url   https://github.com/kryuchenko/google-play-scraper/blob/main/LICENSE
+//
+// @tag.name         html-endpoints
+// @tag.description  GET pages that return text/html embedding AF_initDataCallback ds:N data blocks.
+// @tag.name         batchexecute-rpc
+// @tag.description  POST /_/PlayStoreUi/data/batchexecute RPCs returning the wrb.fr envelope.
+// @tag.name         sitemap-endpoints
+// @tag.description  Public sitemaps (robots.txt, index, gzipped shards) used for full-catalog enumeration.
 //
 // @externalDocs.description  google-play-scraper source
 // @externalDocs.url          https://github.com/kryuchenko/google-play-scraper
