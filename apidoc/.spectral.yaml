@@ -1,0 +1,4 @@
+# Spectral ruleset for the generated OpenAPI spec. The built-in spectral:oas
+# ruleset is the standard OpenAPI linter; the spec is kept clean against it
+# (see the lint step in .github/workflows/test.yml).
+extends: ["spectral:oas"]

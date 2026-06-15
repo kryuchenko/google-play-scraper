@@ -3,6 +3,16 @@
 All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Internal
+
+- CI now lints the generated OpenAPI spec with Redocly (recommended ruleset) and
+  Spectral (`spectral:oas`, failing on warnings) on the stable leg, pinned for
+  reproducibility, so a future change cannot reintroduce a deprecation or lint
+  warning unnoticed (the Go drift test only guards the schema `example`
+  keyword). Ships the `apidoc/.spectral.yaml` ruleset.
+
 ## [1.3.1] - 2026-06-15
 
 ### Internal

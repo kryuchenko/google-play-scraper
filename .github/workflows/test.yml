@@ -54,6 +54,23 @@ jobs:
         working-directory: apidoc
         run: go test ./...
 
+      # Gate the OpenAPI spec on the two standard linters so a future change
+      # cannot reintroduce a deprecation/lint warning unnoticed (the Go drift
+      # test only guards the schema `example` keyword). Versions are pinned for
+      # reproducibility; configs (redocly.yaml, .spectral.yaml) are auto-found.
+      - name: Setup Node (spec linters)
+        if: matrix.go-version == 'stable'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Lint OpenAPI spec (Redocly + Spectral)
+        if: matrix.go-version == 'stable'
+        working-directory: apidoc
+        run: |
+          npx --yes @redocly/cli@2.32.2 lint docs/swagger.yaml
+          npx --yes @stoplight/spectral-cli@6.16.0 lint --fail-severity=warn docs/swagger.yaml
+
       - name: Update coverage in README
         if: github.ref == 'refs/heads/main' && matrix.go-version == 'stable'
         run: |
