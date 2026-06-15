@@ -3,6 +3,19 @@
 All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Internal
+
+- The generated OpenAPI 3.1 spec (`apidoc/`) now uses the JSON Schema 2020-12
+  `examples` array for schema-level examples instead of the deprecated singular
+  `example` keyword that swag v2 emits. A deterministic post-processor
+  (`apidoc/internal/specfix`, run by `gen.sh` and shared with the freshness
+  test) rewrites every `example` under `components.schemas` to `examples`,
+  leaving the still-valid Parameter Object `example` fields under `paths`
+  untouched. A drift test asserts no deprecated schema `example` survives. This
+  is a docs-only artifact change; the Go library API is unaffected.
+
 ## [1.3.0] - 2026-06-15
 
 ### Added

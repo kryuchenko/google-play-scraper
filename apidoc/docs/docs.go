@@ -12,27 +12,37 @@ const docTemplate = `{
                 "properties": {
                     "IAPRange": {
                         "description": "IAPRange is the human-readable in-app-purchase price range; absent when the\napp has no IAP.",
-                        "example": "$0.99 - $149.99 per item",
+                        "examples": [
+                            "$0.99 - $149.99 per item"
+                        ],
                         "type": "string"
                     },
                     "adSupported": {
                         "description": "AdSupported is true when the listing declares \"Contains ads\".",
-                        "example": true,
+                        "examples": [
+                            true
+                        ],
                         "type": "boolean"
                     },
                     "androidVersion": {
                         "description": "AndroidVersion is the minimum supported Android version; may be empty when\nGoogle reports \"Varies with device\".",
-                        "example": "6.0",
+                        "examples": [
+                            "6.0"
+                        ],
                         "type": "string"
                     },
                     "appId": {
                         "description": "AppID is the app package name (the listing's id query parameter).",
-                        "example": "com.google.android.apps.maps",
+                        "examples": [
+                            "com.google.android.apps.maps"
+                        ],
                         "type": "string"
                     },
                     "available": {
                         "description": "Available is true when the listing was reachable and parsed (a 404/region\nblock yields false).",
-                        "example": true,
+                        "examples": [
+                            true
+                        ],
                         "type": "boolean"
                     },
                     "categories": {
@@ -45,17 +55,23 @@ const docTemplate = `{
                     },
                     "contentRating": {
                         "description": "ContentRating is the age/content rating label, e.g. \"Everyone\" or\n\"USK: Ages 18+\".",
-                        "example": "Everyone",
+                        "examples": [
+                            "Everyone"
+                        ],
                         "type": "string"
                     },
                     "contentRatingDescription": {
                         "description": "ContentRatingDescription is the qualifier shown next to ContentRating\n(e.g. \"Gambling with Cash Payouts\"); may be absent.",
-                        "example": "Gambling with Cash Payouts",
+                        "examples": [
+                            "Gambling with Cash Payouts"
+                        ],
                         "type": "string"
                     },
                     "currency": {
                         "description": "Currency is the ISO 4217 code for Price/OriginalPrice, e.g. \"USD\", \"EUR\".",
-                        "example": "USD",
+                        "examples": [
+                            "USD"
+                        ],
                         "type": "string"
                     },
                     "description": {
@@ -63,12 +79,14 @@ const docTemplate = `{
                         "type": "string"
                     },
                     "descriptionHTML": {
-                        "description": "DescriptionHTML is the long description with Google's original inline\nmarkup preserved (mostly \u003cbr\u003e tags and HTML entities).",
+                        "description": "DescriptionHTML is the long description with Google's original inline\nmarkup preserved (mostly <br> tags and HTML entities).",
                         "type": "string"
                     },
                     "developer": {
                         "description": "Developer is the developer's display name.",
-                        "example": "Google LLC",
+                        "examples": [
+                            "Google LLC"
+                        ],
                         "type": "string"
                     },
                     "developerAddress": {
@@ -77,13 +95,17 @@ const docTemplate = `{
                     },
                     "developerEmail": {
                         "description": "DeveloperEmail is the developer's contact email; may be empty.",
-                        "example": "apps-help@google.com",
+                        "examples": [
+                            "apps-help@google.com"
+                        ],
                         "format": "email",
                         "type": "string"
                     },
                     "developerId": {
                         "description": "DeveloperID is the developer listing id used by GET /store/apps/developer\n(a numeric id or a quoted name).",
-                        "example": "Google LLC",
+                        "examples": [
+                            "Google LLC"
+                        ],
                         "type": "string"
                     },
                     "developerInternalID": {
@@ -109,51 +131,67 @@ const docTemplate = `{
                     },
                     "developerWebsite": {
                         "description": "DeveloperWebsite is the developer's website URL; may be empty.",
-                        "example": "http://maps.google.com/about/",
+                        "examples": [
+                            "http://maps.google.com/about/"
+                        ],
                         "format": "uri",
                         "type": "string"
                     },
                     "discountEndDate": {
                         "description": "DiscountEndDate is the discount expiry as a Unix epoch in SECONDS; present\nonly while a discount is active, otherwise 0/absent.",
-                        "example": 1735689600,
+                        "examples": [
+                            1735689600
+                        ],
                         "format": "int64",
                         "minimum": 0,
                         "type": "integer"
                     },
                     "earlyAccessEnabled": {
                         "description": "EarlyAccessEnabled is true when the listing is in early-access state.",
-                        "example": false,
+                        "examples": [
+                            false
+                        ],
                         "type": "boolean"
                     },
                     "free": {
                         "description": "Free is true when Price == 0.",
-                        "example": true,
+                        "examples": [
+                            true
+                        ],
                         "type": "boolean"
                     },
                     "genre": {
                         "description": "Genre is the localized primary category name.",
-                        "example": "Travel \u0026 Local",
+                        "examples": [
+                            "Travel & Local"
+                        ],
                         "type": "string"
                     },
                     "genreId": {
                         "description": "GenreID is the stable, uppercased category id (a Play category enum value).\nSee the categories list for the full set; \"GAME_*\" prefixes a game genre.",
-                        "example": "TRAVEL_AND_LOCAL",
+                        "examples": [
+                            "TRAVEL_AND_LOCAL"
+                        ],
                         "type": "string"
                     },
                     "headerImage": {
                         "description": "HeaderImage is the feature-graphic banner URL; absent on some listings.",
-                        "example": "https://play-lh.googleusercontent.com/UVo1hFs93u3MCQMQo6_KoKrX",
+                        "examples": [
+                            "https://play-lh.googleusercontent.com/UVo1hFs93u3MCQMQo6_KoKrX"
+                        ],
                         "format": "uri",
                         "type": "string"
                     },
                     "histogram": {
                         "description": "Histogram is the rating-count breakdown by star level, indexed\n[0]=1-star .. [4]=5-star. Values are counts, not percentages, and need not\nsum exactly to Ratings.",
-                        "example": [
-                            5452870,
-                            1679546,
-                            461292,
-                            1082704,
-                            9500000
+                        "examples": [
+                            [
+                                5452870,
+                                1679546,
+                                461292,
+                                1082704,
+                                9500000
+                            ]
                         ],
                         "items": {
                             "type": "integer"
@@ -163,48 +201,64 @@ const docTemplate = `{
                     },
                     "icon": {
                         "description": "Icon is the app icon URL.",
-                        "example": "https://play-lh.googleusercontent.com/B8pdO_2K5nBsF0g1h6dKwV",
+                        "examples": [
+                            "https://play-lh.googleusercontent.com/B8pdO_2K5nBsF0g1h6dKwV"
+                        ],
                         "format": "uri",
                         "type": "string"
                     },
                     "installs": {
                         "description": "Installs is the human-formatted install count with grouping separators and\na trailing \"+\", exactly as displayed.",
-                        "example": "1,000,000,000+",
+                        "examples": [
+                            "1,000,000,000+"
+                        ],
                         "type": "string"
                     },
                     "isAvailableInPlayPass": {
                         "description": "IsAvailableInPlayPass is true when the app is included in Google Play Pass.",
-                        "example": false,
+                        "examples": [
+                            false
+                        ],
                         "type": "boolean"
                     },
                     "maxInstalls": {
-                        "description": "MaxInstalls is Google's estimated actual install count (an upper bound,\nstrictly \u003e= MinInstalls).",
-                        "example": 2263522953,
+                        "description": "MaxInstalls is Google's estimated actual install count (an upper bound,\nstrictly >= MinInstalls).",
+                        "examples": [
+                            2263522953
+                        ],
                         "format": "int64",
                         "minimum": 0,
                         "type": "integer"
                     },
                     "minInstalls": {
                         "description": "MinInstalls is the lower bound of the install bucket as an integer.",
-                        "example": 1000000000,
+                        "examples": [
+                            1000000000
+                        ],
                         "format": "int64",
                         "minimum": 0,
                         "type": "integer"
                     },
                     "offersIAP": {
                         "description": "OffersIAP is true when the listing offers in-app purchases (derived from\nthe presence of IAPRange).",
-                        "example": true,
+                        "examples": [
+                            true
+                        ],
                         "type": "boolean"
                     },
                     "originalPrice": {
                         "description": "OriginalPrice is the pre-discount price in major currency units (micros\ndivided down); present only while a promotional discount is active.",
-                        "example": 9.99,
+                        "examples": [
+                            9.99
+                        ],
                         "minimum": 0,
                         "type": "number"
                     },
                     "preregister": {
                         "description": "Preregister is true for an unreleased app open for pre-registration.",
-                        "example": false,
+                        "examples": [
+                            false
+                        ],
                         "type": "boolean"
                     },
                     "previewVideo": {
@@ -214,24 +268,32 @@ const docTemplate = `{
                     },
                     "price": {
                         "description": "Price is the purchase price in major currency units (already divided down\nfrom Google's micros). 0 for free apps; see Currency for the unit.",
-                        "example": 0,
+                        "examples": [
+                            0
+                        ],
                         "minimum": 0,
                         "type": "number"
                     },
                     "priceText": {
                         "description": "PriceText is the formatted price label (e.g. \"$4.99\"); empty for free apps.",
-                        "example": "",
+                        "examples": [
+                            ""
+                        ],
                         "type": "string"
                     },
                     "privacyPolicy": {
                         "description": "PrivacyPolicy is the developer's privacy-policy URL; may be absent.",
-                        "example": "http://www.google.com/policies/privacy",
+                        "examples": [
+                            "http://www.google.com/policies/privacy"
+                        ],
                         "format": "uri",
                         "type": "string"
                     },
                     "ratings": {
                         "description": "Ratings is the total number of star ratings.",
-                        "example": 19445897,
+                        "examples": [
+                            19445897
+                        ],
                         "minimum": 0,
                         "type": "integer"
                     },
@@ -241,27 +303,35 @@ const docTemplate = `{
                     },
                     "released": {
                         "description": "Released is the original release date as a Unix epoch in SECONDS, e.g.\n1352989068 (= 2012-11-15). 0 when absent. Symmetric with Updated.",
-                        "example": 1352989068,
+                        "examples": [
+                            1352989068
+                        ],
                         "format": "int64",
                         "minimum": 0,
                         "type": "integer"
                     },
                     "reviews": {
                         "description": "Reviews is the number of written text reviews (a subset of Ratings).",
-                        "example": 677911,
+                        "examples": [
+                            677911
+                        ],
                         "minimum": 0,
                         "type": "integer"
                     },
                     "score": {
                         "description": "Score is the average star rating, a float in [0,5] at full precision\n(ScoreText holds the rounded one-decimal label Google displays).",
-                        "example": 4.626984,
+                        "examples": [
+                            4.626984
+                        ],
                         "maximum": 5,
                         "minimum": 0,
                         "type": "number"
                     },
                     "scoreText": {
                         "description": "ScoreText is the rounded, one-decimal rating label as displayed, e.g.\n\"4.6\"; empty when the app has no rating.",
-                        "example": "4.6",
+                        "examples": [
+                            "4.6"
+                        ],
                         "type": "string"
                     },
                     "screenshots": {
@@ -273,31 +343,41 @@ const docTemplate = `{
                         "uniqueItems": false
                     },
                     "summary": {
-                        "description": "Summary is the short tagline shown under the title. It may contain HTML\nentities exactly as Google serves them (e.g. \"\u0026amp;\").",
-                        "example": "Real-time GPS navigation \u0026amp; local suggestions",
+                        "description": "Summary is the short tagline shown under the title. It may contain HTML\nentities exactly as Google serves them (e.g. \"&amp;\").",
+                        "examples": [
+                            "Real-time GPS navigation &amp; local suggestions"
+                        ],
                         "type": "string"
                     },
                     "title": {
                         "description": "Title is the localized app name.",
-                        "example": "Google Maps",
+                        "examples": [
+                            "Google Maps"
+                        ],
                         "type": "string"
                     },
                     "updated": {
                         "description": "Updated is the last-updated time as a Unix epoch in SECONDS. 0 when absent.",
-                        "example": 1779963225,
+                        "examples": [
+                            1779963225
+                        ],
                         "format": "int64",
                         "minimum": 0,
                         "type": "integer"
                     },
                     "url": {
                         "description": "URL is the canonical Play Store listing URL.",
-                        "example": "https://play.google.com/store/apps/details?id=com.king.candycrushsaga",
+                        "examples": [
+                            "https://play.google.com/store/apps/details?id=com.king.candycrushsaga"
+                        ],
                         "format": "uri",
                         "type": "string"
                     },
                     "version": {
                         "description": "Version is the current version string; may be empty when Google reports\n\"Varies with device\".",
-                        "example": "1.329.0.1",
+                        "examples": [
+                            "1.329.0.1"
+                        ],
                         "type": "string"
                     },
                     "video": {
@@ -317,12 +397,16 @@ const docTemplate = `{
                 "properties": {
                     "appId": {
                         "description": "AppID is the probed app.",
-                        "example": "com.google.android.apps.maps",
+                        "examples": [
+                            "com.google.android.apps.maps"
+                        ],
                         "type": "string"
                     },
                     "checked": {
                         "description": "Checked is the number of countries that produced a conclusive status\n(anything other than StatusFetchError).",
-                        "example": 242,
+                        "examples": [
+                            242
+                        ],
                         "minimum": 0,
                         "type": "integer"
                     },
@@ -335,7 +419,9 @@ const docTemplate = `{
                     },
                     "globallyRemoved": {
                         "description": "GloballyRemoved is true only when at least one country was conclusively\nprobed and every conclusive (non-error) probe returned StatusNotFound —\ni.e. the app appears to have no listing anywhere it was checked. It is only\nmeaningful on a full AllCountries sweep; on a narrow Countries set it\nmerely reflects that subset. Note that AllCountries excludes markets\nwithout an official Play Store (cn/ir/kp/sy), so \"globally\" means across\nthe Play markets, not literally every country.",
-                        "example": false,
+                        "examples": [
+                            false
+                        ],
                         "type": "boolean"
                     },
                     "statuses": {
@@ -360,7 +446,9 @@ const docTemplate = `{
                     },
                     "privacyPolicyUrl": {
                         "description": "PrivacyPolicyURL is the privacy-policy URL from the data-safety page.",
-                        "example": "http://www.google.com/policies/privacy",
+                        "examples": [
+                            "http://www.google.com/policies/privacy"
+                        ],
                         "format": "uri",
                         "type": "string"
                     },
@@ -387,12 +475,16 @@ const docTemplate = `{
                 "properties": {
                     "code": {
                         "description": "Code is the upstream HTTP status the scraper observed, copied verbatim into\nStatusError.Code. 404 = listing not found, 429 = rate-limited / anti-bot,\n5xx = upstream Google error.",
-                        "example": 404,
+                        "examples": [
+                            404
+                        ],
                         "type": "integer"
                     },
                     "message": {
                         "description": "Message is the human-readable error string, matching StatusError.Error().",
-                        "example": "unexpected status: 404",
+                        "examples": [
+                            "unexpected status: 404"
+                        ],
                         "type": "string"
                     }
                 },
@@ -402,12 +494,16 @@ const docTemplate = `{
                 "properties": {
                     "permission": {
                         "description": "Permission is the human-readable permission description, e.g.\n\"precise location\".",
-                        "example": "precise location",
+                        "examples": [
+                            "precise location"
+                        ],
                         "type": "string"
                     },
                     "type": {
                         "description": "Type is the permission group label, e.g. \"Location\", \"Camera\". Falls back\nto \"Common\"/\"Other\" when the group is unnamed.",
-                        "example": "Location",
+                        "examples": [
+                            "Location"
+                        ],
                         "type": "string"
                     }
                 },
@@ -417,7 +513,9 @@ const docTemplate = `{
                 "properties": {
                     "nextToken": {
                         "description": "NextToken is the continuation token for the next batchexecute page; empty\nwhen there are no more reviews.",
-                        "example": "CroBIrEBAU60USc0jm2Ps4haLPoSm2pV",
+                        "examples": [
+                            "CroBIrEBAU60USc0jm2Ps4haLPoSm2pV"
+                        ],
                         "type": "string"
                     },
                     "reviews": {
@@ -435,51 +533,69 @@ const docTemplate = `{
                 "properties": {
                     "appId": {
                         "description": "AppID is the app package name.",
-                        "example": "com.king.candycrushsaga",
+                        "examples": [
+                            "com.king.candycrushsaga"
+                        ],
                         "type": "string"
                     },
                     "currency": {
                         "description": "Currency is the ISO 4217 code for Price; often empty in compact results.",
-                        "example": "",
+                        "examples": [
+                            ""
+                        ],
                         "type": "string"
                     },
                     "developer": {
                         "description": "Developer is the developer's display name.",
-                        "example": "King",
+                        "examples": [
+                            "King"
+                        ],
                         "type": "string"
                     },
                     "developerId": {
                         "description": "DeveloperID is the developer listing id.",
-                        "example": "King",
+                        "examples": [
+                            "King"
+                        ],
                         "type": "string"
                     },
                     "free": {
                         "description": "Free is true when Price == 0.",
-                        "example": true,
+                        "examples": [
+                            true
+                        ],
                         "type": "boolean"
                     },
                     "icon": {
                         "description": "Icon is the app icon URL.",
-                        "example": "https://play-lh.googleusercontent.com/...=s64",
+                        "examples": [
+                            "https://play-lh.googleusercontent.com/...=s64"
+                        ],
                         "format": "uri",
                         "type": "string"
                     },
                     "price": {
                         "description": "Price is the purchase price in major currency units; 0 for free apps.",
-                        "example": 0,
+                        "examples": [
+                            0
+                        ],
                         "minimum": 0,
                         "type": "number"
                     },
                     "score": {
                         "description": "Score is the average star rating, a float in [0,5] at full precision.",
-                        "example": 4.5100965,
+                        "examples": [
+                            4.5100965
+                        ],
                         "maximum": 5,
                         "minimum": 0,
                         "type": "number"
                     },
                     "scoreText": {
                         "description": "ScoreText is the rounded, one-decimal rating label, e.g. \"4.6\".",
-                        "example": "4.5",
+                        "examples": [
+                            "4.5"
+                        ],
                         "type": "string"
                     },
                     "summary": {
@@ -488,12 +604,16 @@ const docTemplate = `{
                     },
                     "title": {
                         "description": "Title is the localized app name.",
-                        "example": "Candy Crush Saga",
+                        "examples": [
+                            "Candy Crush Saga"
+                        ],
                         "type": "string"
                     },
                     "url": {
                         "description": "URL is the canonical Play Store listing URL.",
-                        "example": "https://play.google.com/store/apps/details?id=com.king.candycrushsaga",
+                        "examples": [
+                            "https://play.google.com/store/apps/details?id=com.king.candycrushsaga"
+                        ],
                         "format": "uri",
                         "type": "string"
                     }
@@ -504,12 +624,16 @@ const docTemplate = `{
                 "properties": {
                     "name": {
                         "description": "Name is the aspect being rated, e.g. \"Gameplay\" or \"Graphics\".",
-                        "example": "Gameplay",
+                        "examples": [
+                            "Gameplay"
+                        ],
                         "type": "string"
                     },
                     "rating": {
                         "description": "Rating is the aspect's star rating, an integer 1..5.",
-                        "example": 4,
+                        "examples": [
+                            4
+                        ],
                         "maximum": 5,
                         "minimum": 1,
                         "type": "integer"
@@ -521,22 +645,30 @@ const docTemplate = `{
                 "properties": {
                     "data": {
                         "description": "Data is the specific data item name, e.g. \"Email address\".",
-                        "example": "Email address",
+                        "examples": [
+                            "Email address"
+                        ],
                         "type": "string"
                     },
                     "optional": {
                         "description": "Optional is true when collection/sharing of this item is optional\n(false = required).",
-                        "example": true,
+                        "examples": [
+                            true
+                        ],
                         "type": "boolean"
                     },
                     "purpose": {
                         "description": "Purpose is the comma-separated list of declared purposes, e.g.\n\"App functionality, Analytics\".",
-                        "example": "App functionality, Account management",
+                        "examples": [
+                            "App functionality, Account management"
+                        ],
                         "type": "string"
                     },
                     "type": {
                         "description": "Type is the category this item belongs to, e.g. \"Personal info\".",
-                        "example": "Personal info",
+                        "examples": [
+                            "Personal info"
+                        ],
                         "type": "string"
                     }
                 },
@@ -554,13 +686,17 @@ const docTemplate = `{
                     },
                     "date": {
                         "description": "Date is when the review was posted, as a timezone-aware timestamp\n(serialized RFC 3339).",
-                        "example": "2026-04-21T23:00:45.167+02:00",
+                        "examples": [
+                            "2026-04-21T23:00:45.167+02:00"
+                        ],
                         "format": "date-time",
                         "type": "string"
                     },
                     "id": {
                         "description": "ID is the opaque review identifier (a UUID-like string).",
-                        "example": "8f3c1d2e-1a2b-4c5d-9e0f-112233445566",
+                        "examples": [
+                            "8f3c1d2e-1a2b-4c5d-9e0f-112233445566"
+                        ],
                         "type": "string"
                     },
                     "replyDate": {
@@ -574,42 +710,56 @@ const docTemplate = `{
                     },
                     "score": {
                         "description": "Score is the star rating, an integer 1..5.",
-                        "example": 5,
+                        "examples": [
+                            5
+                        ],
                         "maximum": 5,
                         "minimum": 1,
                         "type": "integer"
                     },
                     "text": {
                         "description": "Text is the review body.",
-                        "example": "Works great, exactly what I needed.",
+                        "examples": [
+                            "Works great, exactly what I needed."
+                        ],
                         "type": "string"
                     },
                     "thumbsUp": {
                         "description": "ThumbsUp is the count of users who found the review helpful.",
-                        "example": 16,
+                        "examples": [
+                            16
+                        ],
                         "minimum": 0,
                         "type": "integer"
                     },
                     "url": {
                         "description": "URL is the canonical link to the review on the Play Store.",
-                        "example": "https://play.google.com/store/apps/details?id=com.example\u0026reviewId=8f3c1d2e",
+                        "examples": [
+                            "https://play.google.com/store/apps/details?id=com.example&reviewId=8f3c1d2e"
+                        ],
                         "format": "uri",
                         "type": "string"
                     },
                     "userImage": {
                         "description": "UserImage is the URL of the author's avatar.",
-                        "example": "https://play-lh.googleusercontent.com/a/AGNmyx...=s64",
+                        "examples": [
+                            "https://play-lh.googleusercontent.com/a/AGNmyx...=s64"
+                        ],
                         "format": "uri",
                         "type": "string"
                     },
                     "userName": {
                         "description": "UserName is the review author's display name.",
-                        "example": "Jane Doe",
+                        "examples": [
+                            "Jane Doe"
+                        ],
                         "type": "string"
                     },
                     "version": {
                         "description": "Version is the app version the review was left on; may be absent.",
-                        "example": "26.15.01.894202351",
+                        "examples": [
+                            "26.15.01.894202351"
+                        ],
                         "type": "string"
                     }
                 },
@@ -619,12 +769,16 @@ const docTemplate = `{
                 "properties": {
                     "description": {
                         "description": "Description is the practice detail; it may contain inline HTML (e.g. an\nanchor tag) exactly as Google serves it.",
-                        "example": "Your data is transferred over a secure connection",
+                        "examples": [
+                            "Your data is transferred over a secure connection"
+                        ],
                         "type": "string"
                     },
                     "practice": {
                         "description": "Practice is the practice headline, e.g. \"Data is encrypted in transit\".",
-                        "example": "Data is encrypted in transit",
+                        "examples": [
+                            "Data is encrypted in transit"
+                        ],
                         "type": "string"
                     }
                 },
@@ -697,7 +851,7 @@ const docTemplate = `{
                             }
                         }
                     },
-                    "description": "URL-encoded JSON envelope [[['IJ4APc','\u003cinner-args\u003e']]]",
+                    "description": "URL-encoded JSON envelope [[['IJ4APc','<inner-args>']]]",
                     "required": true
                 },
                 "responses": {
@@ -790,7 +944,7 @@ const docTemplate = `{
                             }
                         }
                     },
-                    "description": "URL-encoded JSON envelope [[['oCPfdb','\u003cinner-args\u003e',null,'generic']]]. The sort order, page size and pagination token all live inside the inner args, NOT as query fields.",
+                    "description": "URL-encoded JSON envelope [[['oCPfdb','<inner-args>',null,'generic']]]. The sort order, page size and pagination token all live inside the inner args, NOT as query fields.",
                     "required": true
                 },
                 "responses": {
@@ -943,7 +1097,7 @@ const docTemplate = `{
                             }
                         }
                     },
-                    "description": "URL-encoded JSON envelope [[['vyAe2','\u003cinner-args\u003e',null,'generic']]]; inner __NUM__ is clamped to listMaxNum=660 (list.go), but see the response note — Google caps the actual result at ~200.",
+                    "description": "URL-encoded JSON envelope [[['vyAe2','<inner-args>',null,'generic']]]; inner __NUM__ is clamped to listMaxNum=660 (list.go), but see the response note — Google caps the actual result at ~200.",
                     "required": true
                 },
                 "responses": {
@@ -1021,7 +1175,7 @@ const docTemplate = `{
                             }
                         }
                     },
-                    "description": "URL-encoded JSON envelope [[['xdSrCf','\u003cinner-args\u003e',null,'1']]]",
+                    "description": "URL-encoded JSON envelope [[['xdSrCf','<inner-args>',null,'1']]]",
                     "required": true
                 },
                 "responses": {
@@ -1112,7 +1266,7 @@ const docTemplate = `{
         },
         "/sitemaps/sitemaps-index-{n}.xml": {
             "get": {
-                "description": "GET /sitemaps/sitemaps-index-{n}.xml. Returns application/xml: a\n\u003csitemapindex\u003e whose \u003csitemap\u003e\u003cloc\u003e entries point at the\nper-shard .xml.gz files (…-NNNNN-of-80945.xml.gz). index-0 lists\nshards 00000..49999, index-1 lists 50000..80944. SitemapShards\nparses the loc list.",
+                "description": "GET /sitemaps/sitemaps-index-{n}.xml. Returns application/xml: a\n<sitemapindex> whose <sitemap><loc> entries point at the\nper-shard .xml.gz files (…-NNNNN-of-80945.xml.gz). index-0 lists\nshards 00000..49999, index-1 lists 50000..80944. SitemapShards\nparses the loc list.",
                 "operationId": "getSitemapIndex",
                 "parameters": [
                     {
@@ -1142,7 +1296,7 @@ const docTemplate = `{
                                 }
                             }
                         },
-                        "description": "Shard URLs parsed from \u003csitemapindex\u003e/\u003csitemap\u003e/\u003cloc\u003e"
+                        "description": "Shard URLs parsed from <sitemapindex>/<sitemap>/<loc>"
                     },
                     "404": {
                         "content": {
@@ -1183,7 +1337,7 @@ const docTemplate = `{
         },
         "/sitemaps/{shard}.xml.gz": {
             "get": {
-                "description": "GET /sitemaps/{shard}.xml.gz. Returns a gzip-compressed \u003curlset\u003e\nof whole-store URLs (books, movies, music AND apps interleaved).\nSitemapShardPackages gunzips it and keeps only the\n/store/apps/details?id=PKG locs — ~30–55 of ~400 URLs per shard,\nso a full sweep yields on the order of 3 million app ids.",
+                "description": "GET /sitemaps/{shard}.xml.gz. Returns a gzip-compressed <urlset>\nof whole-store URLs (books, movies, music AND apps interleaved).\nSitemapShardPackages gunzips it and keeps only the\n/store/apps/details?id=PKG locs — ~30–55 of ~400 URLs per shard,\nso a full sweep yields on the order of 3 million app ids.",
                 "operationId": "getSitemapShard",
                 "parameters": [
                     {

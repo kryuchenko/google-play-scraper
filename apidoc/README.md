@@ -22,6 +22,8 @@ this directory depends on [swaggo/swag](https://github.com/swaggo/swag) (the
 | `doc.go` | General API info (`@title`, `@host play.google.com`, disclaimer) + `//go:generate`. |
 | `models.go` | Type aliases re-exporting the root models (`App`, `ReviewsResult`, …) plus `BatchExecuteEnvelope` / `FReqBody` describing the wire format. |
 | `google_endpoints.go` | One annotated stub per operation (no runtime code). |
+| `internal/specfix` | Post-processor: rewrites schema-level `example` to the 3.1 `examples` array (swag only emits the deprecated singular form). |
+| `cmd/fixexamples` | Thin CLI around `specfix`, run by `gen.sh` after `swag init`. |
 | `docs/` | Generated output: `docs.go`, `swagger.json`, `swagger.yaml` (committed). |
 | `drift_test.go` | Tests that the spec stays in sync with the scraper source. |
 
@@ -56,6 +58,15 @@ Two notes on the OpenAPI 3.1 output produced by swag v2 (`--v3.1`):
   `responses` object rather than the operation object itself. They remain valid
   3.1 specification extensions and the same facts are repeated in each
   description, so no information is lost.
+- swag v2-rc5 emits the singular `example` keyword on schema objects, which
+  OpenAPI 3.1 (JSON Schema 2020-12) deprecates in favor of the `examples` array.
+  Since swag has no `examples` support and rc5 is the latest release, `gen.sh`
+  runs the `cmd/fixexamples` post-processor, which rewrites every schema-level
+  `example` under `components.schemas` to `examples: [<value>]` (a one-element
+  array; array-valued examples become a nested array). Parameter Object
+  `example` fields under `paths` are not deprecated in 3.1 and are left
+  untouched. The transform is deterministic and shared with the freshness test,
+  so the committed files and any regeneration stay byte-identical.
 
 ## Regenerate
 

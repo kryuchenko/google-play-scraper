@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/kryuchenko/google-play-scraper/apidoc/internal/specfix"
+
 	// Imported so the swag toolchain stays in go.mod/go.sum even though the
 	// annotations it parses are plain comments. This keeps the generator
 	// reproducible and lets `go test` fail loudly if the dependency drifts.
@@ -156,6 +158,47 @@ func toSet(xs []string) map[string]bool {
 	return s
 }
 
+// TestNoDeprecatedSchemaExample (drift test C) asserts that no Schema Object
+// under components.schemas still carries the singular, 3.1-deprecated `example`
+// keyword — they must all be the `examples` array form produced by specfix /
+// gen.sh. It catches both a forgotten regeneration and a future swag change that
+// reintroduces `example`. Parameter-level `example` under paths is NOT checked:
+// it is the Parameter Object's own field and is valid in 3.1.
+func TestNoDeprecatedSchemaExample(t *testing.T) {
+	spec := readSpec(t)
+	components, _ := spec["components"].(map[string]any)
+	schemas, _ := components["schemas"].(map[string]any)
+	if len(schemas) == 0 {
+		t.Fatal("components.schemas missing or empty in swagger.json")
+	}
+	for name, sch := range schemas {
+		if hits := findExampleKeys(sch); len(hits) > 0 {
+			t.Errorf("schema %q still uses deprecated `example` (%d occurrence(s)); run ./gen.sh", name, len(hits))
+		}
+	}
+}
+
+// findExampleKeys recursively collects every `example` key found in a decoded
+// JSON value (maps and slices), used to assert none survive under the schemas
+// subtree.
+func findExampleKeys(v any) []string {
+	var hits []string
+	switch t := v.(type) {
+	case map[string]any:
+		for k, child := range t {
+			if k == "example" {
+				hits = append(hits, k)
+			}
+			hits = append(hits, findExampleKeys(child)...)
+		}
+	case []any:
+		for _, child := range t {
+			hits = append(hits, findExampleKeys(child)...)
+		}
+	}
+	return hits
+}
+
 // TestSpecIsFresh (drift test B) regenerates the spec into a temp directory and
 // compares it against the committed docs/swagger.yaml, catching annotations that
 // were edited without re-running ./gen.sh. It is skipped under -short and when
@@ -174,6 +217,12 @@ func TestSpecIsFresh(t *testing.T) {
 		"--parseDependency", "--parseInternal", "--v3.1")
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Skipf("cannot run swag to verify freshness (treat ./gen.sh as the source of truth): %v\n%s", err, out)
+	}
+
+	// Apply the same post-processing gen.sh runs (example -> examples), so the
+	// regenerated output is compared on equal footing with the committed files.
+	if err := specfix.Transform(tmp); err != nil {
+		t.Fatalf("specfix.Transform(regenerated): %v", err)
 	}
 
 	got, err := os.ReadFile(filepath.Join(tmp, "swagger.yaml"))

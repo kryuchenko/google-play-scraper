@@ -6,27 +6,32 @@ components:
           description: |-
             IAPRange is the human-readable in-app-purchase price range; absent when the
             app has no IAP.
-          example: $0.99 - $149.99 per item
+          examples:
+            - $0.99 - $149.99 per item
           type: string
         adSupported:
           description: AdSupported is true when the listing declares "Contains ads".
-          example: true
+          examples:
+            - true
           type: boolean
         androidVersion:
           description: |-
             AndroidVersion is the minimum supported Android version; may be empty when
             Google reports "Varies with device".
-          example: "6.0"
+          examples:
+            - "6.0"
           type: string
         appId:
           description: AppID is the app package name (the listing's id query parameter).
-          example: com.google.android.apps.maps
+          examples:
+            - com.google.android.apps.maps
           type: string
         available:
           description: |-
             Available is true when the listing was reachable and parsed (a 404/region
             block yields false).
-          example: true
+          examples:
+            - true
           type: boolean
         categories:
           description: Categories is the list of category names the app is filed under.
@@ -38,18 +43,20 @@ components:
           description: |-
             ContentRating is the age/content rating label, e.g. "Everyone" or
             "USK: Ages 18+".
-          example: Everyone
+          examples:
+            - Everyone
           type: string
         contentRatingDescription:
           description: |-
             ContentRatingDescription is the qualifier shown next to ContentRating
             (e.g. "Gambling with Cash Payouts"); may be absent.
-          example: Gambling with Cash Payouts
+          examples:
+            - Gambling with Cash Payouts
           type: string
         currency:
-          description: Currency is the ISO 4217 code for Price/OriginalPrice, e.g.
-            "USD", "EUR".
-          example: USD
+          description: Currency is the ISO 4217 code for Price/OriginalPrice, e.g. "USD", "EUR".
+          examples:
+            - USD
           type: string
         description:
           description: |-
@@ -63,22 +70,24 @@ components:
           type: string
         developer:
           description: Developer is the developer's display name.
-          example: Google LLC
+          examples:
+            - Google LLC
           type: string
         developerAddress:
-          description: DeveloperAddress is the developer's postal address; may be
-            empty.
+          description: DeveloperAddress is the developer's postal address; may be empty.
           type: string
         developerEmail:
           description: DeveloperEmail is the developer's contact email; may be empty.
-          example: apps-help@google.com
+          examples:
+            - apps-help@google.com
           format: email
           type: string
         developerId:
           description: |-
             DeveloperID is the developer listing id used by GET /store/apps/developer
             (a numeric id or a quoted name).
-          example: Google LLC
+          examples:
+            - Google LLC
           type: string
         developerInternalID:
           description: |-
@@ -86,58 +95,59 @@ components:
             DSA trader listings.
           type: string
         developerLegalAddress:
-          description: DeveloperLegalAddress is the trader's registered address (EU
-            DSA only).
+          description: DeveloperLegalAddress is the trader's registered address (EU DSA only).
           type: string
         developerLegalEmail:
-          description: DeveloperLegalEmail is the trader's legal contact email (EU
-            DSA only).
+          description: DeveloperLegalEmail is the trader's legal contact email (EU DSA only).
           format: email
           type: string
         developerLegalName:
-          description: DeveloperLegalName is the trader's registered legal name (EU
-            DSA only).
+          description: DeveloperLegalName is the trader's registered legal name (EU DSA only).
           type: string
         developerLegalPhoneNumber:
-          description: DeveloperLegalPhoneNumber is the trader's contact phone number
-            (EU DSA only).
+          description: DeveloperLegalPhoneNumber is the trader's contact phone number (EU DSA only).
           type: string
         developerWebsite:
           description: DeveloperWebsite is the developer's website URL; may be empty.
-          example: http://maps.google.com/about/
+          examples:
+            - http://maps.google.com/about/
           format: uri
           type: string
         discountEndDate:
           description: |-
             DiscountEndDate is the discount expiry as a Unix epoch in SECONDS; present
             only while a discount is active, otherwise 0/absent.
-          example: 1735689600
+          examples:
+            - 1735689600
           format: int64
           minimum: 0
           type: integer
         earlyAccessEnabled:
-          description: EarlyAccessEnabled is true when the listing is in early-access
-            state.
-          example: false
+          description: EarlyAccessEnabled is true when the listing is in early-access state.
+          examples:
+            - false
           type: boolean
         free:
           description: Free is true when Price == 0.
-          example: true
+          examples:
+            - true
           type: boolean
         genre:
           description: Genre is the localized primary category name.
-          example: Travel & Local
+          examples:
+            - Travel & Local
           type: string
         genreId:
           description: |-
             GenreID is the stable, uppercased category id (a Play category enum value).
             See the categories list for the full set; "GAME_*" prefixes a game genre.
-          example: TRAVEL_AND_LOCAL
+          examples:
+            - TRAVEL_AND_LOCAL
           type: string
         headerImage:
-          description: HeaderImage is the feature-graphic banner URL; absent on some
-            listings.
-          example: https://play-lh.googleusercontent.com/UVo1hFs93u3MCQMQo6_KoKrX
+          description: HeaderImage is the feature-graphic banner URL; absent on some listings.
+          examples:
+            - https://play-lh.googleusercontent.com/UVo1hFs93u3MCQMQo6_KoKrX
           format: uri
           type: string
         histogram:
@@ -145,44 +155,47 @@ components:
             Histogram is the rating-count breakdown by star level, indexed
             [0]=1-star .. [4]=5-star. Values are counts, not percentages, and need not
             sum exactly to Ratings.
-          example:
-          - 5452870
-          - 1679546
-          - 461292
-          - 1082704
-          - 9500000
+          examples:
+            - - 5452870
+              - 1679546
+              - 461292
+              - 1082704
+              - 9500000
           items:
             type: integer
           type: array
           uniqueItems: false
         icon:
           description: Icon is the app icon URL.
-          example: https://play-lh.googleusercontent.com/B8pdO_2K5nBsF0g1h6dKwV
+          examples:
+            - https://play-lh.googleusercontent.com/B8pdO_2K5nBsF0g1h6dKwV
           format: uri
           type: string
         installs:
           description: |-
             Installs is the human-formatted install count with grouping separators and
             a trailing "+", exactly as displayed.
-          example: 1,000,000,000+
+          examples:
+            - 1,000,000,000+
           type: string
         isAvailableInPlayPass:
-          description: IsAvailableInPlayPass is true when the app is included in Google
-            Play Pass.
-          example: false
+          description: IsAvailableInPlayPass is true when the app is included in Google Play Pass.
+          examples:
+            - false
           type: boolean
         maxInstalls:
           description: |-
             MaxInstalls is Google's estimated actual install count (an upper bound,
             strictly >= MinInstalls).
-          example: 2263522953
+          examples:
+            - 2263522953
           format: int64
           minimum: 0
           type: integer
         minInstalls:
-          description: MinInstalls is the lower bound of the install bucket as an
-            integer.
-          example: 1000000000
+          description: MinInstalls is the lower bound of the install bucket as an integer.
+          examples:
+            - 1000000000
           format: int64
           minimum: 0
           type: integer
@@ -190,70 +203,75 @@ components:
           description: |-
             OffersIAP is true when the listing offers in-app purchases (derived from
             the presence of IAPRange).
-          example: true
+          examples:
+            - true
           type: boolean
         originalPrice:
           description: |-
             OriginalPrice is the pre-discount price in major currency units (micros
             divided down); present only while a promotional discount is active.
-          example: 9.99
+          examples:
+            - 9.99
           minimum: 0
           type: number
         preregister:
           description: Preregister is true for an unreleased app open for pre-registration.
-          example: false
+          examples:
+            - false
           type: boolean
         previewVideo:
-          description: PreviewVideo is the autoplay mp4 preview clip URL; absent when
-            there is none.
+          description: PreviewVideo is the autoplay mp4 preview clip URL; absent when there is none.
           format: uri
           type: string
         price:
           description: |-
             Price is the purchase price in major currency units (already divided down
             from Google's micros). 0 for free apps; see Currency for the unit.
-          example: 0
+          examples:
+            - 0
           minimum: 0
           type: number
         priceText:
-          description: PriceText is the formatted price label (e.g. "$4.99"); empty
-            for free apps.
-          example: ""
+          description: PriceText is the formatted price label (e.g. "$4.99"); empty for free apps.
+          examples:
+            - ""
           type: string
         privacyPolicy:
-          description: PrivacyPolicy is the developer's privacy-policy URL; may be
-            absent.
-          example: http://www.google.com/policies/privacy
+          description: PrivacyPolicy is the developer's privacy-policy URL; may be absent.
+          examples:
+            - http://www.google.com/policies/privacy
           format: uri
           type: string
         ratings:
           description: Ratings is the total number of star ratings.
-          example: 19445897
+          examples:
+            - 19445897
           minimum: 0
           type: integer
         recentChanges:
-          description: RecentChanges is the latest "What's new" changelog text; may
-            be absent.
+          description: RecentChanges is the latest "What's new" changelog text; may be absent.
           type: string
         released:
           description: |-
             Released is the original release date as a Unix epoch in SECONDS, e.g.
             1352989068 (= 2012-11-15). 0 when absent. Symmetric with Updated.
-          example: 1352989068
+          examples:
+            - 1352989068
           format: int64
           minimum: 0
           type: integer
         reviews:
-          description: Reviews is the number of written text reviews (a subset of
-            Ratings).
-          example: 677911
+          description: Reviews is the number of written text reviews (a subset of Ratings).
+          examples:
+            - 677911
           minimum: 0
           type: integer
         score:
           description: |-
             Score is the average star rating, a float in [0,5] at full precision
             (ScoreText holds the rounded one-decimal label Google displays).
-          example: 4.626984
+          examples:
+            - 4.626984
           maximum: 5
           minimum: 0
           type: number
@@ -261,7 +279,8 @@ components:
           description: |-
             ScoreText is the rounded, one-decimal rating label as displayed, e.g.
             "4.6"; empty when the app has no rating.
-          example: "4.6"
+          examples:
+            - "4.6"
           type: string
         screenshots:
           description: Screenshots is the list of screenshot image URLs.
@@ -273,38 +292,40 @@ components:
           description: |-
             Summary is the short tagline shown under the title. It may contain HTML
             entities exactly as Google serves them (e.g. "&amp;").
-          example: Real-time GPS navigation &amp; local suggestions
+          examples:
+            - Real-time GPS navigation &amp; local suggestions
           type: string
         title:
           description: Title is the localized app name.
-          example: Google Maps
+          examples:
+            - Google Maps
           type: string
         updated:
-          description: Updated is the last-updated time as a Unix epoch in SECONDS.
-            0 when absent.
-          example: 1779963225
+          description: Updated is the last-updated time as a Unix epoch in SECONDS. 0 when absent.
+          examples:
+            - 1779963225
           format: int64
           minimum: 0
           type: integer
         url:
           description: URL is the canonical Play Store listing URL.
-          example: https://play.google.com/store/apps/details?id=com.king.candycrushsaga
+          examples:
+            - https://play.google.com/store/apps/details?id=com.king.candycrushsaga
           format: uri
           type: string
         version:
           description: |-
             Version is the current version string; may be empty when Google reports
             "Varies with device".
-          example: 1.329.0.1
+          examples:
+            - 1.329.0.1
           type: string
         video:
-          description: Video is the YouTube trailer player URL; absent on most non-game
-            listings.
+          description: Video is the YouTube trailer player URL; absent on most non-game listings.
           format: uri
           type: string
         videoImage:
-          description: VideoImage is the trailer poster image URL; absent when there
-            is no trailer.
+          description: VideoImage is the trailer poster image URL; absent when there is no trailer.
           format: uri
           type: string
       type: object
@@ -312,13 +333,15 @@ components:
       properties:
         appId:
           description: AppID is the probed app.
-          example: com.google.android.apps.maps
+          examples:
+            - com.google.android.apps.maps
           type: string
         checked:
           description: |-
             Checked is the number of countries that produced a conclusive status
             (anything other than StatusFetchError).
-          example: 242
+          examples:
+            - 242
           minimum: 0
           type: integer
         errors:
@@ -338,7 +361,8 @@ components:
             merely reflects that subset. Note that AllCountries excludes markets
             without an official Play Store (cn/ir/kp/sy), so "globally" means across
             the Play markets, not literally every country.
-          example: false
+          examples:
+            - false
           type: boolean
         statuses:
           additionalProperties:
@@ -357,9 +381,9 @@ components:
           type: array
           uniqueItems: false
         privacyPolicyUrl:
-          description: PrivacyPolicyURL is the privacy-policy URL from the data-safety
-            page.
-          example: http://www.google.com/policies/privacy
+          description: PrivacyPolicyURL is the privacy-policy URL from the data-safety page.
+          examples:
+            - http://www.google.com/policies/privacy
           format: uri
           type: string
         securityPractices:
@@ -369,8 +393,7 @@ components:
           type: array
           uniqueItems: false
         sharedData:
-          description: SharedData lists data the app shares with third parties; may
-            be empty.
+          description: SharedData lists data the app shares with third parties; may be empty.
           items:
             $ref: '#/components/schemas/googleplayscraper.DataSafetyEntry'
           type: array
@@ -383,11 +406,13 @@ components:
             Code is the upstream HTTP status the scraper observed, copied verbatim into
             StatusError.Code. 404 = listing not found, 429 = rate-limited / anti-bot,
             5xx = upstream Google error.
-          example: 404
+          examples:
+            - 404
           type: integer
         message:
           description: Message is the human-readable error string, matching StatusError.Error().
-          example: 'unexpected status: 404'
+          examples:
+            - 'unexpected status: 404'
           type: string
       type: object
     apidoc.Permission:
@@ -396,13 +421,15 @@ components:
           description: |-
             Permission is the human-readable permission description, e.g.
             "precise location".
-          example: precise location
+          examples:
+            - precise location
           type: string
         type:
           description: |-
             Type is the permission group label, e.g. "Location", "Camera". Falls back
             to "Common"/"Other" when the group is unnamed.
-          example: Location
+          examples:
+            - Location
           type: string
       type: object
     apidoc.ReviewsResult:
@@ -411,7 +438,8 @@ components:
           description: |-
             NextToken is the continuation token for the next batchexecute page; empty
             when there are no more reviews.
-          example: CroBIrEBAU60USc0jm2Ps4haLPoSm2pV
+          examples:
+            - CroBIrEBAU60USc0jm2Ps4haLPoSm2pV
           type: string
         reviews:
           description: Reviews is the page of parsed reviews.
@@ -424,58 +452,65 @@ components:
       properties:
         appId:
           description: AppID is the app package name.
-          example: com.king.candycrushsaga
+          examples:
+            - com.king.candycrushsaga
           type: string
         currency:
-          description: Currency is the ISO 4217 code for Price; often empty in compact
-            results.
-          example: ""
+          description: Currency is the ISO 4217 code for Price; often empty in compact results.
+          examples:
+            - ""
           type: string
         developer:
           description: Developer is the developer's display name.
-          example: King
+          examples:
+            - King
           type: string
         developerId:
           description: DeveloperID is the developer listing id.
-          example: King
+          examples:
+            - King
           type: string
         free:
           description: Free is true when Price == 0.
-          example: true
+          examples:
+            - true
           type: boolean
         icon:
           description: Icon is the app icon URL.
-          example: https://play-lh.googleusercontent.com/...=s64
+          examples:
+            - https://play-lh.googleusercontent.com/...=s64
           format: uri
           type: string
         price:
-          description: Price is the purchase price in major currency units; 0 for
-            free apps.
-          example: 0
+          description: Price is the purchase price in major currency units; 0 for free apps.
+          examples:
+            - 0
           minimum: 0
           type: number
         score:
-          description: Score is the average star rating, a float in [0,5] at full
-            precision.
-          example: 4.5100965
+          description: Score is the average star rating, a float in [0,5] at full precision.
+          examples:
+            - 4.5100965
           maximum: 5
           minimum: 0
           type: number
         scoreText:
           description: ScoreText is the rounded, one-decimal rating label, e.g. "4.6".
-          example: "4.5"
+          examples:
+            - "4.5"
           type: string
         summary:
-          description: Summary is the short tagline; may contain HTML entities as
-            served.
+          description: Summary is the short tagline; may contain HTML entities as served.
           type: string
         title:
           description: Title is the localized app name.
-          example: Candy Crush Saga
+          examples:
+            - Candy Crush Saga
           type: string
         url:
           description: URL is the canonical Play Store listing URL.
-          example: https://play.google.com/store/apps/details?id=com.king.candycrushsaga
+          examples:
+            - https://play.google.com/store/apps/details?id=com.king.candycrushsaga
           format: uri
           type: string
       type: object
@@ -483,11 +518,13 @@ components:
       properties:
         name:
           description: Name is the aspect being rated, e.g. "Gameplay" or "Graphics".
-          example: Gameplay
+          examples:
+            - Gameplay
           type: string
         rating:
           description: Rating is the aspect's star rating, an integer 1..5.
-          example: 4
+          examples:
+            - 4
           maximum: 5
           minimum: 1
           type: integer
@@ -496,23 +533,27 @@ components:
       properties:
         data:
           description: Data is the specific data item name, e.g. "Email address".
-          example: Email address
+          examples:
+            - Email address
           type: string
         optional:
           description: |-
             Optional is true when collection/sharing of this item is optional
             (false = required).
-          example: true
+          examples:
+            - true
           type: boolean
         purpose:
           description: |-
             Purpose is the comma-separated list of declared purposes, e.g.
             "App functionality, Analytics".
-          example: App functionality, Account management
+          examples:
+            - App functionality, Account management
           type: string
         type:
           description: Type is the category this item belongs to, e.g. "Personal info".
-          example: Personal info
+          examples:
+            - Personal info
           type: string
       type: object
     googleplayscraper.Review:
@@ -529,12 +570,14 @@ components:
           description: |-
             Date is when the review was posted, as a timezone-aware timestamp
             (serialized RFC 3339).
-          example: "2026-04-21T23:00:45.167+02:00"
+          examples:
+            - "2026-04-21T23:00:45.167+02:00"
           format: date-time
           type: string
         id:
           description: ID is the opaque review identifier (a UUID-like string).
-          example: 8f3c1d2e-1a2b-4c5d-9e0f-112233445566
+          examples:
+            - 8f3c1d2e-1a2b-4c5d-9e0f-112233445566
           type: string
         replyDate:
           description: |-
@@ -543,41 +586,47 @@ components:
           format: date-time
           type: string
         replyText:
-          description: ReplyText is the developer's reply body; absent when there
-            is no reply.
+          description: ReplyText is the developer's reply body; absent when there is no reply.
           type: string
         score:
           description: Score is the star rating, an integer 1..5.
-          example: 5
+          examples:
+            - 5
           maximum: 5
           minimum: 1
           type: integer
         text:
           description: Text is the review body.
-          example: Works great, exactly what I needed.
+          examples:
+            - Works great, exactly what I needed.
           type: string
         thumbsUp:
           description: ThumbsUp is the count of users who found the review helpful.
-          example: 16
+          examples:
+            - 16
           minimum: 0
           type: integer
         url:
           description: URL is the canonical link to the review on the Play Store.
-          example: https://play.google.com/store/apps/details?id=com.example&reviewId=8f3c1d2e
+          examples:
+            - https://play.google.com/store/apps/details?id=com.example&reviewId=8f3c1d2e
           format: uri
           type: string
         userImage:
           description: UserImage is the URL of the author's avatar.
-          example: https://play-lh.googleusercontent.com/a/AGNmyx...=s64
+          examples:
+            - https://play-lh.googleusercontent.com/a/AGNmyx...=s64
           format: uri
           type: string
         userName:
           description: UserName is the review author's display name.
-          example: Jane Doe
+          examples:
+            - Jane Doe
           type: string
         version:
           description: Version is the app version the review was left on; may be absent.
-          example: 26.15.01.894202351
+          examples:
+            - 26.15.01.894202351
           type: string
       type: object
     googleplayscraper.SecurityPractice:
@@ -586,28 +635,29 @@ components:
           description: |-
             Description is the practice detail; it may contain inline HTML (e.g. an
             anchor tag) exactly as Google serves it.
-          example: Your data is transferred over a secure connection
+          examples:
+            - Your data is transferred over a secure connection
           type: string
         practice:
-          description: Practice is the practice headline, e.g. "Data is encrypted
-            in transit".
-          example: Data is encrypted in transit
+          description: Practice is the practice headline, e.g. "Data is encrypted in transit".
+          examples:
+            - Data is encrypted in transit
           type: string
       type: object
     googleplayscraper.Status:
       enum:
-      - 0
-      - 1
-      - 2
-      - 3
-      - 4
+        - 0
+        - 1
+        - 2
+        - 3
+        - 4
       type: integer
       x-enum-varnames:
-      - StatusUnknown
-      - StatusAvailable
-      - StatusNotInRegion
-      - StatusNotFound
-      - StatusFetchError
+        - StatusUnknown
+        - StatusAvailable
+        - StatusNotInRegion
+        - StatusNotFound
+        - StatusFetchError
 externalDocs:
   description: google-play-scraper source
   url: https://github.com/kryuchenko/google-play-scraper
@@ -647,22 +697,22 @@ paths:
         decoded from the inner payload.
       operationId: batchSuggestIJ4APc
       parameters:
-      - description: Fixed rpcid for this operation
-        in: query
-        name: rpcids
-        required: true
-        schema:
-          enum:
-          - IJ4APc
-          type: string
+        - description: Fixed rpcid for this operation
+          in: query
+          name: rpcids
+          required: true
+          schema:
+            enum:
+              - IJ4APc
+            type: string
       requestBody:
         content:
           application/x-www-form-urlencoded:
             schema:
               oneOf:
-              - type: string
-              - title: f.req
-                type: string
+                - type: string
+                - title: f.req
+                  type: string
         description: URL-encoded JSON envelope [[['IJ4APc','<inner-args>']]]
         required: true
       responses:
@@ -673,26 +723,22 @@ paths:
                 items:
                   type: string
                 type: array
-          description: Suggested terms decoded from batchexecute envelope. An empty/null
-            inner payload means no suggestions, not an error.
+          description: Suggested terms decoded from batchexecute envelope. An empty/null inner payload means no suggestions, not an error.
         "429":
           content:
             text/plain:
               schema:
                 $ref: '#/components/schemas/apidoc.ErrorResponse'
-          description: Rate-limited / anti-bot challenge. Google may return 429, or
-            200 redirecting to google.com/sorry (CAPTCHA). Sustained scraping from
-            one IP triggers this.
+          description: Rate-limited / anti-bot challenge. Google may return 429, or 200 redirecting to google.com/sorry (CAPTCHA). Sustained scraping from one IP triggers this.
         "500":
           content:
             text/plain:
               schema:
                 $ref: '#/components/schemas/apidoc.ErrorResponse'
-          description: Upstream Google error (any 5xx). Surfaced as StatusError with
-            the observed code.
+          description: Upstream Google error (any 5xx). Surfaced as StatusError with the observed code.
       summary: Search suggestions RPC (IJ4APc)
       tags:
-      - batchexecute-rpc
+        - batchexecute-rpc
   /_/PlayStoreUi/data/batchexecute(oCPfdb):
     post:
       description: |-
@@ -703,41 +749,35 @@ paths:
         (reviews + nextToken) is decoded from the inner payload.
       operationId: batchReviewsOCPfdb
       parameters:
-      - description: 'Review sort order (Sort enum, constants.go): 1=helpfulness,
-          2=newest, 3=rating. Default 2 (newest). NOTE: not a real query field — this
-          value is embedded inside the f.req inner args; it is documented as a parameter
-          only to surface the enum.'
-        example: 2
-        in: query
-        name: sort
-        schema:
-          enum:
-          - 1
-          - 2
-          - 3
-          maximum: 3
-          minimum: 1
-          type: integer
-      - description: Reviews per request; embedded in f.req, capped at 150 by Google
-          (reviews.go). Documented as a parameter only to surface the limit.
-        example: 100
-        in: query
-        name: count
-        schema:
-          maximum: 150
-          minimum: 1
-          type: integer
+        - description: 'Review sort order (Sort enum, constants.go): 1=helpfulness, 2=newest, 3=rating. Default 2 (newest). NOTE: not a real query field — this value is embedded inside the f.req inner args; it is documented as a parameter only to surface the enum.'
+          example: 2
+          in: query
+          name: sort
+          schema:
+            enum:
+              - 1
+              - 2
+              - 3
+            maximum: 3
+            minimum: 1
+            type: integer
+        - description: Reviews per request; embedded in f.req, capped at 150 by Google (reviews.go). Documented as a parameter only to surface the limit.
+          example: 100
+          in: query
+          name: count
+          schema:
+            maximum: 150
+            minimum: 1
+            type: integer
       requestBody:
         content:
           application/x-www-form-urlencoded:
             schema:
               oneOf:
-              - type: string
-              - title: f.req
-                type: string
-        description: URL-encoded JSON envelope [[['oCPfdb','<inner-args>',null,'generic']]].
-          The sort order, page size and pagination token all live inside the inner
-          args, NOT as query fields.
+                - type: string
+                - title: f.req
+                  type: string
+        description: URL-encoded JSON envelope [[['oCPfdb','<inner-args>',null,'generic']]]. The sort order, page size and pagination token all live inside the inner args, NOT as query fields.
         required: true
       responses:
         "200":
@@ -745,27 +785,22 @@ paths:
             text/plain:
               schema:
                 $ref: '#/components/schemas/apidoc.ReviewsResult'
-          description: Decoded from batchexecute envelope. An empty/null inner payload
-            means no more reviews (end of pagination), not an error; nextToken is
-            then empty.
+          description: Decoded from batchexecute envelope. An empty/null inner payload means no more reviews (end of pagination), not an error; nextToken is then empty.
         "429":
           content:
             text/plain:
               schema:
                 $ref: '#/components/schemas/apidoc.ErrorResponse'
-          description: Rate-limited / anti-bot challenge. Google may return 429, or
-            200 redirecting to google.com/sorry (CAPTCHA). Sustained scraping from
-            one IP triggers this.
+          description: Rate-limited / anti-bot challenge. Google may return 429, or 200 redirecting to google.com/sorry (CAPTCHA). Sustained scraping from one IP triggers this.
         "500":
           content:
             text/plain:
               schema:
                 $ref: '#/components/schemas/apidoc.ErrorResponse'
-          description: Upstream Google error (any 5xx). Surfaced as StatusError with
-            the observed code.
+          description: Upstream Google error (any 5xx). Surfaced as StatusError with the observed code.
       summary: Reviews RPC (oCPfdb)
       tags:
-      - batchexecute-rpc
+        - batchexecute-rpc
   /_/PlayStoreUi/data/batchexecute(qnKhOb):
     post:
       description: |-
@@ -789,22 +824,22 @@ paths:
         Review pagination uses a different RPC (oCPfdb).
       operationId: batchPaginateQnKhOb
       parameters:
-      - description: Fixed rpcid for this operation
-        in: query
-        name: rpcids
-        required: true
-        schema:
-          enum:
-          - qnKhOb
-          type: string
+        - description: Fixed rpcid for this operation
+          in: query
+          name: rpcids
+          required: true
+          schema:
+            enum:
+              - qnKhOb
+            type: string
       requestBody:
         content:
           application/x-www-form-urlencoded:
             schema:
               oneOf:
-              - type: string
-              - title: f.req
-                type: string
+                - type: string
+                - title: f.req
+                  type: string
         description: URL-encoded JSON carrying the continuation token
         required: true
       responses:
@@ -815,28 +850,22 @@ paths:
                 items:
                   $ref: '#/components/schemas/apidoc.SearchResult'
                 type: array
-          description: Decoded from batchexecute envelope; includes next token. When
-            pagination is exhausted Google returns 200 with a NULL inner payload (handled
-            by decodeBatchEnvelope) — that signals end-of-data, not an error, and
-            the next token is empty.
+          description: Decoded from batchexecute envelope; includes next token. When pagination is exhausted Google returns 200 with a NULL inner payload (handled by decodeBatchEnvelope) — that signals end-of-data, not an error, and the next token is empty.
         "429":
           content:
             text/plain:
               schema:
                 $ref: '#/components/schemas/apidoc.ErrorResponse'
-          description: Rate-limited / anti-bot challenge. Google may return 429, or
-            200 redirecting to google.com/sorry (CAPTCHA). Sustained scraping from
-            one IP triggers this.
+          description: Rate-limited / anti-bot challenge. Google may return 429, or 200 redirecting to google.com/sorry (CAPTCHA). Sustained scraping from one IP triggers this.
         "500":
           content:
             text/plain:
               schema:
                 $ref: '#/components/schemas/apidoc.ErrorResponse'
-          description: Upstream Google error (any 5xx). Surfaced as StatusError with
-            the observed code.
+          description: Upstream Google error (any 5xx). Surfaced as StatusError with the observed code.
       summary: Paginate list/cluster/search RPC (qnKhOb)
       tags:
-      - batchexecute-rpc
+        - batchexecute-rpc
   /_/PlayStoreUi/data/batchexecute(vyAe2):
     post:
       description: |-
@@ -848,25 +877,23 @@ paths:
         operation and is not sent to the server.
       operationId: batchListVyAe2
       parameters:
-      - description: Fixed rpcid for this operation
-        in: query
-        name: rpcids
-        required: true
-        schema:
-          enum:
-          - vyAe2
-          type: string
+        - description: Fixed rpcid for this operation
+          in: query
+          name: rpcids
+          required: true
+          schema:
+            enum:
+              - vyAe2
+            type: string
       requestBody:
         content:
           application/x-www-form-urlencoded:
             schema:
               oneOf:
-              - type: string
-              - title: f.req
-                type: string
-        description: URL-encoded JSON envelope [[['vyAe2','<inner-args>',null,'generic']]];
-          inner __NUM__ is clamped to listMaxNum=660 (list.go), but see the response
-          note — Google caps the actual result at ~200.
+                - type: string
+                - title: f.req
+                  type: string
+        description: URL-encoded JSON envelope [[['vyAe2','<inner-args>',null,'generic']]]; inner __NUM__ is clamped to listMaxNum=660 (list.go), but see the response note — Google caps the actual result at ~200.
         required: true
       responses:
         "200":
@@ -876,28 +903,22 @@ paths:
                 items:
                   $ref: '#/components/schemas/apidoc.SearchResult'
                 type: array
-          description: 'Decoded from batchexecute envelope. Empirical limit: Google
-            returns at most ~200 apps per collection regardless of __NUM__ (660 is
-            only the request-side clamp). An empty/null inner payload means no data
-            (end of the collection), not an error.'
+          description: 'Decoded from batchexecute envelope. Empirical limit: Google returns at most ~200 apps per collection regardless of __NUM__ (660 is only the request-side clamp). An empty/null inner payload means no data (end of the collection), not an error.'
         "429":
           content:
             text/plain:
               schema:
                 $ref: '#/components/schemas/apidoc.ErrorResponse'
-          description: Rate-limited / anti-bot challenge. Google may return 429, or
-            200 redirecting to google.com/sorry (CAPTCHA). Sustained scraping from
-            one IP triggers this.
+          description: Rate-limited / anti-bot challenge. Google may return 429, or 200 redirecting to google.com/sorry (CAPTCHA). Sustained scraping from one IP triggers this.
         "500":
           content:
             text/plain:
               schema:
                 $ref: '#/components/schemas/apidoc.ErrorResponse'
-          description: Upstream Google error (any 5xx). Surfaced as StatusError with
-            the observed code.
+          description: Upstream Google error (any 5xx). Surfaced as StatusError with the observed code.
       summary: List apps RPC (vyAe2)
       tags:
-      - batchexecute-rpc
+        - batchexecute-rpc
   /_/PlayStoreUi/data/batchexecute(xdSrCf):
     post:
       description: |-
@@ -906,22 +927,22 @@ paths:
         payload.
       operationId: batchPermissionsXdSrCf
       parameters:
-      - description: Fixed rpcid for this operation
-        in: query
-        name: rpcids
-        required: true
-        schema:
-          enum:
-          - xdSrCf
-          type: string
+        - description: Fixed rpcid for this operation
+          in: query
+          name: rpcids
+          required: true
+          schema:
+            enum:
+              - xdSrCf
+            type: string
       requestBody:
         content:
           application/x-www-form-urlencoded:
             schema:
               oneOf:
-              - type: string
-              - title: f.req
-                type: string
+                - type: string
+                - title: f.req
+                  type: string
         description: URL-encoded JSON envelope [[['xdSrCf','<inner-args>',null,'1']]]
         required: true
       responses:
@@ -932,26 +953,22 @@ paths:
                 items:
                   $ref: '#/components/schemas/apidoc.Permission'
                 type: array
-          description: Decoded from batchexecute envelope. An empty/null inner payload
-            means the app declares no permissions, not an error.
+          description: Decoded from batchexecute envelope. An empty/null inner payload means the app declares no permissions, not an error.
         "429":
           content:
             text/plain:
               schema:
                 $ref: '#/components/schemas/apidoc.ErrorResponse'
-          description: Rate-limited / anti-bot challenge. Google may return 429, or
-            200 redirecting to google.com/sorry (CAPTCHA). Sustained scraping from
-            one IP triggers this.
+          description: Rate-limited / anti-bot challenge. Google may return 429, or 200 redirecting to google.com/sorry (CAPTCHA). Sustained scraping from one IP triggers this.
         "500":
           content:
             text/plain:
               schema:
                 $ref: '#/components/schemas/apidoc.ErrorResponse'
-          description: Upstream Google error (any 5xx). Surfaced as StatusError with
-            the observed code.
+          description: Upstream Google error (any 5xx). Surfaced as StatusError with the observed code.
       summary: Permissions RPC (xdSrCf)
       tags:
-      - batchexecute-rpc
+        - batchexecute-rpc
   /robots.txt:
     get:
       description: |-
@@ -980,11 +997,10 @@ paths:
             text/plain:
               schema:
                 $ref: '#/components/schemas/apidoc.ErrorResponse'
-          description: Upstream Google error (any 5xx). Surfaced as StatusError with
-            the observed code.
+          description: Upstream Google error (any 5xx). Surfaced as StatusError with the observed code.
       summary: Robots / sitemap discovery (text)
       tags:
-      - sitemap-endpoints
+        - sitemap-endpoints
   /sitemaps/{shard}.xml.gz:
     get:
       description: |-
@@ -995,13 +1011,13 @@ paths:
         so a full sweep yields on the order of 3 million app ids.
       operationId: getSitemapShard
       parameters:
-      - description: Shard file name, e.g. play_sitemaps_2026-06-08_1780977767-00000-of-80945
-        example: play_sitemaps_2026-06-08_1780977767-00000-of-80945
-        in: path
-        name: shard
-        required: true
-        schema:
-          type: string
+        - description: Shard file name, e.g. play_sitemaps_2026-06-08_1780977767-00000-of-80945
+          example: play_sitemaps_2026-06-08_1780977767-00000-of-80945
+          in: path
+          name: shard
+          required: true
+          schema:
+            type: string
       responses:
         "200":
           content:
@@ -1010,8 +1026,7 @@ paths:
                 items:
                   type: string
                 type: array
-          description: App package ids extracted from the shard's /store/apps/details
-            locs
+          description: App package ids extracted from the shard's /store/apps/details locs
         "404":
           content:
             application/gzip:
@@ -1029,11 +1044,10 @@ paths:
             application/gzip:
               schema:
                 $ref: '#/components/schemas/apidoc.ErrorResponse'
-          description: Upstream Google error (any 5xx). Surfaced as StatusError with
-            the observed code.
+          description: Upstream Google error (any 5xx). Surfaced as StatusError with the observed code.
       summary: Sitemap shard (gzipped XML)
       tags:
-      - sitemap-endpoints
+        - sitemap-endpoints
   /sitemaps/sitemaps-index-{n}.xml:
     get:
       description: |-
@@ -1044,16 +1058,16 @@ paths:
         parses the loc list.
       operationId: getSitemapIndex
       parameters:
-      - description: Index number advertised in robots.txt (0 or 1)
-        example: 0
-        in: path
-        name: "n"
-        required: true
-        schema:
-          enum:
-          - 0
-          - 1
-          type: integer
+        - description: Index number advertised in robots.txt (0 or 1)
+          example: 0
+          in: path
+          name: "n"
+          required: true
+          schema:
+            enum:
+              - 0
+              - 1
+            type: integer
       responses:
         "200":
           content:
@@ -1080,11 +1094,10 @@ paths:
             text/xml:
               schema:
                 $ref: '#/components/schemas/apidoc.ErrorResponse'
-          description: Upstream Google error (any 5xx). Surfaced as StatusError with
-            the observed code.
+          description: Upstream Google error (any 5xx). Surfaced as StatusError with the observed code.
       summary: Sitemap index (XML)
       tags:
-      - sitemap-endpoints
+        - sitemap-endpoints
   /store/apps/category/{category}:
     get:
       description: |-
@@ -1092,32 +1105,29 @@ paths:
         charts page into []SearchResult plus cluster URLs.
       operationId: categoryApps
       parameters:
-      - description: Play category id, e.g. GAME, GAME_ACTION or PRODUCTIVITY. One
-          of the 54 ids in AllCategories (constants.go); not enumerated here to avoid
-          drift as Google adds/removes categories.
-        example: GAME_ACTION
-        in: path
-        name: category
-        required: true
-        schema:
-          type: string
-      - description: UI language, ISO 639-1, e.g. en
-        example: en
-        in: query
-        name: hl
-        schema:
-          maxLength: 5
-          minLength: 2
-          type: string
-      - description: Country, ISO 3166-1 alpha-2 lowercase (pattern ^[a-z]{2}$, descriptive
-          only), e.g. us
-        example: us
-        in: query
-        name: gl
-        schema:
-          maxLength: 2
-          minLength: 2
-          type: string
+        - description: Play category id, e.g. GAME, GAME_ACTION or PRODUCTIVITY. One of the 54 ids in AllCategories (constants.go); not enumerated here to avoid drift as Google adds/removes categories.
+          example: GAME_ACTION
+          in: path
+          name: category
+          required: true
+          schema:
+            type: string
+        - description: UI language, ISO 639-1, e.g. en
+          example: en
+          in: query
+          name: hl
+          schema:
+            maxLength: 5
+            minLength: 2
+            type: string
+        - description: Country, ISO 3166-1 alpha-2 lowercase (pattern ^[a-z]{2}$, descriptive only), e.g. us
+          example: us
+          in: query
+          name: gl
+          schema:
+            maxLength: 2
+            minLength: 2
+            type: string
       responses:
         "200":
           content:
@@ -1132,26 +1142,22 @@ paths:
             text/html:
               schema:
                 $ref: '#/components/schemas/apidoc.ErrorResponse'
-          description: No such category page — the {category} id is not a recognized
-            Play category. Surfaced as StatusError{Code:404}.
+          description: No such category page — the {category} id is not a recognized Play category. Surfaced as StatusError{Code:404}.
         "429":
           content:
             text/html:
               schema:
                 $ref: '#/components/schemas/apidoc.ErrorResponse'
-          description: Rate-limited / anti-bot challenge. Google may return 429, or
-            200 redirecting to google.com/sorry (CAPTCHA). Sustained scraping from
-            one IP triggers this.
+          description: Rate-limited / anti-bot challenge. Google may return 429, or 200 redirecting to google.com/sorry (CAPTCHA). Sustained scraping from one IP triggers this.
         "500":
           content:
             text/html:
               schema:
                 $ref: '#/components/schemas/apidoc.ErrorResponse'
-          description: Upstream Google error (any 5xx). Surfaced as StatusError with
-            the observed code.
+          description: Upstream Google error (any 5xx). Surfaced as StatusError with the observed code.
       summary: Category page (HTML)
       tags:
-      - html-endpoints
+        - html-endpoints
   /store/apps/collection/{clusterPath}:
     get:
       description: |-
@@ -1161,30 +1167,29 @@ paths:
         placeholder.
       operationId: getCluster
       parameters:
-      - description: Absolute cluster/collection path from a prior page
-        in: path
-        name: clusterPath
-        required: true
-        schema:
-          minLength: 1
-          type: string
-      - description: UI language, ISO 639-1, e.g. en
-        example: en
-        in: query
-        name: hl
-        schema:
-          maxLength: 5
-          minLength: 2
-          type: string
-      - description: Country, ISO 3166-1 alpha-2 lowercase (pattern ^[a-z]{2}$, descriptive
-          only), e.g. us
-        example: us
-        in: query
-        name: gl
-        schema:
-          maxLength: 2
-          minLength: 2
-          type: string
+        - description: Absolute cluster/collection path from a prior page
+          in: path
+          name: clusterPath
+          required: true
+          schema:
+            minLength: 1
+            type: string
+        - description: UI language, ISO 639-1, e.g. en
+          example: en
+          in: query
+          name: hl
+          schema:
+            maxLength: 5
+            minLength: 2
+            type: string
+        - description: Country, ISO 3166-1 alpha-2 lowercase (pattern ^[a-z]{2}$, descriptive only), e.g. us
+          example: us
+          in: query
+          name: gl
+          schema:
+            maxLength: 2
+            minLength: 2
+            type: string
       responses:
         "200":
           content:
@@ -1199,26 +1204,22 @@ paths:
             text/html:
               schema:
                 $ref: '#/components/schemas/apidoc.ErrorResponse'
-          description: Cluster/collection URL no longer valid — tokens expire and
-            clusters rotate. Surfaced as StatusError{Code:404}.
+          description: Cluster/collection URL no longer valid — tokens expire and clusters rotate. Surfaced as StatusError{Code:404}.
         "429":
           content:
             text/html:
               schema:
                 $ref: '#/components/schemas/apidoc.ErrorResponse'
-          description: Rate-limited / anti-bot challenge. Google may return 429, or
-            200 redirecting to google.com/sorry (CAPTCHA). Sustained scraping from
-            one IP triggers this.
+          description: Rate-limited / anti-bot challenge. Google may return 429, or 200 redirecting to google.com/sorry (CAPTCHA). Sustained scraping from one IP triggers this.
         "500":
           content:
             text/html:
               schema:
                 $ref: '#/components/schemas/apidoc.ErrorResponse'
-          description: Upstream Google error (any 5xx). Surfaced as StatusError with
-            the observed code.
+          description: Upstream Google error (any 5xx). Surfaced as StatusError with the observed code.
       summary: Cluster page (HTML, absolute URL)
       tags:
-      - html-endpoints
+        - html-endpoints
   /store/apps/datasafety:
     get:
       description: |-
@@ -1226,67 +1227,59 @@ paths:
         AF_initDataCallback `ds:3` block.
       operationId: getDataSafety
       parameters:
-      - description: App package id, reverse-domain form (pattern ^[a-zA-Z][a-zA-Z0-9_]*(\.[a-zA-Z][a-zA-Z0-9_]*)+$,
-          descriptive only), e.g. com.whatsapp
-        example: com.spotify.music
-        in: query
-        name: id
-        required: true
-        schema:
-          maxLength: 255
-          minLength: 3
-          type: string
-      - description: UI language, ISO 639-1, e.g. en
-        example: en
-        in: query
-        name: hl
-        schema:
-          maxLength: 5
-          minLength: 2
-          type: string
-      - description: Country, ISO 3166-1 alpha-2 lowercase (pattern ^[a-z]{2}$, descriptive
-          only), e.g. us
-        example: us
-        in: query
-        name: gl
-        schema:
-          maxLength: 2
-          minLength: 2
-          type: string
+        - description: App package id, reverse-domain form (pattern ^[a-zA-Z][a-zA-Z0-9_]*(\.[a-zA-Z][a-zA-Z0-9_]*)+$, descriptive only), e.g. com.whatsapp
+          example: com.spotify.music
+          in: query
+          name: id
+          required: true
+          schema:
+            maxLength: 255
+            minLength: 3
+            type: string
+        - description: UI language, ISO 639-1, e.g. en
+          example: en
+          in: query
+          name: hl
+          schema:
+            maxLength: 5
+            minLength: 2
+            type: string
+        - description: Country, ISO 3166-1 alpha-2 lowercase (pattern ^[a-z]{2}$, descriptive only), e.g. us
+          example: us
+          in: query
+          name: gl
+          schema:
+            maxLength: 2
+            minLength: 2
+            type: string
       responses:
         "200":
           content:
             text/html:
               schema:
                 $ref: '#/components/schemas/apidoc.DataSafety'
-          description: 'Data safety parsed from AF_initDataCallback ds:3. Unlike /store/apps/details,
-            this page does NOT 404 for a removed or unknown app: it returns 200 with
-            an empty ds:3 block and DataSafety() yields a zero-value result (nil error).'
+          description: 'Data safety parsed from AF_initDataCallback ds:3. Unlike /store/apps/details, this page does NOT 404 for a removed or unknown app: it returns 200 with an empty ds:3 block and DataSafety() yields a zero-value result (nil error).'
         "400":
           content:
             text/html:
               schema:
                 $ref: '#/components/schemas/apidoc.ErrorResponse'
-          description: Missing the required id query parameter — Google returns 400
-            for this endpoint (not 404).
+          description: Missing the required id query parameter — Google returns 400 for this endpoint (not 404).
         "429":
           content:
             text/html:
               schema:
                 $ref: '#/components/schemas/apidoc.ErrorResponse'
-          description: Rate-limited / anti-bot challenge. Google may return 429, or
-            200 redirecting to google.com/sorry (CAPTCHA). Sustained scraping from
-            one IP triggers this.
+          description: Rate-limited / anti-bot challenge. Google may return 429, or 200 redirecting to google.com/sorry (CAPTCHA). Sustained scraping from one IP triggers this.
         "500":
           content:
             text/html:
               schema:
                 $ref: '#/components/schemas/apidoc.ErrorResponse'
-          description: Upstream Google error (any 5xx). Surfaced as StatusError with
-            the observed code.
+          description: Upstream Google error (any 5xx). Surfaced as StatusError with the observed code.
       summary: Data safety (HTML, ds:3)
       tags:
-      - html-endpoints
+        - html-endpoints
   /store/apps/details:
     get:
       description: |-
@@ -1294,35 +1287,31 @@ paths:
         AF_initDataCallback `ds:5` block, payload node [1][2].
       operationId: getAppDetails
       parameters:
-      - description: App package id, reverse-domain form, pattern ^[a-zA-Z][a-zA-Z0-9_]*(\.[a-zA-Z][a-zA-Z0-9_]*)+$
-          (pattern is descriptive only; swag v2 does not emit @Param pattern), e.g.
-          com.whatsapp
-        example: com.spotify.music
-        in: query
-        name: id
-        required: true
-        schema:
-          maxLength: 255
-          minLength: 3
-          type: string
-      - description: UI language, ISO 639-1, usually 2 lowercase letters but locale
-          variants like pt-BR occur, e.g. en
-        example: en
-        in: query
-        name: hl
-        schema:
-          maxLength: 5
-          minLength: 2
-          type: string
-      - description: Country, ISO 3166-1 alpha-2 lowercase, pattern ^[a-z]{2}$ (descriptive
-          only), e.g. us
-        example: us
-        in: query
-        name: gl
-        schema:
-          maxLength: 2
-          minLength: 2
-          type: string
+        - description: App package id, reverse-domain form, pattern ^[a-zA-Z][a-zA-Z0-9_]*(\.[a-zA-Z][a-zA-Z0-9_]*)+$ (pattern is descriptive only; swag v2 does not emit @Param pattern), e.g. com.whatsapp
+          example: com.spotify.music
+          in: query
+          name: id
+          required: true
+          schema:
+            maxLength: 255
+            minLength: 3
+            type: string
+        - description: UI language, ISO 639-1, usually 2 lowercase letters but locale variants like pt-BR occur, e.g. en
+          example: en
+          in: query
+          name: hl
+          schema:
+            maxLength: 5
+            minLength: 2
+            type: string
+        - description: Country, ISO 3166-1 alpha-2 lowercase, pattern ^[a-z]{2}$ (descriptive only), e.g. us
+          example: us
+          in: query
+          name: gl
+          schema:
+            maxLength: 2
+            minLength: 2
+            type: string
       responses:
         "200":
           content:
@@ -1335,26 +1324,22 @@ paths:
             text/html:
               schema:
                 $ref: '#/components/schemas/apidoc.ErrorResponse'
-          description: App/listing not found — removed, never existed, or not distributed
-            in this country (gl). Surfaced as StatusError{Code:404}.
+          description: App/listing not found — removed, never existed, or not distributed in this country (gl). Surfaced as StatusError{Code:404}.
         "429":
           content:
             text/html:
               schema:
                 $ref: '#/components/schemas/apidoc.ErrorResponse'
-          description: Rate-limited / anti-bot challenge. Google may return 429, or
-            200 redirecting to google.com/sorry (CAPTCHA). Sustained scraping from
-            one IP triggers this.
+          description: Rate-limited / anti-bot challenge. Google may return 429, or 200 redirecting to google.com/sorry (CAPTCHA). Sustained scraping from one IP triggers this.
         "500":
           content:
             text/html:
               schema:
                 $ref: '#/components/schemas/apidoc.ErrorResponse'
-          description: Upstream Google error (any 5xx). Surfaced as StatusError with
-            the observed code.
+          description: Upstream Google error (any 5xx). Surfaced as StatusError with the observed code.
       summary: App details (HTML, ds:5)
       tags:
-      - html-endpoints
+        - html-endpoints
   /store/apps/details(availability):
     get:
       description: |-
@@ -1364,68 +1349,60 @@ paths:
         not-found. The aggregated sweep yields AvailabilityResult.
       operationId: getAppAvailability
       parameters:
-      - description: App package id, reverse-domain form (pattern ^[a-zA-Z][a-zA-Z0-9_]*(\.[a-zA-Z][a-zA-Z0-9_]*)+$,
-          descriptive only), e.g. com.whatsapp
-        example: com.spotify.music
-        in: query
-        name: id
-        required: true
-        schema:
-          maxLength: 255
-          minLength: 3
-          type: string
-      - description: UI language, ISO 639-1, e.g. en
-        example: en
-        in: query
-        name: hl
-        schema:
-          maxLength: 5
-          minLength: 2
-          type: string
-      - description: Country to probe, ISO 3166-1 alpha-2 lowercase (pattern ^[a-z]{2}$,
-          descriptive only); one request per country, e.g. us
-        example: us
-        in: query
-        name: gl
-        required: true
-        schema:
-          maxLength: 2
-          minLength: 2
-          type: string
+        - description: App package id, reverse-domain form (pattern ^[a-zA-Z][a-zA-Z0-9_]*(\.[a-zA-Z][a-zA-Z0-9_]*)+$, descriptive only), e.g. com.whatsapp
+          example: com.spotify.music
+          in: query
+          name: id
+          required: true
+          schema:
+            maxLength: 255
+            minLength: 3
+            type: string
+        - description: UI language, ISO 639-1, e.g. en
+          example: en
+          in: query
+          name: hl
+          schema:
+            maxLength: 5
+            minLength: 2
+            type: string
+        - description: Country to probe, ISO 3166-1 alpha-2 lowercase (pattern ^[a-z]{2}$, descriptive only); one request per country, e.g. us
+          example: us
+          in: query
+          name: gl
+          required: true
+          schema:
+            maxLength: 2
+            minLength: 2
+            type: string
       responses:
         "200":
           content:
             text/html:
               schema:
                 $ref: '#/components/schemas/apidoc.AvailabilityResult'
-          description: Aggregated availability sweep; per-country Status read from
-            ds:5[1][2][18]
+          description: Aggregated availability sweep; per-country Status read from ds:5[1][2][18]
         "404":
           content:
             text/html:
               schema:
                 $ref: '#/components/schemas/apidoc.ErrorResponse'
-          description: Probed country has no listing; at the per-country probe a 404
-            maps to Status not_found (StatusError{Code:404}) rather than failing the
-            whole sweep.
+          description: Probed country has no listing; at the per-country probe a 404 maps to Status not_found (StatusError{Code:404}) rather than failing the whole sweep.
         "429":
           content:
             text/html:
               schema:
                 $ref: '#/components/schemas/apidoc.ErrorResponse'
-          description: Rate-limited / anti-bot challenge. Google may return 429, or
-            200 redirecting to google.com/sorry (CAPTCHA). Sweeping many countries
-            from one IP makes this likely; the failing country maps to Status error.
+          description: Rate-limited / anti-bot challenge. Google may return 429, or 200 redirecting to google.com/sorry (CAPTCHA). Sweeping many countries from one IP makes this likely; the failing country maps to Status error.
         "500":
           content:
             text/html:
               schema:
                 $ref: '#/components/schemas/apidoc.ErrorResponse'
-          description: Upstream Google error (any 5xx); the failing country maps to
-            Status error.
+          description: Upstream Google error (any 5xx); the failing country maps to Status error.
       summary: App availability probe (HTML, ds:5 node [18])
       tags:
-      - html-endpoints
+        - html-endpoints
   /store/apps/dev:
     get:
       description: |-
@@ -1433,33 +1410,31 @@ paths:
         internal id; results parsed into []SearchResult.
       operationId: developerAppsNumeric
       parameters:
-      - description: Numeric developer id, digits only (pattern ^[0-9]+$, descriptive
-          only), e.g. 5700313618786177705
-        example: "5700313618786177705"
-        in: query
-        name: id
-        required: true
-        schema:
-          maxLength: 32
-          minLength: 1
-          type: string
-      - description: UI language, ISO 639-1, e.g. en
-        example: en
-        in: query
-        name: hl
-        schema:
-          maxLength: 5
-          minLength: 2
-          type: string
-      - description: Country, ISO 3166-1 alpha-2 lowercase (pattern ^[a-z]{2}$, descriptive
-          only), e.g. us
-        example: us
-        in: query
-        name: gl
-        schema:
-          maxLength: 2
-          minLength: 2
-          type: string
+        - description: Numeric developer id, digits only (pattern ^[0-9]+$, descriptive only), e.g. 5700313618786177705
+          example: "5700313618786177705"
+          in: query
+          name: id
+          required: true
+          schema:
+            maxLength: 32
+            minLength: 1
+            type: string
+        - description: UI language, ISO 639-1, e.g. en
+          example: en
+          in: query
+          name: hl
+          schema:
+            maxLength: 5
+            minLength: 2
+            type: string
+        - description: Country, ISO 3166-1 alpha-2 lowercase (pattern ^[a-z]{2}$, descriptive only), e.g. us
+          example: us
+          in: query
+          name: gl
+          schema:
+            maxLength: 2
+            minLength: 2
+            type: string
       responses:
         "200":
           content:
@@ -1474,26 +1449,22 @@ paths:
             text/html:
               schema:
                 $ref: '#/components/schemas/apidoc.ErrorResponse'
-          description: No such developer page — the numeric id does not exist or is
-            not distributed in this country (gl). Surfaced as StatusError{Code:404}.
+          description: No such developer page — the numeric id does not exist or is not distributed in this country (gl). Surfaced as StatusError{Code:404}.
         "429":
           content:
             text/html:
               schema:
                 $ref: '#/components/schemas/apidoc.ErrorResponse'
-          description: Rate-limited / anti-bot challenge. Google may return 429, or
-            200 redirecting to google.com/sorry (CAPTCHA). Sustained scraping from
-            one IP triggers this.
+          description: Rate-limited / anti-bot challenge. Google may return 429, or 200 redirecting to google.com/sorry (CAPTCHA). Sustained scraping from one IP triggers this.
         "500":
           content:
             text/html:
               schema:
                 $ref: '#/components/schemas/apidoc.ErrorResponse'
-          description: Upstream Google error (any 5xx). Surfaced as StatusError with
-            the observed code.
+          description: Upstream Google error (any 5xx). Surfaced as StatusError with the observed code.
       summary: Developer apps by numeric id (HTML)
       tags:
-      - html-endpoints
+        - html-endpoints
   /store/apps/developer:
     get:
       description: |-
@@ -1501,32 +1472,31 @@ paths:
         name; results parsed into []SearchResult.
       operationId: developerAppsName
       parameters:
-      - description: Human-readable developer name, e.g. Google LLC
-        example: Google LLC
-        in: query
-        name: id
-        required: true
-        schema:
-          maxLength: 255
-          minLength: 1
-          type: string
-      - description: UI language, ISO 639-1, e.g. en
-        example: en
-        in: query
-        name: hl
-        schema:
-          maxLength: 5
-          minLength: 2
-          type: string
-      - description: Country, ISO 3166-1 alpha-2 lowercase (pattern ^[a-z]{2}$, descriptive
-          only), e.g. us
-        example: us
-        in: query
-        name: gl
-        schema:
-          maxLength: 2
-          minLength: 2
-          type: string
+        - description: Human-readable developer name, e.g. Google LLC
+          example: Google LLC
+          in: query
+          name: id
+          required: true
+          schema:
+            maxLength: 255
+            minLength: 1
+            type: string
+        - description: UI language, ISO 639-1, e.g. en
+          example: en
+          in: query
+          name: hl
+          schema:
+            maxLength: 5
+            minLength: 2
+            type: string
+        - description: Country, ISO 3166-1 alpha-2 lowercase (pattern ^[a-z]{2}$, descriptive only), e.g. us
+          example: us
+          in: query
+          name: gl
+          schema:
+            maxLength: 2
+            minLength: 2
+            type: string
       responses:
         "200":
           content:
@@ -1541,26 +1511,22 @@ paths:
             text/html:
               schema:
                 $ref: '#/components/schemas/apidoc.ErrorResponse'
-          description: No such developer page — the name does not match a developer
-            or is not distributed in this country (gl). Surfaced as StatusError{Code:404}.
+          description: No such developer page — the name does not match a developer or is not distributed in this country (gl). Surfaced as StatusError{Code:404}.
         "429":
           content:
             text/html:
               schema:
                 $ref: '#/components/schemas/apidoc.ErrorResponse'
-          description: Rate-limited / anti-bot challenge. Google may return 429, or
-            200 redirecting to google.com/sorry (CAPTCHA). Sustained scraping from
-            one IP triggers this.
+          description: Rate-limited / anti-bot challenge. Google may return 429, or 200 redirecting to google.com/sorry (CAPTCHA). Sustained scraping from one IP triggers this.
         "500":
           content:
             text/html:
               schema:
                 $ref: '#/components/schemas/apidoc.ErrorResponse'
-          description: Upstream Google error (any 5xx). Surfaced as StatusError with
-            the observed code.
+          description: Upstream Google error (any 5xx). Surfaced as StatusError with the observed code.
       summary: Developer apps by name (HTML)
       tags:
-      - html-endpoints
+        - html-endpoints
   /store/apps/top:
     get:
       description: |-
@@ -1570,23 +1536,22 @@ paths:
         the terminal 200, so the client must follow redirects.
       operationId: topApps
       parameters:
-      - description: UI language, ISO 639-1, e.g. en
-        example: en
-        in: query
-        name: hl
-        schema:
-          maxLength: 5
-          minLength: 2
-          type: string
-      - description: Country, ISO 3166-1 alpha-2 lowercase (pattern ^[a-z]{2}$, descriptive
-          only), e.g. us
-        example: us
-        in: query
-        name: gl
-        schema:
-          maxLength: 2
-          minLength: 2
-          type: string
+        - description: UI language, ISO 639-1, e.g. en
+          example: en
+          in: query
+          name: hl
+          schema:
+            maxLength: 5
+            minLength: 2
+            type: string
+        - description: Country, ISO 3166-1 alpha-2 lowercase (pattern ^[a-z]{2}$, descriptive only), e.g. us
+          example: us
+          in: query
+          name: gl
+          schema:
+            maxLength: 2
+            minLength: 2
+            type: string
       responses:
         "200":
           content:
@@ -1601,19 +1566,16 @@ paths:
             text/html:
               schema:
                 $ref: '#/components/schemas/apidoc.ErrorResponse'
-          description: Rate-limited / anti-bot challenge. Google may return 429, or
-            200 redirecting to google.com/sorry (CAPTCHA). Sustained scraping from
-            one IP triggers this.
+          description: Rate-limited / anti-bot challenge. Google may return 429, or 200 redirecting to google.com/sorry (CAPTCHA). Sustained scraping from one IP triggers this.
         "500":
           content:
             text/html:
               schema:
                 $ref: '#/components/schemas/apidoc.ErrorResponse'
-          description: Upstream Google error (any 5xx). Surfaced as StatusError with
-            the observed code.
+          description: Upstream Google error (any 5xx). Surfaced as StatusError with the observed code.
       summary: Top charts page (HTML)
       tags:
-      - html-endpoints
+        - html-endpoints
   /store/search:
     get:
       description: |-
@@ -1625,53 +1587,52 @@ paths:
         pages are unreachable and the real return is one page.
       operationId: searchApps
       parameters:
-      - description: Search query term
-        example: minecraft
-        in: query
-        name: q
-        required: true
-        schema:
-          maxLength: 255
-          minLength: 1
-          type: string
-      - description: Corpus; the scraper always sends 'apps'
-        example: apps
-        in: query
-        name: c
-        required: true
-        schema:
-          enum:
-          - apps
-          type: string
-      - description: 'Price filter: 0=all, 1=free, 2=paid (see search.go getPriceValue)'
-        example: 0
-        in: query
-        name: price
-        schema:
-          enum:
-          - 0
-          - 1
-          - 2
-          maximum: 2
-          minimum: 0
-          type: integer
-      - description: UI language, ISO 639-1, e.g. en
-        example: en
-        in: query
-        name: hl
-        schema:
-          maxLength: 5
-          minLength: 2
-          type: string
-      - description: Country, ISO 3166-1 alpha-2 lowercase (pattern ^[a-z]{2}$, descriptive
-          only), e.g. us
-        example: us
-        in: query
-        name: gl
-        schema:
-          maxLength: 2
-          minLength: 2
-          type: string
+        - description: Search query term
+          example: minecraft
+          in: query
+          name: q
+          required: true
+          schema:
+            maxLength: 255
+            minLength: 1
+            type: string
+        - description: Corpus; the scraper always sends 'apps'
+          example: apps
+          in: query
+          name: c
+          required: true
+          schema:
+            enum:
+              - apps
+            type: string
+        - description: 'Price filter: 0=all, 1=free, 2=paid (see search.go getPriceValue)'
+          example: 0
+          in: query
+          name: price
+          schema:
+            enum:
+              - 0
+              - 1
+              - 2
+            maximum: 2
+            minimum: 0
+            type: integer
+        - description: UI language, ISO 639-1, e.g. en
+          example: en
+          in: query
+          name: hl
+          schema:
+            maxLength: 5
+            minLength: 2
+            type: string
+        - description: Country, ISO 3166-1 alpha-2 lowercase (pattern ^[a-z]{2}$, descriptive only), e.g. us
+          example: us
+          in: query
+          name: gl
+          schema:
+            maxLength: 2
+            minLength: 2
+            type: string
       responses:
         "200":
           content:
@@ -1680,26 +1641,21 @@ paths:
                 items:
                   $ref: '#/components/schemas/apidoc.SearchResult'
                 type: array
-          description: 'Search results parsed from AF_initDataCallback. No match is
-            NOT a 404: Google returns 200 with an empty result set, decoded as an
-            empty array.'
+          description: 'Search results parsed from AF_initDataCallback. No match is NOT a 404: Google returns 200 with an empty result set, decoded as an empty array.'
         "429":
           content:
             text/html:
               schema:
                 $ref: '#/components/schemas/apidoc.ErrorResponse'
-          description: Rate-limited / anti-bot challenge. Google may return 429, or
-            200 redirecting to google.com/sorry (CAPTCHA). Sustained scraping from
-            one IP triggers this.
+          description: Rate-limited / anti-bot challenge. Google may return 429, or 200 redirecting to google.com/sorry (CAPTCHA). Sustained scraping from one IP triggers this.
         "500":
           content:
             text/html:
               schema:
                 $ref: '#/components/schemas/apidoc.ErrorResponse'
-          description: Upstream Google error (any 5xx). Surfaced as StatusError with
-            the observed code.
+          description: Upstream Google error (any 5xx). Surfaced as StatusError with the observed code.
       summary: Search apps (HTML)
       tags:
-      - html-endpoints
+        - html-endpoints
 servers:
-- url: https://play.google.com
+  - url: https://play.google.com
