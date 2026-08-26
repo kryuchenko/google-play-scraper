@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Empirical verification of the sitemap full-catalog feature (EnumerateCatalog
-# and friends). Three independent layers, so a failure localizes the cause:
+# Empirical verification of the sitemap full-catalog feature (CatalogSeq and
+# friends). Three independent layers, so a failure localizes the cause:
 #   Part A — raw Google endpoints via curl/gunzip/grep (the store structure is
 #            as the code assumes; curl cannot lie about what Google serves).
 #   Part B — the Go implementation LIVE, via the committed canary test.

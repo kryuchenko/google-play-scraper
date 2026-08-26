@@ -22,7 +22,7 @@ import (
 	"sync"
 	"time"
 
-	googleplayscraper "github.com/kryuchenko/google-play-scraper"
+	googleplayscraper "github.com/kryuchenko/google-play-scraper/v2"
 )
 
 // The catalog is not an operation, it is a dataset.

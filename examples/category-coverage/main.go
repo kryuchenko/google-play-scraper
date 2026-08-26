@@ -20,7 +20,7 @@ import (
 	"strconv"
 	"time"
 
-	googleplayscraper "github.com/kryuchenko/google-play-scraper"
+	googleplayscraper "github.com/kryuchenko/google-play-scraper/v2"
 )
 
 func main() {

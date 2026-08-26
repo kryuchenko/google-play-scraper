@@ -5,6 +5,44 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [2.0.0]
+
+Import path is now `github.com/kryuchenko/google-play-scraper/v2`. The v1 line
+is untouched and keeps resolving to its own tags; `go get -u` does not move
+anyone here.
+
+### Removed
+
+Both were deprecated in 1.4.0, which said in the doc comment that they would go
+in v2. Neither removal is automated by `go fix` -- that needs the old API to be
+expressible as a single call to the new one, and both of these turn a result
+into a loop.
+
+- `Client.ReviewsAll`. Use `Client.ReviewsSeq`:
+
+      for review, err := range c.ReviewsSeq(ctx, appID, opts) {
+          if err != nil {
+              return err
+          }
+          // ... and break wherever you actually want to stop
+      }
+
+  The old method buffered the whole run before returning anything and stopped
+  at 500 by default, a ceiling callers could neither see nor raise except by
+  guessing a larger number.
+
+- `Client.EnumerateCatalog`. Use `Client.CatalogSeq`:
+
+      for pkg, err := range c.CatalogSeq(ctx, opts) {
+          if err != nil {
+              return err
+          }
+          use(pkg)
+      }
+
+  `opts` is the same type and `opts.OnShardError` still receives per-shard
+  failures; the iterator's error slot carries terminal errors only.
+
 ## [1.4.0] - 2026-09-02
 
 ### Added

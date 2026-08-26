@@ -199,69 +199,16 @@ type CatalogOptions struct {
 	OnShardDone func(shardIndex int, shardURL string, packages int)
 }
 
-// Deprecated: this method will be removed in v2. Use [Client.CatalogSeq],
-// which takes the same options and adds what a callback cannot express --
-// stopping the sweep, and reporting why it stopped. A full sweep is 83k
-// requests, so the ability to walk away early is not a small difference.
-// Migration changes the shape of the call:
-//
-//	// before
-//	err := c.EnumerateCatalog(ctx, func(pkg string) { use(pkg) }, opts)
-//
-//	// after
-//	for pkg, err := range c.CatalogSeq(ctx, opts) {
-//		if err != nil {
-//			return err
-//		}
-//		use(pkg)
-//	}
-//
-// EnumerateCatalog sweeps every sitemap shard and calls emit once per app
-// package id discovered. It is the full-catalog counterpart to CategoryApps:
-// where CategoryApps maximizes the commercially-visible layer of one category,
-// EnumerateCatalog walks Google's own sitemap of the entire store.
-//
-// emit and the option callbacks are invoked serially (guarded by an internal
-// lock), so a caller may append to a shared slice or insert into a shared map
-// without its own synchronization. emit yields raw ids and does NOT
-// deduplicate across shards — a package listed in two shards is emitted twice;
-// deduplicate on the caller side if required (within a single shard ids are
-// already unique).
-//
-// The sweep is cooperative-cancellable: when ctx is cancelled no further shards
-// are dispatched and EnumerateCatalog returns ctx.Err() with the work done so
-// far already emitted (a partial catalog). A single shard's fetch/parse failure
-// never aborts the sweep — it is reported via OnShardError and skipped.
-//
-// This fetches tens of thousands of shards; run it with a sensible WithThrottle
-// and Concurrency, and expect on the order of 3 million ids.
-func (c *Client) EnumerateCatalog(ctx context.Context, emit func(pkg string), opts CatalogOptions) error {
-	ctx, endTask := startTask(ctx, traceTaskCatalog)
-	defer endTask()
-	return c.sweepCatalog(ctx, func(sh CatalogShard) {
-		if sh.Err != nil {
-			if opts.OnShardError != nil {
-				opts.OnShardError(sh.Index, sh.URL, sh.Err)
-			}
-			return
-		}
-		for _, p := range sh.Packages {
-			emit(p)
-		}
-		if opts.OnShardDone != nil {
-			opts.OnShardDone(sh.Index, sh.URL, len(sh.Packages))
-		}
-	}, opts)
-}
-
 // sweepCatalog walks every requested shard and calls emit once per app package
 // id. Shards are fetched concurrently; emit is called serially, so it needs no
 // locking of its own.
 //
-// This is the engine both entry points share. CatalogSeq calls it directly
-// rather than going through EnumerateCatalog: building the supported API on
-// top of the deprecated one would mean the deprecated path could not be
-// removed without rewriting the supported one.
+// Cooperatively cancellable: when ctx is cancelled no further shards are
+// dispatched and it returns ctx.Err() with the work done so far already
+// emitted. A single shard's fetch or parse failure never aborts the sweep --
+// it goes to OnShardError and is skipped.
+//
+// Only CatalogShardSeq calls this. It is the engine, not an API.
 func (c *Client) sweepCatalog(ctx context.Context, emit func(CatalogShard), opts CatalogOptions) error {
 	shards := opts.ShardURLs
 	if len(shards) == 0 {
@@ -491,8 +438,8 @@ func validPackage(id string) string {
 	return id
 }
 
-// CatalogSeq is EnumerateCatalog as an iterator: it yields every app package
-// id in the store, and the caller stops whenever it likes.
+// CatalogSeq yields every app package id in the store, and the caller stops
+// whenever it likes.
 //
 //	for pkg, err := range client.CatalogSeq(ctx, opts) {
 //		if err != nil {
@@ -503,15 +450,15 @@ func validPackage(id string) string {
 //		}
 //	}
 //
-// The break is the reason this exists. EnumerateCatalog takes a callback,
-// which cannot stop the sweep and cannot return an error, so a caller that
-// only wants the first matching id still pays for all 83k shards.
+// The break is the reason this exists. The callback-shaped predecessor it
+// replaced could neither stop the sweep nor return an error, so a caller that
+// only wanted the first matching id still paid for all 83k shards.
 //
 // The error slot carries terminal errors only -- a failure to list the shards,
 // or the context being cancelled. A single shard that fails to fetch or parse
-// does not end the sweep and is reported through opts.OnShardError exactly as
-// it is for EnumerateCatalog; the two error kinds are genuinely different and
-// keeping them separate is deliberate. When a terminal error does arrive it is
+// does not end the sweep and is reported through opts.OnShardError instead;
+// the two error kinds are genuinely different, and keeping them separate is
+// deliberate. When a terminal error does arrive it is
 // the final element of the sequence, paired with an empty id.
 //
 // Note that ranging with one variable silently drops the error, as it does for

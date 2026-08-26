@@ -33,7 +33,7 @@ import (
 	"syscall"
 	"time"
 
-	googleplayscraper "github.com/kryuchenko/google-play-scraper"
+	googleplayscraper "github.com/kryuchenko/google-play-scraper/v2"
 )
 
 func main() {
@@ -63,7 +63,7 @@ func main() {
 		}
 	}
 
-	// emit and the OnShard* callbacks are invoked serially by EnumerateCatalog,
+	// The loop body and the OnShard* callbacks are invoked serially by CatalogSeq,
 	// so the counters and maps below need no locking of their own.
 	var (
 		w       *bufio.Writer

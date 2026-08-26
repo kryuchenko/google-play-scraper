@@ -22,7 +22,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/kryuchenko/google-play-scraper"
+	"github.com/kryuchenko/google-play-scraper/v2"
 )
 
 func main() {

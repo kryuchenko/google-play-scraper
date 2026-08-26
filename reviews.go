@@ -56,46 +56,6 @@ func (c *Client) ReviewsComprehensive(ctx context.Context, appID string, opts Re
 	return allReviews, nil
 }
 
-// ReviewsAll fetches reviews with auto-pagination up to opts.Count total,
-// defaulting to 500 when Count is zero.
-//
-// Deprecated: this method will be removed in v2. Use [Client.ReviewsSeq],
-// which hands reviews over as they arrive instead of buffering the whole run,
-// and has no ceiling to guess at. Migration is a change of shape rather than a
-// rename, so it is not automated:
-//
-//	// before
-//	reviews, err := c.ReviewsAll(ctx, appID, opts)
-//
-//	// after
-//	for review, err := range c.ReviewsSeq(ctx, appID, opts) {
-//		if err != nil {
-//			return err
-//		}
-//		// ... and break wherever the caller actually wants to stop
-//	}
-func (c *Client) ReviewsAll(ctx context.Context, appID string, opts ReviewOptions) ([]Review, error) {
-	maxTotal := opts.Count
-	if maxTotal == 0 {
-		maxTotal = 500 // default max
-	}
-
-	// Pagination lives in ReviewsSeq alone. Keeping a second copy here is how
-	// the two drift: a fix to the token chain would have to be made twice, and
-	// the one that was missed would only show up on a deep run.
-	out := make([]Review, 0, maxTotal)
-	for r, err := range c.ReviewsSeq(ctx, appID, opts) {
-		if err != nil {
-			return out, err
-		}
-		out = append(out, r)
-		if len(out) >= maxTotal {
-			break
-		}
-	}
-	return out, nil
-}
-
 // Reviews fetches reviews for an app
 func (c *Client) Reviews(ctx context.Context, appID string, opts ReviewOptions) (*ReviewsResult, error) {
 	if appID == "" {
@@ -519,8 +479,8 @@ func parseTimestamp(arr []any) time.Time {
 	return time.UnixMilli(ms)
 }
 
-// ReviewsSeq is ReviewsAll as an iterator: it yields reviews page by page and
-// keeps paginating until the caller stops or the store runs out.
+// ReviewsSeq yields reviews page by page, paginating until the caller stops or
+// the store runs out.
 //
 //	for review, err := range client.ReviewsSeq(ctx, appID, opts) {
 //		if err != nil {
@@ -531,10 +491,11 @@ func parseTimestamp(arr []any) time.Time {
 //		}
 //	}
 //
-// Two things this fixes. ReviewsAll accumulates every review in memory before
-// returning any of them, which is unbounded in the app's popularity; here they
-// are handed over as they arrive. And ReviewsAll stops at 500 by default, a
-// limit the caller cannot see and can only raise by guessing a number --
+// Two things this fixes, both inherited from the slice-returning predecessor
+// it replaced. That one buffered every review before returning any, which is
+// unbounded in the app's popularity; here they are handed over as they arrive.
+// And it stopped at 500 by default, a limit the caller could not see and could
+// only raise by guessing a number --
 // opts.Count is ignored here, because the loop body is a better place to
 // decide when to stop than a count chosen in advance.
 //

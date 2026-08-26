@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	googleplayscraper "github.com/kryuchenko/google-play-scraper"
+	googleplayscraper "github.com/kryuchenko/google-play-scraper/v2"
 )
 
 // TestCategoryAppsBeatsCeiling proves the orchestrator unions many slices into

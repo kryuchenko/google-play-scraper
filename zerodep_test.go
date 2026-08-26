@@ -51,7 +51,7 @@ func TestRootIsZeroDependency(t *testing.T) {
 	})
 }
 
-const rootModulePath = "github.com/kryuchenko/google-play-scraper"
+const rootModulePath = "github.com/kryuchenko/google-play-scraper/v2"
 
 func goList(t *testing.T, args ...string) string {
 	t.Helper()

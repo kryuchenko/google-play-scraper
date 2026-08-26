@@ -45,7 +45,6 @@ const (
 	traceTaskApp               = "App"
 	traceTaskAvailability      = "Availability"
 	traceTaskCategoryApps      = "CategoryApps"
-	traceTaskCatalog           = "EnumerateCatalog"
 	traceTaskReviewsCompr      = "ReviewsComprehensive"
 	traceTaskSearch            = "Search"
 	traceTaskCluster           = "Cluster"

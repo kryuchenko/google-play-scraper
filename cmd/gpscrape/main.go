@@ -42,7 +42,7 @@ import (
 	"syscall"
 	"time"
 
-	googleplayscraper "github.com/kryuchenko/google-play-scraper"
+	googleplayscraper "github.com/kryuchenko/google-play-scraper/v2"
 )
 
 // version is stamped at build time by the release workflow. An unstamped

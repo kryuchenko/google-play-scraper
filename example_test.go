@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"time"
 
-	googleplayscraper "github.com/kryuchenko/google-play-scraper"
+	googleplayscraper "github.com/kryuchenko/google-play-scraper/v2"
 )
 
 // ExampleStatusError shows how to distinguish HTTP status failures (e.g. a

@@ -74,16 +74,30 @@ jobs:
           go vet ./...
           go test ./...
 
-      # The step above resolves the root module from the proxy, which is how a
-      # consumer builds lightfeed -- but it means lightfeed is tested against
-      # the last release, not against this branch. A root change that breaks it
-      # would only surface after the release. The workspace supplies HEAD.
+      # On the v1 line the step below built lightfeed against HEAD: go.work's
+      # `use .` satisfied its requirement on the root module, so a root change
+      # that broke lightfeed failed here rather than after the release.
+      #
+      # It cannot do that on this branch. The root module's path is now
+      # .../v2 while lightfeed still requires the v1 path -- it must, until
+      # v2.0.0 is tagged and it can be moved -- so the workspace no longer
+      # satisfies the requirement and the build falls back to the proxy.
+      # Measured: `go list -m` from lightfeed with the workspace active
+      # resolves the root to v1.3.1 in the module cache, not to this tree.
+      #
+      # The step is kept, and kept honest by saying so: while this holds it
+      # duplicates the one above rather than guarding anything, and a root
+      # change that breaks lightfeed will not be caught until step 3 of the
+      # major release moves lightfeed onto .../v2. Do not read a green tick
+      # here as coverage of that.
       - name: Build lightfeed against this branch
         if: matrix.go-version == 'stable'
         env:
           GOWORK: ''
         working-directory: lightfeed
         run: |
+          go list -m -f 'lightfeed resolves the root to {{.Path}} {{.Version}} (dir={{.Dir}})' \
+            github.com/kryuchenko/google-play-scraper || true
           go build ./...
           go test ./...
 

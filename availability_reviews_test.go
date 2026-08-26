@@ -239,7 +239,7 @@ func TestReviewsEmptyAppID(t *testing.T) {
 
 // pagedReviews returns a stateful route: the first call yields a page carrying a
 // continuation token, every later call yields a final tokenless page. It models
-// the two-step pagination ReviewsAll drives.
+// the two-step pagination ReviewsSeq drives.
 func pagedReviews(t *testing.T, firstIDs, secondIDs []string) routeFunc {
 	t.Helper()
 	first := reviewsEnvelope(t, firstIDs, "page2-token")
@@ -260,20 +260,23 @@ func pagedReviews(t *testing.T, firstIDs, secondIDs []string) routeFunc {
 	}
 }
 
-func TestReviewsAllPaginatesAndStops(t *testing.T) {
+func TestReviewsSeqPaginatesAndStops(t *testing.T) {
 	c := newMockClient(t, pagedReviews(t, []string{"a", "b"}, []string{"c", "d"}))
 
-	all, err := c.ReviewsAll(context.Background(), "com.x", ReviewOptions{Count: 100})
-	if err != nil {
-		t.Fatalf("ReviewsAll: %v", err)
-	}
-	// Page 1 (a,b) + page 2 (c,d), then the empty-token page stops the loop.
-	if len(all) != 4 {
-		t.Fatalf("got %d reviews, want 4", len(all))
-	}
 	ids := map[string]bool{}
-	for _, r := range all {
+	var n int
+	for r, err := range c.ReviewsSeq(context.Background(), "com.x", ReviewOptions{}) {
+		if err != nil {
+			t.Fatalf("ReviewsSeq after %d reviews: %v", n, err)
+		}
 		ids[r.ID] = true
+		n++
+	}
+
+	// Page 1 (a,b) + page 2 (c,d), then the empty-token page ends it. The
+	// sequence has to stop on its own here: nothing in the loop breaks.
+	if n != 4 {
+		t.Fatalf("got %d reviews, want 4", n)
 	}
 	for _, want := range []string{"a", "b", "c", "d"} {
 		if !ids[want] {
@@ -282,15 +285,27 @@ func TestReviewsAllPaginatesAndStops(t *testing.T) {
 	}
 }
 
-func TestReviewsAllTrimsToCount(t *testing.T) {
+func TestReviewsSeqStopsWhereTheCallerSaysSo(t *testing.T) {
 	c := newMockClient(t, pagedReviews(t, []string{"a", "b", "c"}, []string{"d", "e"}))
 
-	all, err := c.ReviewsAll(context.Background(), "com.x", ReviewOptions{Count: 4})
-	if err != nil {
-		t.Fatalf("ReviewsAll: %v", err)
+	var got []string
+	for r, err := range c.ReviewsSeq(context.Background(), "com.x", ReviewOptions{}) {
+		if err != nil {
+			t.Fatalf("ReviewsSeq: %v", err)
+		}
+		got = append(got, r.ID)
+		if len(got) == 4 {
+			break
+		}
 	}
-	if len(all) != 4 {
-		t.Fatalf("got %d reviews, want exactly 4 (trimmed)", len(all))
+	// The old slice-returning form fetched both pages and then trimmed. Here
+	// the fourth review is on the second page, so the page is still fetched --
+	// but the fifth is never handed over, and nothing beyond it is requested.
+	if len(got) != 4 {
+		t.Fatalf("got %d reviews, want exactly 4", len(got))
+	}
+	if got[3] != "d" {
+		t.Errorf("fourth review is %q, want \"d\"", got[3])
 	}
 }
 
@@ -305,7 +320,7 @@ func TestReviewsComprehensive(t *testing.T) {
 		}
 		mu.Lock()
 		defer mu.Unlock()
-		// ReviewsAll fetches one tokenless page per rating (5 ratings). Each page
+		// ReviewsComprehensive fetches one tokenless page per rating (5 ratings). Each page
 		// contributes a unique id plus a shared "dup", so the de-dup keeps 5
 		// uniques and the single shared review.
 		calls++

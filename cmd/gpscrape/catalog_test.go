@@ -12,7 +12,7 @@ import (
 	"strings"
 	"testing"
 
-	googleplayscraper "github.com/kryuchenko/google-play-scraper"
+	googleplayscraper "github.com/kryuchenko/google-play-scraper/v2"
 )
 
 func TestCategoryList(t *testing.T) {

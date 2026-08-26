@@ -24,7 +24,7 @@ import (
 	"testing"
 	"time"
 
-	googleplayscraper "github.com/kryuchenko/google-play-scraper"
+	googleplayscraper "github.com/kryuchenko/google-play-scraper/v2"
 )
 
 // Stable target apps. These are picked for longevity: large, first-party or

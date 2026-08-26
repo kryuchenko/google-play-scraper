@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kryuchenko/google-play-scraper"
+	"github.com/kryuchenko/google-play-scraper/v2"
 )
 
 // ============== APP TESTS ==============

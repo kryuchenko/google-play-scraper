@@ -26,7 +26,7 @@ jobs:
       fail-fast: false
       matrix:
         module:
-          - github.com/kryuchenko/google-play-scraper
+          - github.com/kryuchenko/google-play-scraper/v2
           - github.com/kryuchenko/google-play-scraper/lightfeed
           - github.com/kryuchenko/google-play-scraper/apidoc
 

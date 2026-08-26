@@ -2,8 +2,8 @@
 
 [![Tests](https://github.com/kryuchenko/google-play-scraper/actions/workflows/test.yml/badge.svg)](https://github.com/kryuchenko/google-play-scraper/actions/workflows/test.yml)
 ![Coverage](https://img.shields.io/badge/coverage-93.2%25-brightgreen)
-[![Go Report Card](https://goreportcard.com/badge/github.com/kryuchenko/google-play-scraper)](https://goreportcard.com/report/github.com/kryuchenko/google-play-scraper)
-[![Go Reference](https://pkg.go.dev/badge/github.com/kryuchenko/google-play-scraper.svg)](https://pkg.go.dev/github.com/kryuchenko/google-play-scraper)
+[![Go Report Card](https://goreportcard.com/badge/github.com/kryuchenko/google-play-scraper/v2)](https://goreportcard.com/report/github.com/kryuchenko/google-play-scraper/v2)
+[![Go Reference](https://pkg.go.dev/badge/github.com/kryuchenko/google-play-scraper/v2.svg)](https://pkg.go.dev/github.com/kryuchenko/google-play-scraper/v2)
 
 Go library and CLI for reading public Google Play Store data — app details,
 reviews, search, top charts, permissions, data safety, region availability and
@@ -22,13 +22,13 @@ Requires Go 1.25. Inspired by
 ## Install
 
 ```bash
-go get github.com/kryuchenko/google-play-scraper
+go get github.com/kryuchenko/google-play-scraper/v2
 ```
 
 ## Command line
 
 ```bash
-go install github.com/kryuchenko/google-play-scraper/cmd/gpscrape@latest
+go install github.com/kryuchenko/google-play-scraper/v2/cmd/gpscrape@latest
 ```
 
 `gpscrape` writes newline-delimited JSON to stdout, so it composes with `jq` and
@@ -88,7 +88,7 @@ import (
 	"log"
 	"time"
 
-	gps "github.com/kryuchenko/google-play-scraper"
+	gps "github.com/kryuchenko/google-play-scraper/v2"
 )
 
 func main() {
@@ -109,7 +109,7 @@ from a transport failure.
 ## Operations
 
 Signatures, option fields and per-method caveats are on
-[pkg.go.dev](https://pkg.go.dev/github.com/kryuchenko/google-play-scraper).
+[pkg.go.dev](https://pkg.go.dev/github.com/kryuchenko/google-play-scraper/v2).
 
 | Method | Returns |
 | --- | --- |
@@ -136,9 +136,10 @@ Client options: `WithThrottle`, `WithConcurrency`, `WithTimeout`,
 `WithHooks`. Set a throttle — the default is unthrottled, which suits one-off
 lookups and nothing else.
 
-`ReviewsAll` and `EnumerateCatalog` are deprecated as of 1.4.0 and will be
-removed in v2; use `ReviewsSeq` and `CatalogSeq`, which let the caller stop
-where it wants to.
+`ReviewsAll` and `EnumerateCatalog` were deprecated in 1.4.0 and are gone in
+v2. Use `ReviewsSeq` and `CatalogSeq`, which let the caller stop where it wants
+to. The v1 line keeps resolving to its own tags, so nothing moves here without
+being asked.
 
 ## Batched lookups
 
@@ -230,7 +231,7 @@ Both are separate Go modules; the root library stays stdlib-only.
 
 ## Links
 
-- [API reference](https://pkg.go.dev/github.com/kryuchenko/google-play-scraper)
+- [API reference](https://pkg.go.dev/github.com/kryuchenko/google-play-scraper/v2)
 - [CHANGELOG.md](CHANGELOG.md)
 - [CONTRIBUTING.md](CONTRIBUTING.md)
 - [SECURITY.md](SECURITY.md)

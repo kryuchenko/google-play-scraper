@@ -12,7 +12,7 @@ import (
 )
 
 // catalogShards builds n shard bodies, each carrying one app id, wired through
-// the same routes EnumerateCatalog's own tests use.
+// the same routes the sweep's own tests use.
 func catalogShards(t *testing.T, n int) []routeFunc {
 	t.Helper()
 	bodies := make(map[string][]byte, n)
@@ -26,7 +26,7 @@ func catalogShards(t *testing.T, n int) []routeFunc {
 }
 
 // The property that matters most for CatalogSeq is what happens on an early
-// break, because that is the whole reason it exists over EnumerateCatalog.
+// break, because that is the whole reason it exists over a callback sweep.
 // Shards are swept concurrently and ids arrive over a channel, so a producer
 // parked on a send has to be released when the consumer walks away. Getting
 // that wrong leaks a goroutine per abandoned sweep — and a leak that only
@@ -206,10 +206,10 @@ func reviewsRoute(t *testing.T, ok int, fetched *atomic.Int64) routeFunc {
 	}
 }
 
-// ReviewsSeq exists partly to remove ReviewsAll's invisible 500-review
+// ReviewsSeq exists partly to remove the invisible 500-review
 // ceiling, which a caller can neither see nor raise without guessing a number.
 // The sequence has to be willing to go past it.
-func TestReviewsSeqPassesTheReviewsAllCeiling(t *testing.T) {
+func TestReviewsSeqHasNoCeiling(t *testing.T) {
 	var pages atomic.Int64
 	c := newMockClient(t, reviewsRoute(t, 100, &pages))
 
@@ -225,7 +225,7 @@ func TestReviewsSeqPassesTheReviewsAllCeiling(t *testing.T) {
 	}
 
 	if n <= 500 {
-		t.Errorf("sequence stopped at %d reviews, want past ReviewsAll's 500 ceiling", n)
+		t.Errorf("sequence stopped at %d reviews, want past the old 500 ceiling", n)
 	}
 	if got := pages.Load(); got < 4 {
 		t.Errorf("fetched %d pages for %d reviews; pagination is not advancing", got, n)
@@ -233,7 +233,7 @@ func TestReviewsSeqPassesTheReviewsAllCeiling(t *testing.T) {
 }
 
 // Breaking out has to stop the token chain, or the iterator would be no
-// cheaper than ReviewsAll for a caller that wants the first few reviews.
+// cheaper than collecting everything for a caller that wants the first few.
 func TestReviewsSeqBreakStopsPaginating(t *testing.T) {
 	var pages atomic.Int64
 	c := newMockClient(t, reviewsRoute(t, 100, &pages))

@@ -3,7 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	googleplayscraper "github.com/kryuchenko/google-play-scraper"
+	googleplayscraper "github.com/kryuchenko/google-play-scraper/v2"
 	"math/rand/v2"
 	"os"
 	"os/exec"

@@ -6,7 +6,7 @@ Three Go modules live here, and the split is deliberate:
 
 | Module | Go | Purpose |
 | --- | --- | --- |
-| `.` | 1.25 | the library — **zero third-party dependencies**, enforced by `TestRootIsZeroDependency` |
+| `.` (`/v2`) | 1.25 | the library — **zero third-party dependencies**, enforced by `TestRootIsZeroDependency` |
 | `apidoc/` | 1.27 | OpenAPI spec for Google's endpoints plus its drift tests; pulls swaggo and libopenapi |
 | `lightfeed/` | 1.27 | optional browser-driven feed paginator; pulls chromedp |
 
@@ -26,6 +26,14 @@ The committed `go.work` wires the three modules together so that a change in
 the root is visible to `apidoc` and `lightfeed` without publishing anything.
 Without it, both submodules would resolve the root module from the proxy and
 you would be testing the last release instead of your working tree.
+
+**On this branch that is currently not true.** The root module's path is
+`.../v2` and both submodules still require the v1 path, which they must until
+`v2.0.0` is tagged. A workspace entry only satisfies a requirement on the same
+path, so they resolve the root from the proxy at v1.3.1 even with the workspace
+active — check with `go list -m github.com/kryuchenko/google-play-scraper` from
+inside `lightfeed`. Until step 3 of the major release moves them, a root change
+that breaks a submodule will not surface locally or in CI.
 
 Two things follow from that, and both are load-bearing:
 
@@ -163,10 +171,13 @@ make a local rewrite recoverable and are noise in a shared repository.
 Tag order matters, because the submodules require a published version of the
 root module:
 
-1. Tag the root: `v1.4.0`.
-2. Bump `require github.com/kryuchenko/google-play-scraper` in `apidoc/go.mod`
+1. Tag the root.
+2. Bump `require github.com/kryuchenko/google-play-scraper/v2` in `apidoc/go.mod`
    and `lightfeed/go.mod` to that version, and commit.
-3. Tag the submodules: `apidoc/v0.1.0`, `lightfeed/v0.1.0`.
+3. Tag the submodules.
+
+This is the ordinary every-release procedure. A major has one extra constraint
+on top of it — see below.
 
 Doing this in the other order bakes an unresolvable `require` into the
 submodule tags, which cannot be fixed without a new tag. The `Publish check`

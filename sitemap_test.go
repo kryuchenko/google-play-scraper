@@ -216,7 +216,7 @@ func catalogRoutes(t *testing.T, shardBodies map[string][]byte) []routeFunc {
 	return routes
 }
 
-func TestEnumerateCatalog(t *testing.T) {
+func TestCatalogSweep(t *testing.T) {
 	s0 := BaseURL + "/sitemaps/shard-0.xml.gz"
 	s1 := BaseURL + "/sitemaps/shard-1.xml.gz"
 	bodies := map[string][]byte{
@@ -237,9 +237,8 @@ func TestEnumerateCatalog(t *testing.T) {
 		doneSum int
 		doneCnt int
 	)
-	err := c.EnumerateCatalog(context.Background(), func(pkg string) {
-		got = append(got, pkg) // callbacks are serialized; no lock needed
-	}, CatalogOptions{
+	var err error
+	for pkg, seqErr := range c.CatalogSeq(context.Background(), CatalogOptions{
 		Concurrency: 4,
 		OnShardDone: func(_ int, _ string, n int) {
 			mu.Lock()
@@ -247,7 +246,13 @@ func TestEnumerateCatalog(t *testing.T) {
 			doneCnt++
 			mu.Unlock()
 		},
-	})
+	}) {
+		if seqErr != nil {
+			err = seqErr
+			break
+		}
+		got = append(got, pkg)
+	}
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -262,7 +267,7 @@ func TestEnumerateCatalog(t *testing.T) {
 	}
 }
 
-func TestEnumerateCatalogShardSubset(t *testing.T) {
+func TestCatalogSweepShardSubset(t *testing.T) {
 	s0 := BaseURL + "/sitemaps/shard-0.xml.gz"
 	s1 := BaseURL + "/sitemaps/shard-1.xml.gz"
 	bodies := map[string][]byte{
@@ -273,9 +278,14 @@ func TestEnumerateCatalogShardSubset(t *testing.T) {
 	c := newMockClient(t, catalogRoutes(t, bodies)...)
 
 	var got []string
-	err := c.EnumerateCatalog(context.Background(), func(pkg string) {
+	var err error
+	for pkg, seqErr := range c.CatalogSeq(context.Background(), CatalogOptions{Shards: []int{1}}) {
+		if seqErr != nil {
+			err = seqErr
+			break
+		}
 		got = append(got, pkg)
-	}, CatalogOptions{Shards: []int{1}})
+	}
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -284,7 +294,7 @@ func TestEnumerateCatalogShardSubset(t *testing.T) {
 	}
 }
 
-func TestEnumerateCatalogShardErrorContinues(t *testing.T) {
+func TestCatalogSweepShardErrorContinues(t *testing.T) {
 	s0 := BaseURL + "/sitemaps/shard-0.xml.gz"
 	s1 := BaseURL + "/sitemaps/shard-1.xml.gz"
 	idx0 := BaseURL + "/sitemaps/sitemaps-index-0.xml"
@@ -300,11 +310,16 @@ func TestEnumerateCatalogShardErrorContinues(t *testing.T) {
 		got      []string
 		errCount int
 	)
-	err := c.EnumerateCatalog(context.Background(), func(pkg string) {
-		got = append(got, pkg)
-	}, CatalogOptions{
+	var err error
+	for pkg, seqErr := range c.CatalogSeq(context.Background(), CatalogOptions{
 		OnShardError: func(_ int, _ string, _ error) { errCount++ },
-	})
+	}) {
+		if seqErr != nil {
+			err = seqErr
+			break
+		}
+		got = append(got, pkg)
+	}
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -316,7 +331,7 @@ func TestEnumerateCatalogShardErrorContinues(t *testing.T) {
 	}
 }
 
-func TestEnumerateCatalogCancel(t *testing.T) {
+func TestCatalogSweepCancel(t *testing.T) {
 	idx0 := BaseURL + "/sitemaps/sitemaps-index-0.xml"
 	c := newMockClient(t,
 		routePath("/robots.txt", robotsBody(idx0)),
@@ -327,7 +342,13 @@ func TestEnumerateCatalogCancel(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // cancelled before any shard dispatch
 
-	err := c.EnumerateCatalog(ctx, func(string) {}, CatalogOptions{})
+	var err error
+	for _, seqErr := range c.CatalogSeq(ctx, CatalogOptions{}) {
+		if seqErr != nil {
+			err = seqErr
+			break
+		}
+	}
 	if err == nil {
 		t.Error("expected ctx.Err() from a cancelled sweep")
 	}

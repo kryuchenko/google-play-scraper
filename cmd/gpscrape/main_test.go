@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	googleplayscraper "github.com/kryuchenko/google-play-scraper"
+	googleplayscraper "github.com/kryuchenko/google-play-scraper/v2"
 )
 
 // parseShards is the only place the CLI interprets a syntax of its own, and
