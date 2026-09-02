@@ -127,7 +127,7 @@ func TestCoverageSaturation(t *testing.T) {
 	}
 
 	// Three productive sources (ratio 1.0): far above threshold, not saturated.
-	for i := 0; i < 3; i++ {
+	for range 3 {
 		run.satSamples = append(run.satSamples, 1.0)
 	}
 	run.checkSaturation()
@@ -136,7 +136,7 @@ func TestCoverageSaturation(t *testing.T) {
 	}
 
 	// Three barren sources (ratio 0.0) push the window average below threshold.
-	for i := 0; i < 3; i++ {
+	for range 3 {
 		run.satSamples = append(run.satSamples, 0.0)
 	}
 	run.checkSaturation()

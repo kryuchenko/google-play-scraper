@@ -18,16 +18,16 @@ import (
 // per-topic feed tokens extracted from the HTML page instead.
 func clusterMorePayload(t *testing.T, appIDs []string, nextToken string) []byte {
 	t.Helper()
-	apps := make([]interface{}, 0, len(appIDs))
+	apps := make([]any, 0, len(appIDs))
 	for _, id := range appIDs {
-		apps = append(apps, []interface{}{[]interface{}{id}, nil, nil, "Title " + id})
+		apps = append(apps, []any{[]any{id}, nil, nil, "Title " + id})
 	}
-	lvl := make([]interface{}, 22)
+	lvl := make([]any, 22)
 	if nextToken != "" {
-		lvl[3] = []interface{}{nextToken} // [0][3][0] echo token (ignored)
+		lvl[3] = []any{nextToken} // [0][3][0] echo token (ignored)
 	}
-	lvl[21] = []interface{}{apps} // [0][21][0] apps
-	data := []interface{}{lvl}
+	lvl[21] = []any{apps} // [0][21][0] apps
+	data := []any{lvl}
 	raw, err := json.Marshal(data)
 	if err != nil {
 		t.Fatalf("marshal cluster-more: %v", err)
@@ -81,16 +81,16 @@ func TestClusterPaginates(t *testing.T) {
 // [0,1,0,3,0] is included for realism but is not used for pagination.
 func clusterHTMLPage(t *testing.T, appIDs []string, category string, topicIDs ...string) []byte {
 	t.Helper()
-	apps := make([]interface{}, 0, len(appIDs))
+	apps := make([]any, 0, len(appIDs))
 	for _, id := range appIDs {
 		// parseSearchResultNew reads AppID at [0][0] and Title at [3].
-		apps = append(apps, []interface{}{[]interface{}{id}, nil, nil, "Title " + id})
+		apps = append(apps, []any{[]any{id}, nil, nil, "Title " + id})
 	}
-	lvl := make([]interface{}, 22)
-	lvl[3] = []interface{}{"echo-token"} // [0,1,0,3,0] echo token (ignored)
-	lvl[21] = []interface{}{apps}        // [0,1,0,21,0] apps
-	node := []interface{}{
-		[]interface{}{nil, []interface{}{lvl}}, // [0][1][0] = lvl
+	lvl := make([]any, 22)
+	lvl[3] = []any{"echo-token"} // [0,1,0,3,0] echo token (ignored)
+	lvl[21] = []any{apps}        // [0,1,0,21,0] apps
+	node := []any{
+		[]any{nil, []any{lvl}}, // [0][1][0] = lvl
 	}
 	raw, err := json.Marshal(node)
 	if err != nil {
@@ -180,19 +180,19 @@ func TestExtractFeedTokensDedup(t *testing.T) {
 // for fields the fixture path rarely populates: URL, developer id, currency,
 // price, summary, score.
 func TestParseSearchResultRichRow(t *testing.T) {
-	row := make([]interface{}, 13)
+	row := make([]any, 13)
 	row[2] = "Cool App"
-	row[12] = []interface{}{"com.cool.app"}
-	row[9] = []interface{}{nil, nil, nil, nil, []interface{}{nil, nil, "/store/apps/details?id=com.cool.app"}}
-	row[1] = []interface{}{nil, []interface{}{[]interface{}{nil, nil, nil, []interface{}{nil, nil, "https://icon.png"}}}}
-	row[4] = []interface{}{[]interface{}{[]interface{}{
+	row[12] = []any{"com.cool.app"}
+	row[9] = []any{nil, nil, nil, nil, []any{nil, nil, "/store/apps/details?id=com.cool.app"}}
+	row[1] = []any{nil, []any{[]any{nil, nil, nil, []any{nil, nil, "https://icon.png"}}}}
+	row[4] = []any{[]any{[]any{
 		"Cool Dev",
-		[]interface{}{nil, nil, nil, nil, []interface{}{nil, nil, "https://play.google.com/store/apps/dev?id=DEV123"}},
-	}}, []interface{}{nil, []interface{}{nil, []interface{}{nil, "Summary here"}}}}
+		[]any{nil, nil, nil, nil, []any{nil, nil, "https://play.google.com/store/apps/dev?id=DEV123"}},
+	}}, []any{nil, []any{nil, []any{nil, "Summary here"}}}}
 	// Price/currency at [7][0][3][2][1][0][0] and [...][1].
-	priceTuple := []interface{}{float64(2990000), "USD"}
-	row[7] = []interface{}{[]interface{}{nil, nil, nil, []interface{}{nil, nil, []interface{}{nil, []interface{}{priceTuple}}}}}
-	row[6] = []interface{}{[]interface{}{nil, nil, []interface{}{nil, []interface{}{"4.5", float64(4.5)}}}}
+	priceTuple := []any{float64(2990000), "USD"}
+	row[7] = []any{[]any{nil, nil, nil, []any{nil, nil, []any{nil, []any{priceTuple}}}}}
+	row[6] = []any{[]any{nil, nil, []any{nil, []any{"4.5", float64(4.5)}}}}
 
 	got := parseSearchResult(row)
 	if got.AppID != "com.cool.app" {
@@ -222,8 +222,8 @@ func TestParseSearchResultNotArray(t *testing.T) {
 }
 
 func TestParseSearchResultFreeWhenNoPrice(t *testing.T) {
-	row := make([]interface{}, 13)
-	row[12] = []interface{}{"com.free.app"}
+	row := make([]any, 13)
+	row[12] = []any{"com.free.app"}
 	got := parseSearchResult(row)
 	if !got.Free {
 		t.Error("Free = false, want true when no price node present")
@@ -233,7 +233,7 @@ func TestParseSearchResultFreeWhenNoPrice(t *testing.T) {
 // TestExtractSearchResultsNoSection returns an empty result set when no ds block
 // is present, covering the early-return branch.
 func TestExtractSearchResultsNoSection(t *testing.T) {
-	results, token, err := extractSearchResults(map[string]interface{}{"ds:99": "irrelevant"})
+	results, token, err := extractSearchResults(map[string]any{"ds:99": "irrelevant"})
 	if err != nil {
 		t.Fatalf("extractSearchResults: %v", err)
 	}

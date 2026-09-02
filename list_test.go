@@ -2,6 +2,7 @@ package googleplayscraper
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 )
@@ -224,10 +225,10 @@ func TestParseListApp(t *testing.T) {
 	// Developer: [14] <-- list.go:207: getPath(arr, 14)
 
 	// Constructing array
-	item := make([]interface{}, 15) // need at least index 14
+	item := make([]any, 15) // need at least index 14
 	item[3] = "Test Title"
 	item[14] = "Dev Name"
-	item[0] = []interface{}{"com.test.app"}
+	item[0] = []any{"com.test.app"}
 
 	res := parseListApp(item)
 	if res.AppID != "com.test.app" {
@@ -249,16 +250,16 @@ func TestParseClusterListApp(t *testing.T) {
 	// title [0,3], appId [0,0,0], icon [0,1,3,2], developer [0,14],
 	// price [0,8,1,0,0], currency [0,8,1,0,1], url [0,10,4,2].
 	// The entry's index 0 is one wide array holding every field.
-	app := make([]interface{}, 15)
-	app[0] = []interface{}{"com.test.app", float64(7)}
-	app[1] = []interface{}{nil, nil, nil, []interface{}{nil, nil, "https://icon"}}
+	app := make([]any, 15)
+	app[0] = []any{"com.test.app", float64(7)}
+	app[1] = []any{nil, nil, nil, []any{nil, nil, "https://icon"}}
 	app[3] = "Test App"
-	app[4] = []interface{}{"4.5", 4.5}
-	app[8] = []interface{}{nil, []interface{}{[]interface{}{float64(1990000), "USD"}}}
-	app[10] = []interface{}{nil, nil, nil, nil, []interface{}{nil, nil, "/store/apps/details?id=com.test.app"}}
-	app[13] = []interface{}{nil, "Some summary"}
+	app[4] = []any{"4.5", 4.5}
+	app[8] = []any{nil, []any{[]any{float64(1990000), "USD"}}}
+	app[10] = []any{nil, nil, nil, nil, []any{nil, nil, "/store/apps/details?id=com.test.app"}}
+	app[13] = []any{nil, "Some summary"}
 	app[14] = "Test Dev"
-	item := []interface{}{app}
+	item := []any{app}
 
 	r := parseClusterListApp(item)
 	if r.AppID != "com.test.app" {
@@ -287,8 +288,8 @@ func TestParseClusterListApp(t *testing.T) {
 	}
 
 	// Free app: price 0 -> Free true.
-	app[8] = []interface{}{nil, []interface{}{[]interface{}{float64(0), "USD"}}}
-	if r := parseClusterListApp([]interface{}{app}); !r.Free || r.Price != 0 {
+	app[8] = []any{nil, []any{[]any{float64(0), "USD"}}}
+	if r := parseClusterListApp([]any{app}); !r.Free || r.Price != 0 {
 		t.Errorf("expected free app, got Free=%v Price=%v", r.Free, r.Price)
 	}
 
@@ -371,10 +372,95 @@ func TestListAgeFilterIsNoOpOnBatch(t *testing.T) {
 		}
 		t.Logf("%s: no-age=%d age=%d overlap=%d", cat, len(noAge), len(withAge), overlap)
 
-		if overlap != len(withAge) {
+		// Exact equality was too strict for a live comparison: two requests
+		// seconds apart routinely disagree on a couple of positions as
+		// Google's own ranking churns, and a run of 48 out of 50 was failing
+		// while supporting the documented claim rather than contradicting it.
+		//
+		// What this is watching for is Google starting to honour the filter,
+		// which would show as most of the list changing, not as two entries
+		// shifting. Nine tenths keeps that signal and drops the noise.
+		const minOverlap = 0.9
+		if got := float64(overlap) / float64(len(withAge)); got < minOverlap {
 			t.Errorf("%s: Age filter appears to take effect on the batch path "+
-				"(overlap %d of %d) — update ListOptions.Age godoc and README",
-				cat, overlap, len(withAge))
+				"(overlap %d of %d = %.0f%%, want at least %.0f%%) — "+
+				"update ListOptions.Age godoc and README",
+				cat, overlap, len(withAge), got*100, minOverlap*100)
 		}
+	}
+}
+
+// Every exported Collection must map to a cluster identifier, or List rejects
+// it at the door with "unknown collection" and the constant is decoration.
+func TestEveryCollectionMapsToACluster(t *testing.T) {
+	all := []Collection{
+		CollectionTopFree, CollectionTopPaid, CollectionGrossing,
+		CollectionNewFree, CollectionNewPaid, CollectionMoversShakers,
+	}
+	for _, col := range all {
+		cluster, ok := clusterNames[col]
+		if !ok {
+			t.Errorf("%s has no cluster name; List would reject it", col)
+			continue
+		}
+		if cluster == "" {
+			t.Errorf("%s maps to an empty cluster name", col)
+		}
+	}
+	if len(clusterNames) != len(all) {
+		t.Errorf("clusterNames has %d entries for %d exported collections; one side was updated without the other",
+			len(clusterNames), len(all))
+	}
+}
+
+// The cluster names are the ones the endpoint actually answered to. Google
+// rejects several plausible alternatives, so this pins the spellings rather
+// than leaving them to look interchangeable.
+func TestClusterNamesAreTheOnesGoogleAnswersTo(t *testing.T) {
+	want := map[Collection]string{
+		CollectionTopFree:       "topselling_free",
+		CollectionTopPaid:       "topselling_paid",
+		CollectionGrossing:      "topgrossing",
+		CollectionNewFree:       "topselling_new_free",
+		CollectionNewPaid:       "topselling_new_paid",
+		CollectionMoversShakers: "movers_shakers",
+	}
+	for col, cluster := range want {
+		if got := clusterNames[col]; got != cluster {
+			t.Errorf("%s maps to %q, want %q", col, got, cluster)
+		}
+	}
+}
+
+// The legacy HTML page lays out only the three original charts. Asking it for
+// a newer collection used to fall through a switch to section 0 and return the
+// top-free chart with a nil error -- and List falls back to that path whenever
+// the RPC returns nothing, so a transient failure on "what is new" answered
+// with "what is popular", indistinguishably.
+func TestHTMLFallbackRefusesCollectionsItCannotLocate(t *testing.T) {
+	for col := range clusterNames {
+		_, hasSection := htmlSections[col]
+		switch col {
+		case CollectionTopFree, CollectionTopPaid, CollectionGrossing:
+			if !hasSection {
+				t.Errorf("%s lost its HTML section", col)
+			}
+		default:
+			if hasSection {
+				t.Errorf("%s claims an HTML section; the page has no such listing", col)
+			}
+		}
+	}
+
+	// And the refusal must actually happen rather than being implied by the map.
+	c := newMockClient(t, routePath("/store/apps", readFixture(t, "category_page.html")))
+	_, err := c.listViaHTML(context.Background(), ListOptions{
+		Collection: CollectionNewFree, Category: CategoryGameAction, Num: 10,
+	})
+	if err == nil {
+		t.Fatal("listViaHTML answered for NEW_FREE instead of refusing")
+	}
+	if !strings.Contains(err.Error(), string(CollectionNewFree)) {
+		t.Errorf("error does not name the collection: %v", err)
 	}
 }

@@ -16,7 +16,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"math/rand"
+	"math/rand/v2"
 	"net/http"
 	"os"
 	"strings"
@@ -48,7 +48,7 @@ func main() {
 	fmt.Printf("Loaded %d unique app IDs from %s\n", len(ids), *input)
 
 	// Sample without replacement
-	rng := rand.New(rand.NewSource(*seed))
+	rng := rand.New(rand.NewPCG(uint64(*seed), 0))
 	rng.Shuffle(len(ids), func(i, j int) { ids[i], ids[j] = ids[j], ids[i] })
 	if *n < len(ids) {
 		ids = ids[:*n]
@@ -64,10 +64,10 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Error creating report: %v\n", err)
 		os.Exit(1)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	w := csv.NewWriter(f)
 	defer w.Flush()
-	w.Write([]string{"appId", "verdict", "genreId", "genre", "title", "error"})
+	_ = w.Write([]string{"appId", "verdict", "genreId", "genre", "title", "error"})
 
 	var game, notGame, gone, failed int
 	start := time.Now()
@@ -78,16 +78,16 @@ func main() {
 		switch {
 		case errors.As(err, &statusErr) && statusErr.Code == http.StatusNotFound:
 			gone++
-			w.Write([]string{id, "gone", "", "", "", err.Error()})
+			_ = w.Write([]string{id, "gone", "", "", "", err.Error()})
 		case err != nil:
 			failed++
-			w.Write([]string{id, "error", "", "", "", err.Error()})
+			_ = w.Write([]string{id, "error", "", "", "", err.Error()})
 		case strings.HasPrefix(app.GenreID, "GAME"):
 			game++
-			w.Write([]string{id, "game", app.GenreID, app.Genre, app.Title, ""})
+			_ = w.Write([]string{id, "game", app.GenreID, app.Genre, app.Title, ""})
 		default:
 			notGame++
-			w.Write([]string{id, "not_game", app.GenreID, app.Genre, app.Title, ""})
+			_ = w.Write([]string{id, "not_game", app.GenreID, app.Genre, app.Title, ""})
 			fmt.Printf("  MISMATCH: %s → %q (%s)\n", id, app.GenreID, app.Title)
 		}
 
@@ -117,7 +117,7 @@ func readAppIDs(path string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	seen := make(map[string]bool)
 	var ids []string

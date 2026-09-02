@@ -2,7 +2,12 @@ package googleplayscraper
 
 import (
 	"context"
+	"fmt"
+	"io"
 	"net/http"
+	"net/url"
+	"regexp"
+	"strings"
 	"testing"
 )
 
@@ -78,11 +83,31 @@ func TestSearchEmptyTerm(t *testing.T) {
 }
 
 func TestSearchFullDetailEnriches(t *testing.T) {
-	// The search page yields results; FullDetail then fetches each app's details
-	// page. The mock serves both endpoints, so enrichSearchResults/enrichOne run.
+	// The search page yields results; FullDetail then fetches their details in
+	// one batched RPC rather than a page each. The mock answers from the
+	// requested ids and serves the frames reversed, so a result carrying the
+	// wrong app's title is a failure rather than something this test cannot
+	// see -- the previous version served the same Maps page for every app and
+	// would have passed with the answers completely shuffled.
+	appRe := regexp.MustCompile(`\[\\"([^"\\]+)\\",7\]`)
+	var batchRequests int
 	c := newMockClient(t,
 		routePath("/store/search", readFixture(t, "search_page.html")),
-		routePath(pathDetails, readFixture(t, "app_page.html")),
+		func(req *http.Request) (mockResponse, bool) {
+			if req.URL.Path != pathBatch {
+				return mockResponse{}, false
+			}
+			batchRequests++
+			body, _ := io.ReadAll(req.Body)
+			decoded, _ := url.QueryUnescape(strings.TrimPrefix(string(body), "f.req="))
+			byIndex := map[string]string{}
+			var order []string
+			for i, m := range appRe.FindAllStringSubmatch(decoded, -1) {
+				byIndex[fmt.Sprint(i)] = minimalDS5("Enriched " + m[1])
+				order = append([]string{fmt.Sprint(i)}, order...)
+			}
+			return mockResponse{Body: framesEnvelope("Ws7gDc", byIndex, order)}, true
+		},
 	)
 
 	results, err := c.Search(context.Background(), SearchOptions{Term: "maps", Num: 3, FullDetail: true})
@@ -92,11 +117,14 @@ func TestSearchFullDetailEnriches(t *testing.T) {
 	if len(results) == 0 {
 		t.Fatal("got 0 results")
 	}
-	// Every enriched result carries the fixture app's Title/Summary because each
-	// detail fetch returns the Maps page.
+	// One request for the whole listing, not one per result. That ratio is the
+	// reason this path was rewritten.
+	if batchRequests != 1 {
+		t.Errorf("made %d detail requests for %d results, want 1", batchRequests, len(results))
+	}
 	for i, r := range results {
-		if r.Title != "Google Maps" {
-			t.Errorf("result %d Title = %q, want Google Maps (enriched)", i, r.Title)
+		if want := "Enriched " + r.AppID; r.Title != want {
+			t.Errorf("result %d (%s) Title = %q, want %q", i, r.AppID, r.Title, want)
 		}
 	}
 }

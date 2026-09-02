@@ -16,6 +16,9 @@ type mockResponse struct {
 	Body   []byte
 	Status int
 	Err    error
+	// Header lets a route model the response headers a retry policy reads,
+	// Retry-After above all.
+	Header http.Header
 }
 
 // routeFunc decides the response for a request. Returning ok=false means the
@@ -44,10 +47,14 @@ func (rt *routingTransport) RoundTrip(req *http.Request) (*http.Response, error)
 			if status == 0 {
 				status = http.StatusOK
 			}
+			hdr := resp.Header
+			if hdr == nil {
+				hdr = make(http.Header)
+			}
 			return &http.Response{
 				StatusCode: status,
 				Body:       io.NopCloser(strings.NewReader(string(resp.Body))),
-				Header:     make(http.Header),
+				Header:     hdr,
 				Request:    req,
 			}, nil
 		}
@@ -130,10 +137,10 @@ func htmlWithDataBlocks(blocks map[string]string) []byte {
 	// pagination path) finds an f.sid/bl on mocked pages.
 	sb.WriteString(`<script>window.WIZ_global_data = {"FdrFJe":"-1","cfb2h":"boq_test_p0"};</script>`)
 	for key, data := range blocks {
-		sb.WriteString(fmt.Sprintf(
+		fmt.Fprintf(&sb,
 			"<script>AF_initDataCallback({key: '%s', hash: '1', data:%s, sideChannel: {}});</script>",
 			key, data,
-		))
+		)
 	}
 	sb.WriteString("</body></html>")
 	return []byte(sb.String())

@@ -165,3 +165,42 @@ func TestDefaultSearchTerms(t *testing.T) {
 		t.Errorf("unknown category returned %v, want nil", terms)
 	}
 }
+
+// The review language list is measured, not copied from a locale table, and
+// two properties have to hold or a multi-language read wastes requests and
+// misses corpora.
+//
+// Aliases are the waste: tg and tk are served the Russian corpus verbatim, ga
+// and cy the English one, so including them costs requests and returns nothing
+// new. Kazakh is the miss: the first version of this list skipped it, which
+// made "all languages" silently exclude an entire country's reviews.
+func TestReviewLanguagesHasNoAliasesAndCoversCentralAsia(t *testing.T) {
+	seen := map[string]int{}
+	for _, l := range ReviewLanguages {
+		seen[l]++
+	}
+	for l, n := range seen {
+		if n > 1 {
+			t.Errorf("%q appears %d times; the union would fetch it twice", l, n)
+		}
+	}
+
+	// Measured aliases. Each was checked against the corpus it duplicates and
+	// found identical id for id.
+	for _, alias := range []string{"tg", "tk", "ga", "cy"} {
+		if _, present := seen[alias]; present {
+			t.Errorf("%q is an alias of a corpus already in the list", alias)
+		}
+	}
+
+	// Languages whose absence was a real gap rather than a matter of taste.
+	for _, want := range []string{"kk", "az", "uz", "ky", "ka", "hy", "be"} {
+		if _, present := seen[want]; !present {
+			t.Errorf("%q is a distinct corpus and is missing", want)
+		}
+	}
+
+	if len(ReviewLanguages) < 60 {
+		t.Errorf("list has %d codes; the measured set was larger", len(ReviewLanguages))
+	}
+}

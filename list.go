@@ -57,6 +57,9 @@ type ListOptions struct {
 // If that request fails or returns no apps, it falls back to scraping the
 // rendered top-charts HTML page.
 func (c *Client) List(ctx context.Context, opts ListOptions) ([]SearchResult, error) {
+	ctx, endTask := startTask(ctx, traceTaskList)
+	defer endTask()
+
 	if opts.Lang == "" {
 		opts.Lang = "en"
 	}
@@ -139,7 +142,7 @@ func (c *Client) listViaBatch(ctx context.Context, cluster string, opts ListOpti
 	}
 
 	apps := getPath(data, 0, 1, 0, 28, 0)
-	appsArr, ok := apps.([]interface{})
+	appsArr, ok := apps.([]any)
 	if !ok {
 		return nil, nil
 	}
@@ -170,12 +173,26 @@ var clusterListAppPaths = rowPaths{
 
 // parseClusterListApp maps a single app entry from the vyAe2 response.
 // Index paths mirror the reference appsMappings.
-func parseClusterListApp(item interface{}) SearchResult {
+func parseClusterListApp(item any) SearchResult {
 	return decodeResultRow(item, clusterListAppPaths)
 }
 
 // listViaHTML is the legacy fallback that scrapes the rendered top-charts page.
 func (c *Client) listViaHTML(ctx context.Context, opts ListOptions) ([]SearchResult, error) {
+	// Refuse before fetching. The page lays out the three original charts in a
+	// fixed order and says nothing about the others, so this path cannot serve
+	// them at all -- and spending a request to discover that would be worse
+	// than useless, because the caller only reaches here when the RPC already
+	// failed.
+	//
+	// A switch with an implicit default answered every unknown collection with
+	// section 0, the top-free chart. Since List falls back here whenever the
+	// RPC merely returns nothing, one transient failure on "what is new"
+	// returned the most popular apps with a nil error.
+	if _, ok := htmlSections[opts.Collection]; !ok && opts.Collection != "" {
+		return nil, fmt.Errorf("collection %s has no section in the legacy HTML page", opts.Collection)
+	}
+
 	var reqURL string
 	if opts.Category == CategoryApplication || opts.Category == CategoryGame {
 		reqURL = fmt.Sprintf("%s/store/apps/top?hl=%s&gl=%s", BaseURL, opts.Lang, opts.Country)
@@ -194,10 +211,25 @@ func (c *Client) listViaHTML(ctx context.Context, opts ListOptions) ([]SearchRes
 }
 
 func parseListPage(body []byte, opts ListOptions) ([]SearchResult, error) {
-	dataBlocks := parseDataBlocks(body)
+	// The zero Collection means "unspecified", and List's documented default
+	// is the top-free chart -- so honour that here rather than refusing a
+	// caller who simply did not set the field.
+	collection := opts.Collection
+	if collection == "" {
+		collection = CollectionTopFree
+	}
+
+	// A collection that was named but has no section is a different matter,
+	// and must not silently read section 0. That fallthrough is how one
+	// transient RPC failure on "what is new" came back as the most popular
+	// apps with a nil error.
+	sectionIndex, known := htmlSections[collection]
+	if !known {
+		return nil, fmt.Errorf("collection %s has no section in the legacy HTML page", collection)
+	}
 
 	// Apps are in ds:4[0][1][x][21][0]
-	ds4, ok := dataBlocks["ds:4"]
+	ds4, ok := dataBlock(body, "ds:4")
 	if !ok {
 		return nil, nil
 	}
@@ -207,21 +239,9 @@ func parseListPage(body []byte, opts ListOptions) ([]SearchResult, error) {
 		return nil, nil
 	}
 
-	sectionsArr, ok := sections.([]interface{})
+	sectionsArr, ok := sections.([]any)
 	if !ok {
 		return nil, nil
-	}
-
-	// Determine which section based on collection type
-	// Section 0: Top free, Section 1: Top paid, Section 2: Top grossing (may vary)
-	sectionIndex := 0
-	switch opts.Collection {
-	case CollectionTopFree:
-		sectionIndex = 0
-	case CollectionTopPaid:
-		sectionIndex = 1
-	case CollectionGrossing:
-		sectionIndex = 2
 	}
 
 	var results []SearchResult
@@ -230,7 +250,7 @@ func parseListPage(body []byte, opts ListOptions) ([]SearchResult, error) {
 	if sectionIndex < len(sectionsArr) {
 		apps := getPath(sectionsArr[sectionIndex], 21, 0)
 		if apps != nil {
-			appsArr, ok := apps.([]interface{})
+			appsArr, ok := apps.([]any)
 			if ok {
 				for _, app := range appsArr {
 					result := parseListApp(app)
@@ -252,7 +272,7 @@ func parseListPage(body []byte, opts ListOptions) ([]SearchResult, error) {
 			if apps == nil {
 				continue
 			}
-			appsArr, ok := apps.([]interface{})
+			appsArr, ok := apps.([]any)
 			if !ok {
 				continue
 			}
@@ -292,6 +312,6 @@ var listAppPaths = rowPaths{
 	price:     [][]int{{8, 1, 0, 0}},
 }
 
-func parseListApp(item interface{}) SearchResult {
+func parseListApp(item any) SearchResult {
 	return decodeResultRow(item, listAppPaths)
 }

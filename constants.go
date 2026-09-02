@@ -18,14 +18,53 @@ const (
 	CollectionTopFree  Collection = "TOP_FREE"
 	CollectionTopPaid  Collection = "TOP_PAID"
 	CollectionGrossing Collection = "GROSSING"
+
+	// CollectionNewFree and CollectionNewPaid are the store's recently
+	// published listings. They answer a question the top charts cannot: what
+	// has appeared lately.
+	//
+	// Measured across the seventeen GAME_* categories, CollectionNewFree
+	// returns 1,230 distinct apps in 17 requests, of which 99% were released
+	// within thirty days and 12% within seven. That makes it a cheap daily
+	// signal for new titles -- seventeen requests against the 83k of a full
+	// catalog sweep.
+	//
+	// It is ranked, though, so an app with no traction never appears in it.
+	// Treat it as a signal with high precision and unmeasured recall: useful
+	// for finding new things quickly, not for establishing that nothing else
+	// was added.
+	CollectionNewFree Collection = "NEW_FREE"
+	CollectionNewPaid Collection = "NEW_PAID"
+
+	// CollectionMoversShakers is the store's rising-apps cluster.
+	CollectionMoversShakers Collection = "MOVERS_SHAKERS"
 )
 
-// clusterNames maps a Collection to the cluster identifier Google Play
-// expects in the vyAe2 batchexecute payload.
+// clusterNames maps a Collection to the cluster identifier Google Play expects
+// in the vyAe2 batchexecute payload.
+//
+// The three beyond the original three were found by asking the endpoint
+// directly. Google also rejects plenty of plausible-looking names --
+// new_free, new_paid, topselling_trending, topselling_rising and
+// topselling_new_grossing all come back empty -- so this table is what the
+// endpoint answered to, not what its naming suggests.
+// htmlSections maps a Collection to its position in the legacy HTML listing
+// page. Only the three original charts appear there; the newer clusters are
+// reachable through the vyAe2 RPC alone, and listViaHTML refuses them rather
+// than guessing a section.
+var htmlSections = map[Collection]int{
+	CollectionTopFree:  0,
+	CollectionTopPaid:  1,
+	CollectionGrossing: 2,
+}
+
 var clusterNames = map[Collection]string{
-	CollectionTopFree:  "topselling_free",
-	CollectionTopPaid:  "topselling_paid",
-	CollectionGrossing: "topgrossing",
+	CollectionTopFree:       "topselling_free",
+	CollectionTopPaid:       "topselling_paid",
+	CollectionGrossing:      "topgrossing",
+	CollectionNewFree:       "topselling_new_free",
+	CollectionNewPaid:       "topselling_new_paid",
+	CollectionMoversShakers: "movers_shakers",
 }
 
 // Category types

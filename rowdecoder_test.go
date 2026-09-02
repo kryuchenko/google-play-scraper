@@ -9,7 +9,7 @@ import (
 // the given index path, growing slices as needed. It lets a test place a known
 // value at an exact candidate path so the golden cases below exercise the real
 // rowPaths index maps rather than a frozen HTML fixture.
-func rowSet(root []interface{}, value interface{}, path ...int) []interface{} {
+func rowSet(root []any, value any, path ...int) []any {
 	idx := path[0]
 	for len(root) <= idx {
 		root = append(root, nil)
@@ -18,7 +18,7 @@ func rowSet(root []interface{}, value interface{}, path ...int) []interface{} {
 		root[idx] = value
 		return root
 	}
-	child, _ := root[idx].([]interface{})
+	child, _ := root[idx].([]any)
 	root[idx] = rowSet(child, value, path[1:]...)
 	return root
 }
@@ -33,14 +33,14 @@ func TestDecodeResultRowGolden(t *testing.T) {
 	tests := []struct {
 		name  string
 		paths rowPaths
-		build func() []interface{}
+		build func() []any
 		want  SearchResult
 	}{
 		{
 			name:  "clusterList (vyAe2)",
 			paths: clusterListAppPaths,
-			build: func() []interface{} {
-				var row []interface{}
+			build: func() []any {
+				var row []any
 				row = rowSet(row, "com.example.game", 0, 0, 0)
 				row = rowSet(row, "Example Game", 0, 3)
 				row = rowSet(row, "https://icon", 0, 1, 3, 2)
@@ -70,8 +70,8 @@ func TestDecodeResultRowGolden(t *testing.T) {
 		{
 			name:  "listApp (top-charts HTML)",
 			paths: listAppPaths,
-			build: func() []interface{} {
-				var row []interface{}
+			build: func() []any {
+				var row []any
 				row = rowSet(row, "com.example.app", 0, 0)
 				row = rowSet(row, "Example App", 3)
 				row = rowSet(row, "https://icon2", 1, 3, 2)
@@ -98,17 +98,17 @@ func TestDecodeResultRowGolden(t *testing.T) {
 		{
 			name:  "searchGrid (singleton-wrapped, requireAppID)",
 			paths: searchGridPaths,
-			build: func() []interface{} {
+			build: func() []any {
 				// One inner row wrapped in a singleton, appID at the
 				// search-page slot [0][0].
-				var inner []interface{}
+				var inner []any
 				inner = rowSet(inner, "com.example.search", 0, 0)
 				inner = rowSet(inner, "Searched App", 3)
 				inner = rowSet(inner, "https://icon3", 1, 3, 2)
 				inner = rowSet(inner, "Gamma LLC", 14)
 				inner = rowSet(inner, 4.1, 4, 1)
 				inner = rowSet(inner, "4.1", 4, 0)
-				return []interface{}{inner}
+				return []any{inner}
 			},
 			want: SearchResult{
 				AppID:     "com.example.search",
@@ -124,8 +124,8 @@ func TestDecodeResultRowGolden(t *testing.T) {
 		{
 			name:  "qnKhOb (developerIDLink, urlPathOnly)",
 			paths: qnKhObRowPaths,
-			build: func() []interface{} {
-				var row []interface{}
+			build: func() []any {
+				var row []any
 				row = rowSet(row, "com.example.feed", 12, 0)
 				row = rowSet(row, "Feed App", 2)
 				row = rowSet(row, "https://icon4", 1, 1, 0, 3, 2)
@@ -172,7 +172,7 @@ func TestDecodeResultRowGolden(t *testing.T) {
 func TestDecodeResultRowEdges(t *testing.T) {
 	t.Run("requireAppID rejects non-package", func(t *testing.T) {
 		inner := rowSet(nil, "not a package id", 0, 0)
-		got := decodeResultRow([]interface{}{inner}, searchGridPaths)
+		got := decodeResultRow([]any{inner}, searchGridPaths)
 		if got.AppID != "" {
 			t.Errorf("AppID = %q, want empty (non-package rejected)", got.AppID)
 		}

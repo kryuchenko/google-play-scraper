@@ -18,6 +18,9 @@ type DeveloperOptions struct {
 
 // Developer fetches all apps by a developer
 func (c *Client) Developer(ctx context.Context, opts DeveloperOptions) ([]SearchResult, error) {
+	ctx, endTask := startTask(ctx, traceTaskDeveloper)
+	defer endTask()
+
 	if opts.DevID == "" {
 		return nil, fmt.Errorf("developer ID is required")
 	}
@@ -64,10 +67,9 @@ func (c *Client) Developer(ctx context.Context, opts DeveloperOptions) ([]Search
 }
 
 func parseDeveloperPage(body []byte, isNumericID bool, num int) ([]SearchResult, error) {
-	dataBlocks := parseDataBlocks(body)
 
 	// Apps are in ds:3
-	ds3, ok := dataBlocks["ds:3"]
+	ds3, ok := dataBlock(body, "ds:3")
 	if !ok {
 		return nil, nil
 	}
@@ -85,7 +87,7 @@ func parseDeveloperPage(body []byte, isNumericID bool, num int) ([]SearchResult,
 		return nil, nil
 	}
 
-	apps, ok := appsSection.([]interface{})
+	apps, ok := appsSection.([]any)
 	if !ok {
 		return nil, nil
 	}
@@ -104,8 +106,8 @@ func parseDeveloperPage(body []byte, isNumericID bool, num int) ([]SearchResult,
 	return results, nil
 }
 
-func parseDeveloperApp(item interface{}, isNumericID bool) SearchResult {
-	arr, ok := item.([]interface{})
+func parseDeveloperApp(item any, isNumericID bool) SearchResult {
+	arr, ok := item.([]any)
 	if !ok {
 		return SearchResult{}
 	}

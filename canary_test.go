@@ -40,12 +40,23 @@ const (
 // starts keeps the whole suite gentle on Google's rate limiter.
 func newCanaryClient() *googleplayscraper.Client {
 	return googleplayscraper.NewClient(
-		googleplayscraper.WithThrottle(1 * time.Second),
+		googleplayscraper.WithThrottle(1*time.Second),
+		// Retries, because this suite's job is to detect drift in Google's
+		// payloads and a transient 5xx is not drift. Without them a weekly run
+		// goes red for reasons nobody can reproduce, and a drift detector that
+		// cries wolf is worse than none: it gets ignored on the week it is
+		// right. Observed once here -- a missing-id probe took a retry's worth
+		// of extra time and surfaced a fetch error instead of its status.
+		googleplayscraper.WithRetry(googleplayscraper.RetryPolicy{
+			MaxAttempts:       3,
+			BaseDelay:         time.Second,
+			RespectRetryAfter: true,
+		}),
 	)
 }
 
 // canaryCtx returns a per-subtest context with a generous timeout. Multi-request
-// methods (CategoryApps, ReviewsAll) get more headroom via their own contexts.
+// methods (CategoryApps, ReviewsSeq) get more headroom via their own contexts.
 func canaryCtx(t *testing.T) (context.Context, context.CancelFunc) {
 	t.Helper()
 	return context.WithTimeout(context.Background(), 45*time.Second)
@@ -62,7 +73,7 @@ func TestCanary(t *testing.T) {
 	t.Run("List", func(t *testing.T) { canaryList(t, client) })
 	t.Run("ClusterURLs+Cluster", func(t *testing.T) { canaryCluster(t, client) })
 	t.Run("Reviews", func(t *testing.T) { canaryReviews(t, client) })
-	t.Run("ReviewsAll", func(t *testing.T) { canaryReviewsAll(t, client) })
+	t.Run("ReviewsSeq", func(t *testing.T) { canaryReviewsSeq(t, client) })
 	t.Run("Developer", func(t *testing.T) { canaryDeveloper(t, client) })
 	t.Run("Similar", func(t *testing.T) { canarySimilar(t, client) })
 	t.Run("Permissions", func(t *testing.T) { canaryPermissions(t, client) })
@@ -72,6 +83,9 @@ func TestCanary(t *testing.T) {
 	t.Run("CategoryApps", func(t *testing.T) { canaryCategoryApps(t, client) })
 	t.Run("Availability", func(t *testing.T) { canaryAvailability(t, client) })
 	t.Run("Sitemap", func(t *testing.T) { canarySitemap(t, client) })
+	t.Run("Batched", func(t *testing.T) { canaryBatched(t, client) })
+	t.Run("AvailabilityClasses", func(t *testing.T) { canaryAvailabilityClasses(t, client) })
+	t.Run("Collections", func(t *testing.T) { canaryCollections(t, client) })
 }
 
 // ---------------------------------------------------------------------------
@@ -423,29 +437,34 @@ func canaryReviews(t *testing.T, client *googleplayscraper.Client) {
 }
 
 // ---------------------------------------------------------------------------
-// ReviewsAll
+// ReviewsSeq
 // ---------------------------------------------------------------------------
 
-func canaryReviewsAll(t *testing.T, client *googleplayscraper.Client) {
-	// ReviewsAll paginates internally; give it a wider budget.
+func canaryReviewsSeq(t *testing.T, client *googleplayscraper.Client) {
+	// Pagination is what is under test here; give it a wider budget.
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
 
 	const want = 200
-	reviews, err := client.ReviewsAll(ctx, canaryReviewApp, googleplayscraper.ReviewOptions{
-		Sort:  googleplayscraper.SortNewest,
-		Count: want,
-	})
-	if err != nil {
-		t.Fatalf("ReviewsAll(%s, %d): %v", canaryReviewApp, want, err)
+	var reviews []googleplayscraper.Review
+	for r, err := range client.ReviewsSeq(ctx, canaryReviewApp, googleplayscraper.ReviewOptions{
+		Sort: googleplayscraper.SortNewest,
+	}) {
+		if err != nil {
+			t.Fatalf("ReviewsSeq(%s): %v", canaryReviewApp, err)
+		}
+		reviews = append(reviews, r)
+		if len(reviews) == want {
+			break
+		}
 	}
 	// A single page is 150; crossing that proves pagination is wired through.
 	if len(reviews) <= 150 {
-		t.Errorf("ReviewsAll: got %d reviews, want > 150 (more than one page) — NextToken pagination may have broken", len(reviews))
+		t.Errorf("ReviewsSeq: got %d reviews, want > 150 (more than one page) — NextToken pagination may have broken", len(reviews))
 	}
 	for i, r := range reviews {
 		if r.ID == "" {
-			t.Errorf("ReviewsAll: review[%d] ID empty — path [0] may have changed", i)
+			t.Errorf("ReviewsSeq: review[%d] ID empty — path [0] may have changed", i)
 			break
 		}
 	}
@@ -784,21 +803,312 @@ func canarySitemap(t *testing.T, client *googleplayscraper.Client) {
 		}
 	})
 
-	// EnumerateCatalog over a tiny shard subset must wire discovery -> fetch ->
+	// CatalogSeq over a tiny shard subset must wire discovery -> fetch ->
 	// emit end to end and produce ids.
 	t.Run("enumerate_subset", func(t *testing.T) {
 		ctx, cancel := canaryCtx(t)
 		defer cancel()
 
 		var n int
-		err := client.EnumerateCatalog(ctx, func(string) { n++ }, googleplayscraper.CatalogOptions{
+		for _, err := range client.CatalogSeq(ctx, googleplayscraper.CatalogOptions{
 			Shards: []int{0, 1},
-		})
-		if err != nil {
-			t.Fatalf("EnumerateCatalog(shards 0,1): %v", err)
+		}) {
+			if err != nil {
+				t.Fatalf("CatalogSeq(shards 0,1): %v", err)
+			}
+			n++
 		}
 		if n == 0 {
-			t.Error("EnumerateCatalog(shards 0,1): emitted 0 packages — orchestration produced nothing")
+			t.Error("CatalogSeq(shards 0,1): yielded 0 packages — orchestration produced nothing")
 		}
 	})
+}
+
+// canaryBatched checks the operations that pack several RPCs into one request
+// against the one-at-a-time methods they mirror.
+//
+// This is drift detection of a particular kind. AppsMany does not scrape the
+// details page: it calls Ws7gDc, the RPC that page names in its own
+// AF_dataServiceRequests map as the source of the ds:5 block, using the request
+// body captured from there. That body selects which fields Google returns. If
+// Google renumbers those fields or changes the request, the RPC keeps answering
+// -- with less in it -- and nothing fails loudly. Comparing against App, which
+// reads the rendered page, is what turns a silent degradation into a red test.
+//
+// Rating and review counters move continuously on a popular app, so two
+// requests seconds apart legitimately disagree on them; everything static must
+// match exactly.
+func canaryBatched(t *testing.T, client *googleplayscraper.Client) {
+	t.Run("AppsMany_matches_App", func(t *testing.T) {
+		ctx, cancel := canaryCtx(t)
+		defer cancel()
+
+		page, err := client.App(ctx, canaryStableApp, googleplayscraper.AppOptions{})
+		if err != nil {
+			t.Fatalf("App: %v", err)
+		}
+		results := client.AppsMany(ctx, []string{canaryStableApp}, googleplayscraper.AppOptions{})
+		if len(results) != 1 {
+			t.Fatalf("AppsMany returned %d results for one app", len(results))
+		}
+		if results[0].Err != nil {
+			t.Fatalf("AppsMany: %v", results[0].Err)
+		}
+		rpc := results[0].App
+
+		// Field-by-field, so a failure names the field that stopped arriving
+		// rather than dumping two structs.
+		for _, f := range []struct {
+			name      string
+			page, rpc any
+		}{
+			{"Title", page.Title, rpc.Title},
+			{"AppID", page.AppID, rpc.AppID},
+			{"URL", page.URL, rpc.URL},
+			{"Developer", page.Developer, rpc.Developer},
+			{"DeveloperID", page.DeveloperID, rpc.DeveloperID},
+			{"Genre", page.Genre, rpc.Genre},
+			{"GenreID", page.GenreID, rpc.GenreID},
+			{"Icon", page.Icon, rpc.Icon},
+			{"Free", page.Free, rpc.Free},
+			{"Available", page.Available, rpc.Available},
+			{"ContentRating", page.ContentRating, rpc.ContentRating},
+			{"Summary", page.Summary, rpc.Summary},
+		} {
+			if f.page != f.rpc {
+				t.Errorf("%s: page=%v rpc=%v -- the Ws7gDc request may have drifted; "+
+					"re-capture it from AF_dataServiceRequests['ds:5'].request",
+					f.name, f.page, f.rpc)
+			}
+		}
+		if rpc.Description == "" {
+			t.Error("Description empty over the RPC path (page path has it): field selection may have drifted")
+		}
+		if rpc.Ratings == 0 {
+			t.Error("Ratings zero over the RPC path")
+		}
+	})
+
+	t.Run("PermissionsMany_matches_Permissions", func(t *testing.T) {
+		ctx, cancel := canaryCtx(t)
+		defer cancel()
+
+		one, err := client.Permissions(ctx, googleplayscraper.PermissionsOptions{AppID: canaryStableApp})
+		if err != nil {
+			t.Fatalf("Permissions: %v", err)
+		}
+		if len(one) == 0 {
+			t.Fatal("Permissions returned nothing; the comparison would be vacuous")
+		}
+
+		many := client.PermissionsMany(ctx, []string{canaryStableApp}, googleplayscraper.PermissionsOptions{})
+		if many[0].Err != nil {
+			t.Fatalf("PermissionsMany: %v", many[0].Err)
+		}
+		if len(many[0].Permissions) != len(one) {
+			t.Fatalf("batched returned %d permissions, one-at-a-time %d",
+				len(many[0].Permissions), len(one))
+		}
+		for i := range one {
+			if one[i] != many[0].Permissions[i] {
+				t.Errorf("permission %d: one=%+v many=%+v", i, one[i], many[0].Permissions[i])
+			}
+		}
+	})
+
+	t.Run("SuggestMany_matches_Suggest", func(t *testing.T) {
+		ctx, cancel := canaryCtx(t)
+		defer cancel()
+
+		const term = "maps"
+		one, err := client.Suggest(ctx, googleplayscraper.SuggestOptions{Term: term})
+		if err != nil {
+			t.Fatalf("Suggest: %v", err)
+		}
+		if len(one) == 0 {
+			t.Fatal("Suggest returned nothing; the comparison would be vacuous")
+		}
+
+		many := client.SuggestMany(ctx, []string{term}, googleplayscraper.SuggestOptions{})
+		if many[0].Err != nil {
+			t.Fatalf("SuggestMany: %v", many[0].Err)
+		}
+		if len(many[0].Suggestions) != len(one) {
+			t.Fatalf("batched returned %d suggestions, one-at-a-time %d",
+				len(many[0].Suggestions), len(one))
+		}
+		for i := range one {
+			if one[i] != many[0].Suggestions[i] {
+				t.Errorf("suggestion %d: one=%q many=%q", i, one[i], many[0].Suggestions[i])
+			}
+		}
+	})
+
+	// Packing must actually pack: several apps in one request must all come
+	// back, each with its own data. A regression that made batchCall fall back
+	// to answering only the first call would still pass every single-app check
+	// above.
+	t.Run("several_apps_in_one_request", func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		defer cancel()
+
+		ids := []string{canaryStableApp, canaryGameApp, canaryReviewApp}
+		results := client.AppsMany(ctx, ids, googleplayscraper.AppOptions{})
+		if len(results) != len(ids) {
+			t.Fatalf("got %d results for %d apps", len(results), len(ids))
+		}
+		seen := map[string]bool{}
+		for i, r := range results {
+			if r.Err != nil {
+				t.Errorf("%s: %v", r.AppID, r.Err)
+				continue
+			}
+			if r.AppID != ids[i] {
+				t.Errorf("result %d is for %s, want %s", i, r.AppID, ids[i])
+			}
+			if r.App.AppID != ids[i] {
+				t.Errorf("%s carries data for %s -- answers paired by position, not by index",
+					ids[i], r.App.AppID)
+			}
+			if r.App.Title == "" {
+				t.Errorf("%s: empty title", ids[i])
+			}
+			if seen[r.App.Title] {
+				t.Errorf("%s: duplicate title %q -- one answer served for several calls",
+					ids[i], r.App.Title)
+			}
+			seen[r.App.Title] = true
+		}
+	})
+}
+
+// canaryAvailabilityClasses pins the three outcomes the availability probe has
+// to tell apart, on live data.
+//
+// The probe reads them from the Ws7gDc RPC rather than from the rendered page,
+// which is a 64x reduction in bytes over a 177-country sweep. That is only safe
+// while the RPC's three signals keep mapping onto the page's:
+//
+//	empty payload   <- page 404              -> StatusNotFound
+//	[18] == []      <- page 200, [18] == []  -> StatusNotInRegion
+//	[18][0] == 2    <- page 200, [18][0] == 2-> StatusAvailable
+//
+// If Google collapses two of those -- say it starts answering a missing id with
+// an empty [18] instead of no payload -- a sweep would silently reclassify
+// every unknown app as "not in this region". This is the test that turns that
+// into a red line rather than a wrong dataset.
+func canaryAvailabilityClasses(t *testing.T, client *googleplayscraper.Client) {
+	cases := []struct {
+		name    string
+		appID   string
+		country string
+		want    googleplayscraper.Status
+	}{
+		// Available: a first-party app in its home market.
+		{"available", canaryStableApp, "us", googleplayscraper.StatusAvailable},
+		// Not found: an id Google has never served.
+		{"missing_id", "com.qa.definitely.not.a.real.pkg.zz", "us", googleplayscraper.StatusNotFound},
+		// Not in region: a Japanese title that is listed but not offered in the US.
+		{"region_locked", "jp.co.mixi.monsterstrike", "us", googleplayscraper.StatusNotInRegion},
+		{"region_home", "jp.co.mixi.monsterstrike", "jp", googleplayscraper.StatusAvailable},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx, cancel := canaryCtx(t)
+			defer cancel()
+
+			res, err := client.Availability(ctx, tc.appID, googleplayscraper.AvailabilityOptions{
+				Countries: []string{tc.country},
+			})
+			if err != nil {
+				t.Fatalf("Availability: %v", err)
+			}
+			got, ok := res.Statuses[tc.country]
+			if !ok {
+				t.Fatalf("no status for %q in %v", tc.country, res.Statuses)
+			}
+			if got != tc.want {
+				t.Errorf("%s in %q: status %v, want %v -- the RPC's availability signals may have drifted",
+					tc.appID, tc.country, got, tc.want)
+			}
+		})
+	}
+}
+
+// canaryCollections checks that every cluster name still answers.
+//
+// These are undocumented identifiers found by asking the endpoint: Google
+// accepts topselling_free, topselling_paid, topgrossing, topselling_new_free,
+// topselling_new_paid and movers_shakers, and returns nothing at all for
+// plausible-looking alternatives like new_free or topselling_trending. A
+// renamed cluster would not error -- List would simply return an empty list,
+// and a pipeline built on "what is new" would quietly stop seeing new apps.
+func canaryCollections(t *testing.T, client *googleplayscraper.Client) {
+	seen := map[googleplayscraper.Collection][]googleplayscraper.SearchResult{}
+	for _, col := range []googleplayscraper.Collection{
+		googleplayscraper.CollectionTopFree,
+		googleplayscraper.CollectionTopPaid,
+		googleplayscraper.CollectionGrossing,
+		googleplayscraper.CollectionNewFree,
+		googleplayscraper.CollectionNewPaid,
+		googleplayscraper.CollectionMoversShakers,
+	} {
+		t.Run(string(col), func(t *testing.T) {
+			ctx, cancel := canaryCtx(t)
+			defer cancel()
+
+			results, err := client.List(ctx, googleplayscraper.ListOptions{
+				Collection: col,
+				Category:   googleplayscraper.CategoryGameAction,
+				Num:        50,
+			})
+			if err != nil {
+				t.Fatalf("List(%s): %v", col, err)
+			}
+			if len(results) == 0 {
+				t.Fatalf("%s returned no apps; the cluster name may have been retired", col)
+			}
+			for i, r := range results {
+				if r.AppID == "" {
+					t.Errorf("%s result %d has no appId", col, i)
+				}
+			}
+			seen[col] = results
+		})
+	}
+
+	// Non-empty is not enough. The legacy HTML fallback used to answer any
+	// collection it did not recognise with the top-free chart and a nil error,
+	// so a broken cluster name would have passed the check above while
+	// returning the most popular apps under the name of the newest. Distinct
+	// collections must return distinct lists.
+	top, ok := seen[googleplayscraper.CollectionTopFree]
+	if !ok || len(top) == 0 {
+		return
+	}
+	inTop := make(map[string]bool, len(top))
+	for _, r := range top {
+		inTop[r.AppID] = true
+	}
+	for _, col := range []googleplayscraper.Collection{
+		googleplayscraper.CollectionNewFree,
+		googleplayscraper.CollectionMoversShakers,
+	} {
+		other := seen[col]
+		if len(other) == 0 {
+			continue
+		}
+		var shared int
+		for _, r := range other {
+			if inTop[r.AppID] {
+				shared++
+			}
+		}
+		if shared == len(other) {
+			t.Errorf("%s returned exactly the top-free chart (%d of %d shared); "+
+				"the cluster name may be unrecognised and a fallback answering in its place",
+				col, shared, len(other))
+		}
+	}
 }

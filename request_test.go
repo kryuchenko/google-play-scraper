@@ -45,7 +45,7 @@ func TestClientGet(t *testing.T) {
 			t.Error("User-Agent header is missing")
 		}
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"status": "ok"}`))
+		_, _ = w.Write([]byte(`{"status": "ok"}`))
 	}))
 	defer server.Close()
 
@@ -150,7 +150,7 @@ func TestClientPost(t *testing.T) {
 			t.Errorf("Content-Type: got %q", r.Header.Get("Content-Type"))
 		}
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`response`))
+		_, _ = w.Write([]byte(`response`))
 	}))
 	defer server.Close()
 
@@ -176,7 +176,7 @@ func TestClientWithThrottle(t *testing.T) {
 func TestThrottleDelay(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`ok`))
+		_, _ = w.Write([]byte(`ok`))
 	}))
 	defer server.Close()
 
@@ -220,9 +220,9 @@ func TestThrottleConcurrentStarts(t *testing.T) {
 		workers  = 8
 	)
 
-	var hits int32
+	var hits atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		atomic.AddInt32(&hits, 1)
+		hits.Add(1)
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer server.Close()
@@ -232,7 +232,7 @@ func TestThrottleConcurrentStarts(t *testing.T) {
 	jobs := make(chan int)
 	var wg sync.WaitGroup
 	wg.Add(workers)
-	for w := 0; w < workers; w++ {
+	for range workers {
 		go func() {
 			defer wg.Done()
 			for range jobs {
@@ -244,14 +244,14 @@ func TestThrottleConcurrentStarts(t *testing.T) {
 	}
 
 	start := time.Now()
-	for i := 0; i < requests; i++ {
+	for i := range requests {
 		jobs <- i
 	}
 	close(jobs)
 	wg.Wait()
 	elapsed := time.Since(start)
 
-	if got := atomic.LoadInt32(&hits); got != requests {
+	if got := hits.Load(); got != requests {
 		t.Fatalf("server saw %d requests, want %d", got, requests)
 	}
 

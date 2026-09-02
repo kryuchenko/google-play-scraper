@@ -179,3 +179,45 @@ var categorySearchTerms = map[Category][]string{
 		"video chat", "group chat", "social network", "live stream",
 	},
 }
+
+// ReviewLanguages is the set of hl values that return a distinct body of
+// reviews.
+//
+// Reviews are the one place where the language parameter does not filter but
+// *partitions*: hl selects which corpus is served, and the corpora do not
+// overlap. Measured on com.spotify.music -- the first fifty codes returned
+// 1,991 reviews of which 1,991 were distinct, with no id appearing under two
+// codes. So the union over this list is how to read all of an app's reviews,
+// and reading one language reads one slice of them.
+//
+// The country parameter does nothing here at all. Checked on com.spotify.music
+// and, because it is the case that matters, on kz.kaspi.mobile, a bank used
+// almost entirely from Kazakhstan: ru/kz, ru/ru and ru/us return the same
+// reviews id for id, and so do kk/kz and kk/us. Nor is there a country
+// anywhere in the response -- a review carries seventeen fields and none of
+// them is geographic. Reviews cannot be selected by market, and the closest
+// available proxy is language, which is not the same thing: ru covers Russia,
+// Belarus, Ukraine and Kazakhstan together and cannot be split.
+//
+// Every code below was exercised. Some codes are aliases and are deliberately
+// absent: tg and tk are served the Russian corpus verbatim (30 of 30
+// identical), ga and cy the English one. A caller passing its own list should
+// expect the occasional alias and deduplicate.
+//
+// The list is not a claim to be exhaustive. It is the set that was checked,
+// which is a different and more useful thing than a list copied from a locale
+// table and never exercised.
+var ReviewLanguages = []string{
+	// Large markets first, so a caller taking a prefix slice gets the reach.
+	"en", "es", "pt", "ru", "de", "fr", "it", "ja", "ko", "zh",
+	"tr", "id", "vi", "th", "hi", "ar", "pl", "nl", "sv", "da",
+	"fi", "no", "cs", "el", "he", "hu", "ro", "uk", "bg", "hr",
+	"sr", "sk", "sl", "lt", "lv", "et", "fa", "bn", "ta", "te",
+	"ml", "mr", "gu", "kn", "pa", "ur", "ms", "tl", "sw", "af",
+	// Central Asia, the Caucasus and the Balkans. These were missing from the
+	// first pass, which meant "all languages" skipped Kazakh entirely -- on an
+	// app whose users are mostly Kazakhstani that is not a rounding error.
+	"kk", "az", "uz", "ky", "ka", "hy", "be", "mk", "sq", "bs",
+	// Everything else checked and found distinct.
+	"is", "mn", "ne", "si", "km", "lo", "my", "am", "eu", "gl", "ca",
+}

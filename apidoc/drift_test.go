@@ -20,15 +20,28 @@ import (
 // knownRPCIDs is the set of batchexecute rpcid literals the scraper is expected
 // to use. It mirrors the @x-rpcid extensions in google_endpoints.go and is the
 // contract the drift test enforces against the real source.
-var knownRPCIDs = []string{"IJ4APc", "oCPfdb", "qnKhOb", "vyAe2", "xdSrCf"}
+var knownRPCIDs = []string{"IJ4APc", "Ws7gDc", "oCPfdb", "qnKhOb", "vyAe2", "xdSrCf"}
 
 // rpcidUsage finds batchexecute rpcids at their real call sites — generically,
 // so a NEWLY added rpcid is detected too (that is the whole point of drift test
-// A). The three alternatives cover the only places an rpcid appears as the
-// leading token: a `rpcids=` / `rpcids": {"` query or map value, and the first
-// element of a raw `[[["<rpcid>"` f.req payload array. Anchoring to these
-// positions excludes trailing payload literals like "generic" or "null".
-var rpcidUsage = regexp.MustCompile(`(?:rpcids[=":}{ ]+"?|\[\[\[\\?")([A-Za-z0-9]{4,9})`)
+// A). The four alternatives cover the only places an rpcid appears as the
+// leading token: a `rpcids=` / `rpcids": {"` query or map value, the first
+// element of a raw `[[["<rpcid>"` f.req payload array, and the `id:` field of a
+// rpcCall literal. Anchoring to these positions excludes trailing payload
+// literals like "generic" or "null".
+//
+// The last alternative was added after the scraper moved to packing several
+// RPCs per request: the rpcid stopped being a literal in the URL and became a
+// struct field, and this test went blind in both directions at once — it
+// reported IJ4APc and xdSrCf as dead while failing to notice Ws7gDc had
+// appeared. A drift test that only recognises one spelling of a call site
+// stops being a drift test the moment the code is refactored.
+// The URL form carries the id bare after "="; every other form quotes it.
+// Keeping those apart matters: an earlier version allowed a space before an
+// optional quote, so the prose "the six rpcids this package knows" scanned as
+// an undocumented rpcid called "this" and failed the build. Rewording the
+// comment would not have fixed it -- "rpcids known here" scans as "known".
+var rpcidUsage = regexp.MustCompile(`(?:rpcids=|rpcids[":}{ ]+"|\[\[\[\\?"|\bid:\s+")([A-Za-z0-9]{4,9})`)
 
 // TestRPCIDCoverage (drift test A) compares the rpcids actually used in the root
 // scraper source against the ones documented here. A mismatch means either a new

@@ -2,8 +2,14 @@ package googleplayscraper
 
 import (
 	"context"
+	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"regexp"
+	"strconv"
+	"strings"
 	"testing"
 )
 
@@ -49,22 +55,22 @@ func TestReviewsValidation(t *testing.T) {
 func TestParseTimestamp(t *testing.T) {
 	tests := []struct {
 		name string
-		arr  []interface{}
+		arr  []any
 		want int64 // unix milli
 	}{
 		{
 			name: "seconds only",
-			arr:  []interface{}{float64(1704067200)},
+			arr:  []any{float64(1704067200)},
 			want: 1704067200000,
 		},
 		{
 			name: "with milliseconds",
-			arr:  []interface{}{float64(1704067200), float64(500)},
+			arr:  []any{float64(1704067200), float64(500)},
 			want: 1704067200500,
 		},
 		{
 			name: "empty",
-			arr:  []interface{}{},
+			arr:  []any{},
 			want: -62135596800000, // zero time
 		},
 	}
@@ -88,15 +94,15 @@ func TestParseTimestamp(t *testing.T) {
 
 func TestParseReview(t *testing.T) {
 	// Simulate review data structure from Google Play
-	reviewData := []interface{}{
-		"review-id-123", // [0] ID
-		[]interface{}{"John Doe", []interface{}{}}, // [1] User data
-		float64(5),                         // [2] Score
-		nil,                                // [3]
-		"Great app, love it!",              // [4] Text
-		[]interface{}{float64(1704067200)}, // [5] Date
-		float64(42),                        // [6] ThumbsUp
-		nil,                                // [7] Reply
+	reviewData := []any{
+		"review-id-123",            // [0] ID
+		[]any{"John Doe", []any{}}, // [1] User data
+		float64(5),                 // [2] Score
+		nil,                        // [3]
+		"Great app, love it!",      // [4] Text
+		[]any{float64(1704067200)}, // [5] Date
+		float64(42),                // [6] ThumbsUp
+		nil,                        // [7] Reply
 	}
 
 	review, err := parseReview(reviewData, "com.example.app")
@@ -129,7 +135,7 @@ func TestReviewsWithMockServer(t *testing.T) {
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(mockResponse))
+		_, _ = w.Write([]byte(mockResponse))
 	}))
 	defer server.Close()
 
@@ -385,4 +391,59 @@ func minInt(a, b int) int {
 		return a
 	}
 	return b
+}
+
+// The page size a sweep uses is the wall clock: reviews pagination is
+// throttle-bound, so requests-per-review is the only lever that matters. It was
+// 150 with a comment calling that Google's limit, which it is not.
+func TestReviewsSeqAsksForFullPages(t *testing.T) {
+	var counts []int
+	countRe := regexp.MustCompile(`\[2,\d+,\[(\d+)`)
+	var pages int
+
+	c := newMockClient(t, func(req *http.Request) (mockResponse, bool) {
+		if req.URL.Path != pathBatch {
+			return mockResponse{}, false
+		}
+		body, _ := io.ReadAll(req.Body)
+		decoded, _ := url.QueryUnescape(strings.TrimPrefix(string(body), "f.req="))
+		if m := countRe.FindStringSubmatch(decoded); m != nil {
+			n, _ := strconv.Atoi(m[1])
+			counts = append(counts, n)
+		}
+		pages++
+		if pages > 1 {
+			return mockResponse{Body: batchEnvelope("oCPfdb", "null")}, true
+		}
+		return mockResponse{Body: readFixture(t, "reviews_batch.bin")}, true
+	})
+
+	for range c.ReviewsSeq(context.Background(), "com.x", ReviewOptions{}) { //nolint:revive
+		break
+	}
+
+	if len(counts) == 0 {
+		t.Fatal("no request carried a page size")
+	}
+	if counts[0] != reviewsPageMax {
+		t.Errorf("asked for %d reviews per page, want reviewsPageMax (%d)", counts[0], reviewsPageMax)
+	}
+}
+
+// Overshooting the page size does not error, it comes back as a null payload --
+// which is also Google's "no more reviews" signal, so an unclamped Count would
+// truncate a sweep silently. Measured: 3000 works, 5000 does not.
+func TestReviewsPageSizeIsClamped(t *testing.T) {
+	if reviewsPageMax > 3000 {
+		t.Fatalf("reviewsPageMax = %d; 5000 returns a null payload and 3000 was the last size seen to work",
+			reviewsPageMax)
+	}
+	body := buildReviewsBody("com.x", ReviewOptions{Count: 100000})
+	decoded, err := url.QueryUnescape(strings.TrimPrefix(body, "f.req="))
+	if err != nil {
+		t.Fatalf("unescape: %v", err)
+	}
+	if !strings.Contains(decoded, fmt.Sprintf("[2,0,[%d]", reviewsPageMax)) {
+		t.Errorf("a huge Count was not clamped to %d:\n%s", reviewsPageMax, decoded)
+	}
 }

@@ -21,7 +21,7 @@ func TestParallelIndexedPreservesOrder(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parallelIndexed returned %v, want nil", err)
 	}
-	for i := 0; i < n; i++ {
+	for i := range n {
 		if out[i] != i*i {
 			t.Fatalf("out[%d] = %d, want %d", i, out[i], i*i)
 		}
@@ -37,16 +37,18 @@ func TestParallelIndexedCallsEachIndexOnce(t *testing.T) {
 		counts = make(map[int]int)
 	)
 
-	parallelIndexed(context.Background(), n, 16, func(_ context.Context, i int) {
+	if err := parallelIndexed(context.Background(), n, 16, func(_ context.Context, i int) {
 		mu.Lock()
 		counts[i]++
 		mu.Unlock()
-	})
+	}); err != nil {
+		t.Fatalf("parallelIndexed on an uncancelled context returned %v, want nil", err)
+	}
 
 	if len(counts) != n {
 		t.Fatalf("processed %d distinct indices, want %d", len(counts), n)
 	}
-	for i := 0; i < n; i++ {
+	for i := range n {
 		if counts[i] != 1 {
 			t.Errorf("index %d processed %d times, want 1", i, counts[i])
 		}
@@ -65,7 +67,7 @@ func TestParallelIndexedSequential(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parallelIndexed returned %v, want nil", err)
 	}
-	for i := 0; i < n; i++ {
+	for i := range n {
 		if order[i] != i {
 			t.Fatalf("sequential order[%d] = %d, want %d", i, order[i], i)
 		}
@@ -99,17 +101,17 @@ func TestParallelIndexedSequentialCancel(t *testing.T) {
 func TestParallelIndexedConcurrentCancel(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	const n = 1000
-	var done int64
+	var done atomic.Int64
 
 	err := parallelIndexed(ctx, n, 4, func(_ context.Context, i int) {
-		if atomic.AddInt64(&done, 1) == 5 {
+		if done.Add(1) == 5 {
 			cancel()
 		}
 	})
 	if err != context.Canceled {
 		t.Fatalf("got err %v, want context.Canceled", err)
 	}
-	if atomic.LoadInt64(&done) >= n {
+	if done.Load() >= n {
 		t.Fatal("all indices ran despite cancellation; pool did not stop dispatching")
 	}
 }
@@ -126,9 +128,11 @@ func TestParallelIndexedClampsAndEmpty(t *testing.T) {
 	for _, workers := range []int{0, -3, 1000} {
 		const n = 5
 		var count int64
-		parallelIndexed(context.Background(), n, workers, func(context.Context, int) {
+		if err := parallelIndexed(context.Background(), n, workers, func(context.Context, int) {
 			atomic.AddInt64(&count, 1)
-		})
+		}); err != nil {
+			t.Fatalf("workers=%d: parallelIndexed returned %v, want nil", workers, err)
+		}
 		if count != n {
 			t.Errorf("workers=%d: ran %d indices, want %d", workers, count, n)
 		}

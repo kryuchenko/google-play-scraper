@@ -54,6 +54,9 @@ type SearchResult struct {
 
 // Search searches for apps on Google Play
 func (c *Client) Search(ctx context.Context, opts SearchOptions) ([]SearchResult, error) {
+	ctx, endTask := startTask(ctx, traceTaskSearch)
+	defer endTask()
+
 	if opts.Term == "" {
 		return nil, fmt.Errorf("search term is required")
 	}
@@ -142,7 +145,7 @@ func (c *Client) fetchMoreApps(ctx context.Context, token, lang, country string)
 	}
 
 	var results []SearchResult
-	if apps, ok := getPath(data, 0, 0, 0).([]interface{}); ok {
+	if apps, ok := getPath(data, 0, 0, 0).([]any); ok {
 		for _, app := range apps {
 			if r := parseSearchResult(app); r.AppID != "" {
 				results = append(results, r)
@@ -159,12 +162,12 @@ func parseSearchPage(body []byte, num int) ([]SearchResult, string, error) {
 	return extractSearchResults(dataBlocks)
 }
 
-func extractSearchResults(data map[string]interface{}) ([]SearchResult, string, error) {
+func extractSearchResults(data map[string]any) ([]SearchResult, string, error) {
 	var results []SearchResult
 	var token string
 
 	// Try ds:4 first (search), ds:3 (developer), then ds:1
-	var appsData interface{}
+	var appsData any
 	if ds4, ok := data["ds:4"]; ok {
 		appsData = ds4
 	} else if ds3, ok := data["ds:3"]; ok {
@@ -184,10 +187,10 @@ func extractSearchResults(data map[string]interface{}) ([]SearchResult, string, 
 		{0, 1, 0, 0, 0}, // search pages
 	}
 
-	var apps []interface{}
+	var apps []any
 	for _, path := range paths {
 		if section := getPath(appsData, path...); section != nil {
-			if arr, ok := section.([]interface{}); ok && len(arr) > 0 {
+			if arr, ok := section.([]any); ok && len(arr) > 0 {
 				// Verify this looks like apps data
 				apps = arr
 				break
@@ -220,7 +223,7 @@ func extractSearchResults(data map[string]interface{}) ([]SearchResult, string, 
 // short "did you mean"/featured array alongside the full results grid; picking
 // the first match by depth-first order can land on the short one, so we compare
 // all candidates and keep the largest.
-func findAppsInData(data interface{}) []interface{} {
+func findAppsInData(data any) []any {
 	best := bestAppsArray(data)
 	if best == nil {
 		return nil
@@ -228,19 +231,19 @@ func findAppsInData(data interface{}) []interface{} {
 	return best
 }
 
-func bestAppsArray(data interface{}) []interface{} {
-	arr, ok := data.([]interface{})
+func bestAppsArray(data any) []any {
+	arr, ok := data.([]any)
 	if !ok {
 		return nil
 	}
 
-	var best []interface{}
+	var best []any
 	bestCount := 0
 
 	// A candidate is an array whose direct children look like app entries.
 	count := 0
 	for _, item := range arr {
-		if itemArr, ok := item.([]interface{}); ok && hasAppIdPattern(itemArr) {
+		if itemArr, ok := item.([]any); ok && hasAppIDPattern(itemArr) {
 			count++
 		}
 	}
@@ -254,7 +257,7 @@ func bestAppsArray(data interface{}) []interface{} {
 		if cand := bestAppsArray(item); cand != nil {
 			candCount := 0
 			for _, e := range cand {
-				if ea, ok := e.([]interface{}); ok && hasAppIdPattern(ea) {
+				if ea, ok := e.([]any); ok && hasAppIDPattern(ea) {
 					candCount++
 				}
 			}
@@ -267,7 +270,7 @@ func bestAppsArray(data interface{}) []interface{} {
 	return best
 }
 
-func hasAppIdPattern(arr []interface{}) bool {
+func hasAppIDPattern(arr []any) bool {
 	// Check common positions for appId
 	// Search: [0][0] = "com.xxx"
 	// Developer wrapped: [0][0][0][0] = "com.xxx" (because each app is [[app_data]])
@@ -321,7 +324,7 @@ var searchGridPaths = rowPaths{
 }
 
 // parseSearchResultNew handles the search/cluster grid data format.
-func parseSearchResultNew(item interface{}) SearchResult {
+func parseSearchResultNew(item any) SearchResult {
 	return decodeResultRow(item, searchGridPaths)
 }
 
@@ -343,44 +346,46 @@ var qnKhObRowPaths = rowPaths{
 	urlPathOnly:     true,
 }
 
-func parseSearchResult(item interface{}) SearchResult {
+func parseSearchResult(item any) SearchResult {
 	return decodeResultRow(item, qnKhObRowPaths)
 }
 
-// enrichSearchResults replaces each result with full App() details, fetched by
-// a pool of c.concurrency workers (default 1 — sequential). Output order
-// matches input: workers write into a preallocated slice by index. If a single
-// App() call fails, that slot keeps its original, un-enriched result — the same
-// per-item fallback the sequential version used. The error return is reserved
-// for future use and is currently always nil.
+// enrichSearchResults replaces each result with full app details.
+//
+// This used to fetch one HTML page per result, in parallel: for a listing of
+// 32 that is 32 requests and about thirty megabytes of markup, and List
+// accepts Num up to 660. It now asks for them in batches over the RPC the
+// details page is itself built from, which is the same data at 32 apps per
+// request.
+//
+// Measured against the live store at a 300ms throttle, a 32-result listing
+// with FullDetail went from 9.73s over 33 requests to 0.44s over 2. The
+// throttle meters requests, so the ratio is the point; parallelism is not,
+// and WithConcurrency no longer has anything to do here.
+//
+// Output order matches input, and a result whose app could not be fetched
+// keeps its original un-enriched value -- the same per-item fallback as
+// before, so a single missing app never costs the listing.
 func (c *Client) enrichSearchResults(ctx context.Context, results []SearchResult, lang, country string) ([]SearchResult, error) {
-	// Seed every slot with its original result, then overwrite in place with the
-	// enriched version. Output order matches input (each worker owns slot i), and
-	// any slot left untouched — because enrichOne hit an App() error, or because
-	// ctx cancellation stopped the pool from dispatching that index — keeps its
-	// original, un-enriched result rather than a zero value. fn never needs to
-	// surface an error, so parallelIndexed's only return (ctx cancellation) is
-	// intentionally ignored: enrich always yields a full-length slice.
 	enriched := make([]SearchResult, len(results))
 	copy(enriched, results)
 
-	_ = parallelIndexed(ctx, len(results), c.concurrency, func(ctx context.Context, i int) {
-		enriched[i] = c.enrichOne(ctx, results[i], lang, country)
-	})
+	ids := make([]string, len(results))
+	for i, r := range results {
+		ids[i] = r.AppID
+	}
 
+	for i, got := range c.AppsMany(ctx, ids, AppOptions{Lang: lang, Country: country}) {
+		if got.Err != nil || got.App == nil {
+			continue
+		}
+		enriched[i] = searchResultFromApp(got.App)
+	}
 	return enriched, nil
 }
 
-// enrichOne fetches full details for a single result, falling back to the
-// original result if the App() call fails.
-func (c *Client) enrichOne(ctx context.Context, r SearchResult, lang, country string) SearchResult {
-	app, err := c.App(ctx, r.AppID, AppOptions{
-		Lang:    lang,
-		Country: country,
-	})
-	if err != nil {
-		return r
-	}
+// searchResultFromApp narrows a full App to the fields a SearchResult carries.
+func searchResultFromApp(app *App) SearchResult {
 	return SearchResult{
 		AppID:       app.AppID,
 		Title:       app.Title,

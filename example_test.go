@@ -30,29 +30,32 @@ func ExampleStatusError() {
 	}
 }
 
-// ExampleClient_EnumerateCatalog sweeps a small subset of Google's sitemap
+// ExampleClient_CatalogSeq sweeps a small subset of Google's sitemap
 // shards and collects the app package ids they list. A full sweep (Shards: nil)
-// walks ~80,945 shards for roughly 3 million ids; here we cap it to the first
-// five shards for a quick sample. The emit callback is invoked serially, so the
-// closure may append without its own locking.
-func ExampleClient_EnumerateCatalog() {
+// walks ~83k shards for roughly 3 million ids; here we cap it to the first
+// five shards for a quick sample. Ids arrive one at a time, so the loop can
+// stop as soon as it has what it needs -- on the full catalog that is the
+// difference between a few requests and 83k of them.
+func ExampleClient_CatalogSeq() {
 	client := googleplayscraper.NewClient(
 		googleplayscraper.WithThrottle(200 * time.Millisecond),
 	)
 
 	var ids []string
-	err := client.EnumerateCatalog(context.Background(), func(pkg string) {
-		ids = append(ids, pkg)
-	}, googleplayscraper.CatalogOptions{
+	for pkg, err := range client.CatalogSeq(context.Background(), googleplayscraper.CatalogOptions{
 		Concurrency: 4,
 		Shards:      []int{0, 1, 2, 3, 4}, // omit (nil) to sweep the entire catalog
 		OnShardError: func(idx int, url string, err error) {
 			fmt.Printf("shard %d failed: %v\n", idx, err)
 		},
-	})
-	if err != nil {
-		fmt.Println("sweep error:", err)
-		return
+	}) {
+		// Terminal errors only: a shard that failed went to OnShardError and
+		// the sweep carried on past it.
+		if err != nil {
+			fmt.Println("sweep error:", err)
+			return
+		}
+		ids = append(ids, pkg)
 	}
 
 	fmt.Printf("collected %d package ids\n", len(ids))

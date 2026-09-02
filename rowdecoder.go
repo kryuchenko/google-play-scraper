@@ -59,14 +59,14 @@ type rowPaths struct {
 // duplicate: pick the first non-empty candidate per field, derive Free from the
 // price, divide the micro-unit price, and build the canonical URL from AppID
 // when no explicit path is given.
-func decodeResultRow(item interface{}, paths rowPaths) SearchResult {
-	arr, ok := item.([]interface{})
+func decodeResultRow(item any, paths rowPaths) SearchResult {
+	arr, ok := item.([]any)
 	if !ok {
 		return SearchResult{}
 	}
 
 	if paths.unwrapSingleton && len(arr) == 1 {
-		if inner, ok := arr[0].([]interface{}); ok {
+		if inner, ok := arr[0].([]any); ok {
 			arr = inner
 		}
 	}
@@ -102,7 +102,7 @@ func decodeResultRow(item interface{}, paths rowPaths) SearchResult {
 
 // firstValue returns the value at the first candidate path that resolves to a
 // non-nil node, or nil when none do.
-func firstValue(arr []interface{}, candidates [][]int) interface{} {
+func firstValue(arr []any, candidates [][]int) any {
 	for _, path := range candidates {
 		if v := getPath(arr, path...); v != nil {
 			return v
@@ -113,7 +113,7 @@ func firstValue(arr []interface{}, candidates [][]int) interface{} {
 
 // firstString returns the string form of the first candidate path that resolves
 // to a non-empty string, or "" when none do.
-func firstString(arr []interface{}, candidates [][]int) string {
+func firstString(arr []any, candidates [][]int) string {
 	for _, path := range candidates {
 		if v := getPath(arr, path...); v != nil {
 			if s := toString(v); s != "" {
@@ -128,7 +128,7 @@ func firstString(arr []interface{}, candidates [][]int) string {
 // requirePrefix is set the candidate must carry a package-name prefix (the grid
 // layout shares its appID slot with non-package values); otherwise the first
 // non-empty candidate wins.
-func firstAppID(arr []interface{}, candidates [][]int, requirePrefix bool) string {
+func firstAppID(arr []any, candidates [][]int, requirePrefix bool) string {
 	for _, path := range candidates {
 		v := getPath(arr, path...)
 		if v == nil {

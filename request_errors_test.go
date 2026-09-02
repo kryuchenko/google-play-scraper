@@ -42,11 +42,11 @@ func TestPostStatusError(t *testing.T) {
 func TestPostSuccess(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body := make([]byte, r.ContentLength)
-		r.Body.Read(body)
+		_, _ = r.Body.Read(body)
 		if r.Header.Get("Content-Type") != "application/x-www-form-urlencoded" {
 			t.Errorf("Content-Type = %q", r.Header.Get("Content-Type"))
 		}
-		w.Write([]byte("ok-" + string(body)))
+		_, _ = w.Write([]byte("ok-" + string(body)))
 	}))
 	defer server.Close()
 
@@ -65,7 +65,7 @@ func TestGetBodyReadError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Length", "1024")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("short"))
+		_, _ = w.Write([]byte("short"))
 		hj, ok := w.(http.Hijacker)
 		if !ok {
 			t.Fatal("ResponseWriter is not a Hijacker")
@@ -74,7 +74,7 @@ func TestGetBodyReadError(t *testing.T) {
 		if err != nil {
 			t.Fatalf("hijack: %v", err)
 		}
-		conn.Close()
+		_ = conn.Close()
 	}))
 	defer server.Close()
 

@@ -18,19 +18,19 @@ import (
 // It returns (nil, nil) when the frame carries a null payload, which Google
 // uses to signal "no more data" (e.g. an exhausted pagination token), and when
 // the response is well-formed but contains no wrb.fr frame.
-func decodeBatchEnvelope(body []byte) ([]interface{}, error) {
+func decodeBatchEnvelope(body []byte) ([]any, error) {
 	if len(body) == 0 {
 		return nil, fmt.Errorf("batchexecute: empty response")
 	}
 
 	parsedAny := false
-	for _, line := range bytes.Split(body, []byte("\n")) {
+	for line := range bytes.SplitSeq(body, []byte("\n")) {
 		line = bytes.TrimSpace(line)
 		if len(line) == 0 || line[0] != '[' {
 			continue // skip ")]}'" prefix and numeric chunk markers
 		}
 
-		var frames [][]interface{}
+		var frames [][]any
 		if err := json.Unmarshal(line, &frames); err != nil {
 			continue // not the frame line (e.g. the trailing "di"/"af.httprm" line)
 		}
@@ -49,7 +49,7 @@ func decodeBatchEnvelope(body []byte) ([]interface{}, error) {
 				return nil, nil
 			}
 
-			var data []interface{}
+			var data []any
 			if err := json.Unmarshal([]byte(dataStr), &data); err != nil {
 				return nil, fmt.Errorf("batchexecute: parse payload: %w", err)
 			}
@@ -61,4 +61,67 @@ func decodeBatchEnvelope(body []byte) ([]interface{}, error) {
 		return nil, fmt.Errorf("batchexecute: no JSON frames in response")
 	}
 	return nil, nil
+}
+
+// decodeBatchFrames returns every wrb.fr frame in a batchexecute response,
+// keyed by the index the caller put in the f.req tuple.
+//
+// decodeBatchEnvelope above returns the first frame and stops, which is all a
+// single-RPC request can produce. A batchexecute POST may carry several RPCs,
+// and then the first frame is merely the first one Google finished -- not the
+// first one asked for. Measured against the live endpoint, a request sending
+// indices 7 and 9 came back 9 then 7. Anything that pairs responses to requests
+// positionally will therefore hand back another app's data, silently and
+// intermittently, which is the worst shape a bug can take. Hence a map: the
+// index is the only trustworthy link between a call and its answer.
+//
+// Payloads are returned undecoded so each caller unmarshals into its own shape.
+// A frame carrying a null payload -- Google's "no more data" signal -- is
+// present in the map with an empty string, which a caller distinguishes from an
+// absent frame by the comma-ok of the lookup.
+func decodeBatchFrames(body []byte) (map[string]string, error) {
+	if len(body) == 0 {
+		return nil, fmt.Errorf("batchexecute: empty response")
+	}
+
+	frames := make(map[string]string)
+	parsedAny := false
+
+	for line := range bytes.SplitSeq(body, []byte("\n")) {
+		line = bytes.TrimSpace(line)
+		if len(line) == 0 || line[0] != '[' {
+			continue // skip ")]}'" prefix and numeric chunk markers
+		}
+
+		var batch [][]any
+		if err := json.Unmarshal(line, &batch); err != nil {
+			continue // not the frame line
+		}
+		parsedAny = true
+
+		for _, frame := range batch {
+			if len(frame) < 3 {
+				continue
+			}
+			if tag, _ := frame[0].(string); tag != "wrb.fr" {
+				continue
+			}
+			// The index we supplied, echoed back. Single-RPC responses have
+			// been seen without it; there the only possible answer is the
+			// only call, so "0" is not a guess.
+			idx := "0"
+			if len(frame) >= 7 {
+				if s, ok := frame[6].(string); ok {
+					idx = s
+				}
+			}
+			payload, _ := frame[2].(string) // non-string means null: keep ""
+			frames[idx] = payload
+		}
+	}
+
+	if !parsedAny {
+		return nil, fmt.Errorf("batchexecute: no JSON frames in response")
+	}
+	return frames, nil
 }

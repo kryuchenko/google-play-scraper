@@ -9,17 +9,25 @@ import (
 	"testing"
 )
 
-// availabilityPage renders a minimal details page whose [18][0] marker drives
-// classifyAvailability: 2 => available, 1 => pre-register (not in region).
-func availabilityPage(t *testing.T, marker int) []byte {
+// availabilityFrame is availabilityPage's counterpart for the RPC the
+// availability probe now uses: the same ds:5 payload, delivered as a
+// batchexecute frame instead of embedded in a megabyte of HTML.
+func availabilityFrame(t *testing.T, marker int) []byte {
 	t.Helper()
 	appData := makeAppDataWith18(marker)
-	ds5 := []interface{}{nil, []interface{}{nil, nil, appData}}
+	ds5 := []any{nil, []any{nil, nil, appData}}
 	raw, err := json.Marshal(ds5)
 	if err != nil {
 		t.Fatalf("marshal ds5: %v", err)
 	}
-	return htmlWithDataBlocks(map[string]string{"ds:5": string(raw)})
+	return framesEnvelope("Ws7gDc", map[string]string{"0": string(raw)}, []string{"0"})
+}
+
+// emptyFrame is what Google returns for an id it will not serve in this
+// country -- a frame with a null payload, which is the signal the page used to
+// give as a 404.
+func emptyFrame() []byte {
+	return framesEnvelope("Ws7gDc", map[string]string{"0": ""}, []string{"0"})
 }
 
 // TestAvailabilityMixedStatuses drives a sweep over a fixed country set where the
@@ -27,11 +35,11 @@ func availabilityPage(t *testing.T, marker int) []byte {
 // [18][0]=1), not-found (404) and a transport error (StatusFetchError). It pins
 // every Status branch plus the Errors map and Checked aggregate.
 func TestAvailabilityMixedStatuses(t *testing.T) {
-	availBody := availabilityPage(t, 2)
-	regionBody := availabilityPage(t, 1)
+	availBody := availabilityFrame(t, 2)
+	regionBody := availabilityFrame(t, 1)
 
 	route := func(req *http.Request) (mockResponse, bool) {
-		if req.URL.Path != pathDetails {
+		if req.URL.Path != pathBatch {
 			return mockResponse{}, false
 		}
 		switch req.URL.Query().Get("gl") {
@@ -40,7 +48,8 @@ func TestAvailabilityMixedStatuses(t *testing.T) {
 		case "de":
 			return mockResponse{Body: regionBody}, true
 		case "jp":
-			return mockResponse{Status: http.StatusNotFound}, true
+			// the RPC's form of "not served here": a frame with no payload
+			return mockResponse{Body: emptyFrame()}, true
 		case "br":
 			return mockResponse{Err: fmt.Errorf("simulated transport failure")}, true
 		}
@@ -89,7 +98,7 @@ func TestAvailabilityMixedStatuses(t *testing.T) {
 // TestAvailabilityGloballyRemoved latches GloballyRemoved when every conclusive
 // probe is a 404.
 func TestAvailabilityGloballyRemoved(t *testing.T) {
-	c := newMockClient(t, routePathStatus(pathDetails, http.StatusNotFound))
+	c := newMockClient(t, routePath(pathBatch, emptyFrame()))
 
 	res, err := c.Availability(context.Background(), "com.gone", AvailabilityOptions{
 		Countries: []string{"us", "de", "jp"},
@@ -108,7 +117,7 @@ func TestAvailabilityGloballyRemoved(t *testing.T) {
 // TestAvailabilitySoftBlock turns a 200 page with no app node into a
 // StatusFetchError, exercising checkOne's "app data not found" branch.
 func TestAvailabilitySoftBlock(t *testing.T) {
-	c := newMockClient(t, routePath(pathDetails, htmlWithDataBlocks(map[string]string{"ds:5": `"not-an-app"`})))
+	c := newMockClient(t, routePath(pathBatch, framesEnvelope("Ws7gDc", map[string]string{"0": `"not-an-app"`}, []string{"0"})))
 
 	res, err := c.Availability(context.Background(), "com.x", AvailabilityOptions{Countries: []string{"us"}})
 	if err != nil {
@@ -131,7 +140,7 @@ func TestAvailabilityEmptyAppID(t *testing.T) {
 // TestAvailabilityContextCancelled cancels the context before the sweep starts;
 // the call must return ctx.Err() with a partial (possibly empty) result.
 func TestAvailabilityContextCancelled(t *testing.T) {
-	c := newMockClient(t, routePath(pathDetails, availabilityPage(t, 2)))
+	c := newMockClient(t, routePath(pathBatch, availabilityFrame(t, 2)))
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -149,9 +158,9 @@ func TestAvailabilityContextCancelled(t *testing.T) {
 // TestAvailableCountries verifies the convenience wrapper returns only the
 // installable countries, sorted.
 func TestAvailableCountries(t *testing.T) {
-	availBody := availabilityPage(t, 2)
+	availBody := availabilityFrame(t, 2)
 	route := func(req *http.Request) (mockResponse, bool) {
-		if req.URL.Path != pathDetails {
+		if req.URL.Path != pathBatch {
 			return mockResponse{}, false
 		}
 		switch req.URL.Query().Get("gl") {
@@ -180,21 +189,21 @@ func TestAvailableCountries(t *testing.T) {
 // is [_, token]. Each review row is [id, [user,...], score, _, text, ...].
 func reviewsEnvelope(t *testing.T, ids []string, token string) []byte {
 	t.Helper()
-	rows := make([]interface{}, 0, len(ids))
+	rows := make([]any, 0, len(ids))
 	for _, id := range ids {
-		rows = append(rows, []interface{}{
+		rows = append(rows, []any{
 			id,
-			[]interface{}{"User " + id},
+			[]any{"User " + id},
 			float64(5),
 			nil,
 			"review text " + id,
 		})
 	}
-	tokenField := interface{}(nil)
+	tokenField := any(nil)
 	if token != "" {
 		tokenField = token
 	}
-	data := []interface{}{rows, []interface{}{nil, tokenField}}
+	data := []any{rows, []any{nil, tokenField}}
 	inner, err := json.Marshal(data)
 	if err != nil {
 		t.Fatalf("marshal reviews: %v", err)

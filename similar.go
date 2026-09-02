@@ -16,6 +16,9 @@ type SimilarOptions struct {
 
 // Similar fetches apps similar to the given app
 func (c *Client) Similar(ctx context.Context, opts SimilarOptions) ([]SearchResult, error) {
+	ctx, endTask := startTask(ctx, traceTaskSimilar)
+	defer endTask()
+
 	if opts.AppID == "" {
 		return nil, fmt.Errorf("appID is required")
 	}
@@ -68,12 +71,11 @@ func (c *Client) Similar(ctx context.Context, opts SimilarOptions) ([]SearchResu
 }
 
 func findSimilarCluster(body []byte) (string, error) {
-	dataBlocks := parseDataBlocks(body)
 
 	// Look for clusters with "Similar" in title
 	// Clusters are typically in ds:7 or ds:8, path [1][1]
 	for _, key := range []string{"ds:7", "ds:8", "ds:6"} {
-		ds, ok := dataBlocks[key]
+		ds, ok := dataBlock(body, key)
 		if !ok {
 			continue
 		}
@@ -83,13 +85,13 @@ func findSimilarCluster(body []byte) (string, error) {
 			continue
 		}
 
-		clustersArr, ok := clusters.([]interface{})
+		clustersArr, ok := clusters.([]any)
 		if !ok {
 			continue
 		}
 
 		for _, cluster := range clustersArr {
-			clusterArr, ok := cluster.([]interface{})
+			clusterArr, ok := cluster.([]any)
 			if !ok {
 				continue
 			}
@@ -113,10 +115,9 @@ func findSimilarCluster(body []byte) (string, error) {
 }
 
 func parseSimilarPage(body []byte) ([]SearchResult, error) {
-	dataBlocks := parseDataBlocks(body)
 
 	// Apps in ds:3 -> [0][1][0][21][0]
-	ds3, ok := dataBlocks["ds:3"]
+	ds3, ok := dataBlock(body, "ds:3")
 	if !ok {
 		return nil, nil
 	}
@@ -126,7 +127,7 @@ func parseSimilarPage(body []byte) ([]SearchResult, error) {
 		return nil, nil
 	}
 
-	apps, ok := appsSection.([]interface{})
+	apps, ok := appsSection.([]any)
 	if !ok {
 		return nil, nil
 	}
@@ -142,8 +143,8 @@ func parseSimilarPage(body []byte) ([]SearchResult, error) {
 	return results, nil
 }
 
-func parseSimilarApp(item interface{}) SearchResult {
-	arr, ok := item.([]interface{})
+func parseSimilarApp(item any) SearchResult {
+	arr, ok := item.([]any)
 	if !ok {
 		return SearchResult{}
 	}

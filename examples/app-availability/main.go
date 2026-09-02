@@ -74,7 +74,7 @@ func parseCountries(arg string) []string {
 		return googleplayscraper.AllCountries
 	}
 	var countries []string
-	for _, c := range strings.Split(arg, ",") {
+	for c := range strings.SplitSeq(arg, ",") {
 		if code := strings.TrimSpace(c); code != "" {
 			countries = append(countries, code)
 		}
@@ -107,7 +107,7 @@ func writeCSV(path string, result googleplayscraper.AvailabilityResult) error {
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	w := csv.NewWriter(f)
 	defer w.Flush()

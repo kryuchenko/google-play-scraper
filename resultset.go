@@ -1,6 +1,7 @@
 package googleplayscraper
 
 import (
+	"maps"
 	"sort"
 	"strings"
 )
@@ -69,9 +70,7 @@ func (rs *resultSet) sourceCount() int { return len(rs.perSource) }
 // the caller to retain and mutate.
 func (rs *resultSet) perSourceSnapshot() map[string]int {
 	out := make(map[string]int, len(rs.perSource))
-	for k, v := range rs.perSource {
-		out[k] = v
-	}
+	maps.Copy(out, rs.perSource)
 	return out
 }
 

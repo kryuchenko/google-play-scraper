@@ -3,7 +3,12 @@ package googleplayscraper
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"io"
 	"net/http"
+	"net/url"
+	"regexp"
+	"strings"
 	"testing"
 )
 
@@ -51,16 +56,16 @@ func TestCategoryAppsGraphDeveloperWalk(t *testing.T) {
 	// Page-1 search returns one app + a token; the qnKhOb page returns the same
 	// app enriched with a Score and a DeveloperID. Merging fills both fields.
 	page1 := searchHTMLPage(t, []string{"com.seed"}, "more")
-	richRow := make([]interface{}, 13)
+	richRow := make([]any, 13)
 	richRow[2] = "Seed App"
-	richRow[12] = []interface{}{"com.seed"}
-	richRow[6] = []interface{}{[]interface{}{nil, nil, []interface{}{nil, []interface{}{"5.0", float64(5.0)}}}}
-	richRow[4] = []interface{}{[]interface{}{[]interface{}{
+	richRow[12] = []any{"com.seed"}
+	richRow[6] = []any{[]any{nil, nil, []any{nil, []any{"5.0", float64(5.0)}}}}
+	richRow[4] = []any{[]any{[]any{
 		"Seed Dev",
-		[]interface{}{nil, nil, nil, nil, []interface{}{nil, nil, "https://play.google.com/store/apps/dev?id=DEV9"}},
+		[]any{nil, nil, nil, nil, []any{nil, nil, "https://play.google.com/store/apps/dev?id=DEV9"}},
 	}}}
-	data := []interface{}{[]interface{}{[]interface{}{
-		[]interface{}{richRow}, nil, nil, nil, nil, nil, nil,
+	data := []any{[]any{[]any{
+		[]any{richRow}, nil, nil, nil, nil, nil, nil,
 	}}}
 	rawMore, _ := json.Marshal(data)
 	morePayload := batchEnvelope("qnKhOb", string(rawMore))
@@ -207,15 +212,53 @@ func containsAppID(rs []SearchResult, id string) bool {
 	return false
 }
 
-// TestEnrichOneFallbackOnError verifies enrichOne keeps the original result when
-// the App() detail fetch fails for that item.
-func TestEnrichOneFallbackOnError(t *testing.T) {
-	c := newMockClient(t, routePathStatus(pathDetails, http.StatusNotFound))
+// FullDetail enrichment fetches a batch now rather than a page per result, but
+// the per-item contract is unchanged: an app the batch could not return keeps
+// its original un-enriched value, in its own slot, and does not cost the rest
+// of the listing.
+func TestEnrichmentFallsBackPerItem(t *testing.T) {
+	appRe := regexp.MustCompile(`\[\\"([^"\\]+)\\",7\]`)
+	c := newMockClient(t, func(req *http.Request) (mockResponse, bool) {
+		if req.URL.Path != pathBatch {
+			return mockResponse{}, false
+		}
+		body, _ := io.ReadAll(req.Body)
+		decoded, _ := url.QueryUnescape(strings.TrimPrefix(string(body), "f.req="))
 
-	original := SearchResult{AppID: "com.x", Title: "Original Title"}
-	got := c.enrichOne(context.Background(), original, "en", "us")
-	if got.Title != "Original Title" {
-		t.Errorf("enrichOne fallback Title = %q, want Original Title", got.Title)
+		byIndex := map[string]string{}
+		var order []string
+		for i, m := range appRe.FindAllStringSubmatch(decoded, -1) {
+			// com.broken gets the null payload Google returns for an id it
+			// does not know; the others get a title.
+			payload := minimalDS5("Enriched " + m[1])
+			if m[1] == "com.broken" {
+				payload = ""
+			}
+			byIndex[fmt.Sprint(i)] = payload
+			order = append([]string{fmt.Sprint(i)}, order...) // reversed, as Google does
+		}
+		return mockResponse{Body: framesEnvelope("Ws7gDc", byIndex, order)}, true
+	})
+
+	results := []SearchResult{
+		{AppID: "com.a", Title: "Original A"},
+		{AppID: "com.broken", Title: "Original Broken"},
+		{AppID: "com.b", Title: "Original B"},
+	}
+	got, err := c.enrichSearchResults(context.Background(), results, "en", "us")
+	if err != nil {
+		t.Fatalf("enrichSearchResults: %v", err)
+	}
+	if len(got) != len(results) {
+		t.Fatalf("got %d results, want %d", len(got), len(results))
+	}
+	if got[1].Title != "Original Broken" {
+		t.Errorf("the failed app was not left alone: Title = %q", got[1].Title)
+	}
+	for i, want := range map[int]string{0: "Enriched com.a", 2: "Enriched com.b"} {
+		if got[i].Title != want {
+			t.Errorf("slot %d Title = %q, want %q", i, got[i].Title, want)
+		}
 	}
 }
 
@@ -223,15 +266,15 @@ func TestEnrichOneFallbackOnError(t *testing.T) {
 // used when the known fixed paths miss the apps grid.
 func TestFindAppsInDataStructuralScan(t *testing.T) {
 	// An app entry parseSearchResultNew recognizes: AppID at [0][0].
-	app := func(id string) interface{} {
-		return []interface{}{[]interface{}{id}, nil, nil, "Title " + id}
+	app := func(id string) any {
+		return []any{[]any{id}, nil, nil, "Title " + id}
 	}
 	// Bury the apps grid somewhere the fixed paths do not address.
-	data := []interface{}{
+	data := []any{
 		"noise",
-		[]interface{}{
-			[]interface{}{
-				[]interface{}{app("com.a"), app("com.b"), app("com.c")},
+		[]any{
+			[]any{
+				[]any{app("com.a"), app("com.b"), app("com.c")},
 			},
 		},
 	}

@@ -6,7 +6,7 @@
 // thousands of gzipped shards, ~3 million app ids — and is the only anonymous
 // channel that enumerates the catalog rather than the top of it.
 //
-// A full sweep is large: ~80,945 shards. Use -shards to cap it for a demo or a
+// A full sweep is large: ~83k shards. Use -shards to cap it for a demo or a
 // sample, and -throttle/-concurrency to stay polite. The optional -resolve step
 // fetches full App() details for the first N collected ids to confirm they are
 // real listings.
@@ -37,7 +37,7 @@ import (
 )
 
 func main() {
-	shards := flag.Int("shards", 50, "crawl only the first N shards (0 = all ~80,945)")
+	shards := flag.Int("shards", 50, "crawl only the first N shards (0 = all, currently ~83k)")
 	concurrency := flag.Int("concurrency", 4, "parallel shard fetches")
 	throttle := flag.Duration("throttle", 200*time.Millisecond, "minimum delay between requests")
 	dedup := flag.Bool("dedup", true, "deduplicate package ids across shards")
@@ -88,24 +88,10 @@ func main() {
 
 	ids := make([]string, 0, 1024) // kept for the optional resolve step
 
-	emit := func(pkg string) {
-		total++
-		if *dedup {
-			if _, dup := seen[pkg]; dup {
-				return
-			}
-			seen[pkg] = struct{}{}
-		}
-		unique++
-		fmt.Fprintln(w, pkg)
-		if *resolve > 0 && len(ids) < *resolve {
-			ids = append(ids, pkg)
-		}
-	}
-
 	fmt.Fprintf(os.Stderr, "enumerating catalog (shards=%s, concurrency=%d)...\n", shardLabel(*shards), *concurrency)
 
-	err := client.EnumerateCatalog(ctx, emit, googleplayscraper.CatalogOptions{
+	var err error
+	for pkg, seqErr := range client.CatalogSeq(ctx, googleplayscraper.CatalogOptions{
 		Concurrency: *concurrency,
 		Shards:      subset,
 		OnShardError: func(idx int, url string, err error) {
@@ -117,11 +103,41 @@ func main() {
 					idx, n, unique, time.Since(started).Round(time.Second))
 			}
 		},
-	})
+	}) {
+		// Terminal errors only -- a shard that fails went to OnShardError
+		// above and the sweep carried on past it.
+		if seqErr != nil {
+			err = seqErr
+			break
+		}
+		total++
+		if *dedup {
+			if _, dup := seen[pkg]; dup {
+				continue
+			}
+			seen[pkg] = struct{}{}
+		}
+		unique++
+		// A write error here is latched by the writer and reported at Flush.
+		_, _ = fmt.Fprintln(w, pkg)
+		if *resolve > 0 && len(ids) < *resolve {
+			ids = append(ids, pkg)
+		}
+	}
 
-	w.Flush()
+	// A sweep costs hours and tens of gigabytes of traffic. Losing its output
+	// to an unreported flush or close failure -- a full disk is the ordinary
+	// way this happens -- would be the worst possible ending, and it would
+	// look exactly like a successful run with fewer apps than expected.
+	if ferr := w.Flush(); ferr != nil {
+		fmt.Fprintf(os.Stderr, "flush output: %v\n", ferr)
+		os.Exit(1)
+	}
 	if file != nil {
-		file.Close()
+		if cerr := file.Close(); cerr != nil {
+			fmt.Fprintf(os.Stderr, "close output: %v\n", cerr)
+			os.Exit(1)
+		}
 	}
 
 	// A cancelled sweep is not a failure: report it and keep the partial output.

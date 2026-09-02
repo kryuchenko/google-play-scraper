@@ -159,7 +159,7 @@ func reviewsBatch(c *http.Client) []byte {
 // the = escapes so the resulting URL is usable verbatim.
 func firstClusterURL(body []byte) string {
 	for _, data := range decodeBlocks(body) {
-		sections, ok := getPath(data, 0, 1).([]interface{})
+		sections, ok := getPath(data, 0, 1).([]any)
 		if !ok {
 			continue
 		}
@@ -182,7 +182,7 @@ func similarClusterURL(body []byte) string {
 		if !ok {
 			continue
 		}
-		clusters, ok := getPath(ds, 1, 1).([]interface{})
+		clusters, ok := getPath(ds, 1, 1).([]any)
 		if !ok {
 			continue
 		}
@@ -197,13 +197,13 @@ func similarClusterURL(body []byte) string {
 	return ""
 }
 
-func decodeBlocks(body []byte) []interface{} {
-	var out []interface{}
+func decodeBlocks(body []byte) []any {
+	var out []any
 	for _, m := range scriptDataRegex.FindAllStringSubmatch(string(body), -1) {
 		if len(m) < 3 {
 			continue
 		}
-		var data interface{}
+		var data any
 		if json.Unmarshal([]byte(strings.TrimSpace(m[2])), &data) == nil {
 			out = append(out, data)
 		}
@@ -211,13 +211,13 @@ func decodeBlocks(body []byte) []interface{} {
 	return out
 }
 
-func decodeKeyedBlocks(body []byte) map[string]interface{} {
-	out := make(map[string]interface{})
+func decodeKeyedBlocks(body []byte) map[string]any {
+	out := make(map[string]any)
 	for _, m := range scriptDataRegex.FindAllStringSubmatch(string(body), -1) {
 		if len(m) < 3 {
 			continue
 		}
-		var data interface{}
+		var data any
 		if json.Unmarshal([]byte(strings.TrimSpace(m[2])), &data) == nil {
 			out[m[1]] = data
 		}
@@ -225,10 +225,10 @@ func decodeKeyedBlocks(body []byte) map[string]interface{} {
 	return out
 }
 
-func getPath(data interface{}, idx ...int) interface{} {
+func getPath(data any, idx ...int) any {
 	cur := data
 	for _, i := range idx {
-		arr, ok := cur.([]interface{})
+		arr, ok := cur.([]any)
 		if !ok || i >= len(arr) {
 			return nil
 		}
@@ -237,7 +237,7 @@ func getPath(data interface{}, idx ...int) interface{} {
 	return cur
 }
 
-func str(v interface{}) string {
+func str(v any) string {
 	if s, ok := v.(string); ok {
 		return s
 	}
@@ -271,7 +271,7 @@ func do(c *http.Client, req *http.Request) []byte {
 	if err != nil {
 		fail(err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		fail(fmt.Errorf("%s %s: status %d", req.Method, req.URL, resp.StatusCode))
 	}

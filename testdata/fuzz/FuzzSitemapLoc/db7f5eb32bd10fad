@@ -1,0 +1,2 @@
+go test fuzz v1
+string("https://play.googln.com/store/apps/details?id=+00000000000000")

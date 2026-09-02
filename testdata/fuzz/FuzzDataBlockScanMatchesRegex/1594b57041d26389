@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("AF_initDataCallback({key:0'ds:0'data:[], sideChannel:")

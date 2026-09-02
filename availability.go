@@ -141,6 +141,10 @@ func (r AvailabilityResult) MarshalJSON() ([]byte, error) {
 // only context cancellation does, in which case the partial result is returned
 // alongside ctx.Err().
 func (c *Client) Availability(ctx context.Context, appID string, opts AvailabilityOptions) (AvailabilityResult, error) {
+	ctx, endTask := startTask(ctx, traceTaskAvailability)
+	defer endTask()
+	logTrace(ctx, "app.id", appID)
+
 	if appID == "" {
 		return AvailabilityResult{}, fmt.Errorf("appID is required")
 	}
@@ -225,14 +229,31 @@ func finalizeAvailability(r *AvailabilityResult) {
 	r.GloballyRemoved = checked > 0 && allNotFound
 }
 
-// checkOne probes a single country's listing and classifies the outcome without
-// running the full App parser. It maps a 404 to StatusNotFound, any other
-// transport/HTTP error to StatusError (returning the error for the caller to
-// record), and otherwise reads the [18] availability node via classifyAvailability.
+// checkOne probes a single country and classifies the outcome.
+//
+// It asks the RPC the details page is built from rather than fetching the page.
+// A sweep is one request per country either way -- the country is a query
+// parameter, so it cannot be batched, and nothing in the payload enumerates
+// countries -- so this changes no request count and no wall-clock time under a
+// throttle. What it changes is weight: measured over 20 countries, 25.6MB of
+// markup becomes 400KB, and the default 177-country sweep drops from about
+// 227MB to 3.5MB. Round-trip time roughly halves too (162ms to 101ms), which
+// shows up when the throttle is not the binding constraint.
+//
+// The three outcomes map exactly onto what the page returned, verified live on
+// each case including the awkward one:
+//
+//	page 404              -> empty payload   -> StatusNotFound
+//	page 200, [18] == []  -> [18] == []      -> StatusNotInRegion
+//	page 200, [18][0] == 2-> [18][0] == 2    -> StatusAvailable
+//
+// The awkward case is an embargoed country: com.google.android.apps.tachyon in
+// "kp" gives a 404 from the page and an empty payload from the RPC, so both
+// call it StatusNotFound rather than "not in region". A missing app id behaves
+// identically. Keeping those two indistinguishable is the pre-existing
+// behaviour, not something introduced here.
 func (c *Client) checkOne(ctx context.Context, appID, country, lang string) (Status, error) {
-	url := fmt.Sprintf("%s/store/apps/details?id=%s&hl=%s&gl=%s", BaseURL, appID, lang, country)
-
-	body, err := c.get(ctx, url)
+	payloads, err := c.batchCall(ctx, lang, country, []rpcCall{appDetailsRPC(appID)})
 	if err != nil {
 		var se *StatusError
 		if errors.As(err, &se) && se.Code == http.StatusNotFound {
@@ -241,11 +262,21 @@ func (c *Client) checkOne(ctx context.Context, appID, country, lang string) (Sta
 		return StatusFetchError, err
 	}
 
-	appData, ok := appDataNode(body)
-	if !ok {
-		// A 200 whose body has no recognizable app node is a layout-drift or
-		// soft-block surprise, not a clean availability signal — surface it as an
-		// error rather than silently calling it "not in region".
+	// Google answers an id it cannot serve here with a frame carrying a null
+	// payload -- the same signal the page gave as a 404.
+	if payloads[0] == "" {
+		return StatusNotFound, nil
+	}
+
+	var ds5 any
+	if err := json.Unmarshal([]byte(payloads[0]), &ds5); err != nil {
+		return StatusFetchError, fmt.Errorf("parse %s/%s: %w", appID, country, err)
+	}
+	appData := getPath(ds5, 1, 2)
+	if appData == nil {
+		// A payload with no recognizable app node is layout drift or a soft
+		// block, not a clean availability signal -- surface it as an error
+		// rather than silently calling it "not in region".
 		return StatusFetchError, fmt.Errorf("app data not found for %s/%s", appID, country)
 	}
 	return classifyAvailability(appData), nil

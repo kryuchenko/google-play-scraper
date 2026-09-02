@@ -899,6 +899,81 @@ const docTemplate = `{
                 ]
             }
         },
+        "/_/PlayStoreUi/data/batchexecute(Ws7gDc)": {
+            "post": {
+                "description": "POST /_/PlayStoreUi/data/batchexecute?rpcids=Ws7gDc. Returns the\nbatchexecute envelope; the inner payload is the same structure\nthe details page carries in its ds:5 block, and App is decoded\nfrom it by the same extractor.",
+                "operationId": "batchAppDetailsWs7gDc",
+                "parameters": [
+                    {
+                        "description": "Fixed rpcid for this operation",
+                        "in": "query",
+                        "name": "rpcids",
+                        "required": true,
+                        "schema": {
+                            "enum": [
+                                "Ws7gDc"
+                            ],
+                            "type": "string"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/x-www-form-urlencoded": {
+                            "schema": {
+                                "oneOf": [
+                                    {
+                                        "type": "string"
+                                    },
+                                    {
+                                        "title": "f.req",
+                                        "type": "string"
+                                    }
+                                ]
+                            }
+                        }
+                    },
+                    "description": "URL-encoded JSON envelope [[['Ws7gDc','<inner-args>',null,'0']]]. The package id sits at [5][0][0] of the inner args; the leading field-number array selects which fields Google returns and is copied verbatim from what the page sends.",
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "content": {
+                            "text/plain": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/apidoc.App"
+                                }
+                            }
+                        },
+                        "description": "Decoded from batchexecute envelope. A null inner payload means the app id does not exist, which the scraper reports as an error for that app rather than an empty App."
+                    },
+                    "429": {
+                        "content": {
+                            "text/plain": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/apidoc.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Rate-limited / anti-bot challenge. Google may return 429, or 200 redirecting to google.com/sorry (CAPTCHA). Sustained scraping from one IP triggers this."
+                    },
+                    "500": {
+                        "content": {
+                            "text/plain": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/apidoc.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Upstream Google error (any 5xx). Surfaced as StatusError with the observed code."
+                    }
+                },
+                "summary": "App details RPC (Ws7gDc)",
+                "tags": [
+                    "batchexecute-rpc"
+                ]
+            }
+        },
         "/_/PlayStoreUi/data/batchexecute(oCPfdb)": {
             "post": {
                 "description": "POST /_/PlayStoreUi/data/batchexecute. Unlike the other RPCs the\nscraper does NOT put rpcids in the query string; the rpcid lives\nonly inside the f.req body. Handles both the initial fetch and\npagination. Returns the batchexecute envelope; ReviewsResult\n(reviews + nextToken) is decoded from the inner payload.",
@@ -1225,7 +1300,7 @@ const docTemplate = `{
         },
         "/robots.txt": {
             "get": {
-                "description": "GET /robots.txt. Returns text/plain. The catalog enumerator\n(SitemapIndexURLs) parses the ` + "`" + `Sitemap:` + "`" + ` directives, currently\ntwo indexes under /sitemaps/, which together list all ~80,945\nshards. Read live so it tracks Google's own advertisement.",
+                "description": "GET /robots.txt. Returns text/plain. The catalog enumerator\n(SitemapIndexURLs) parses the ` + "`" + `Sitemap:` + "`" + ` directives, currently\ntwo indexes under /sitemaps/, which together list all ~83k\nshards. Read live so it tracks Google's own advertisement.",
                 "operationId": "getRobotsTxt",
                 "responses": {
                     "200": {
@@ -1270,7 +1345,7 @@ const docTemplate = `{
         },
         "/sitemaps/sitemaps-index-{n}.xml": {
             "get": {
-                "description": "GET /sitemaps/sitemaps-index-{n}.xml. Returns application/xml: a\n<sitemapindex> whose <sitemap><loc> entries point at the\nper-shard .xml.gz files (…-NNNNN-of-80945.xml.gz). index-0 lists\nshards 00000..49999, index-1 lists 50000..80944. SitemapShards\nparses the loc list.",
+                "description": "GET /sitemaps/sitemaps-index-{n}.xml. Returns application/xml: a\n<sitemapindex> whose <sitemap><loc> entries point at the\nper-shard .xml.gz files (…-NNNNN-of-NNNNN.xml.gz). index-0 lists\nshards 00000..49999, index-1 lists the rest. SitemapShards\nparses the loc list.",
                 "operationId": "getSitemapIndex",
                 "parameters": [
                     {
@@ -1345,8 +1420,8 @@ const docTemplate = `{
                 "operationId": "getSitemapShard",
                 "parameters": [
                     {
-                        "description": "Shard file name, e.g. play_sitemaps_2026-06-08_1780977767-00000-of-80945",
-                        "example": "play_sitemaps_2026-06-08_1780977767-00000-of-80945",
+                        "description": "Shard file name, e.g. play_sitemaps_2026-06-08_1780977767-00000-of-83445",
+                        "example": "play_sitemaps_2026-06-08_1780977767-00000-of-83445",
                         "in": "path",
                         "name": "shard",
                         "required": true,

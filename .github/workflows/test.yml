@@ -16,7 +16,14 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        go-version: ['1.24', '1.25', 'stable']
+        go-version: ['1.25', 'stable']
+
+    # A committed go.work (see CONTRIBUTING) would pull apidoc and lightfeed
+    # into every `./...` below; both require go 1.27 and would break the 1.25
+    # leg. The root module is checked in module mode — exactly how a consumer
+    # who runs `go get` resolves it.
+    env:
+      GOWORK: 'off'
 
     steps:
       - uses: actions/checkout@v6
@@ -38,6 +45,13 @@ jobs:
       - name: Run go vet
         run: go vet ./...
 
+      # Config lives in .golangci.yml and carries no exclusions: everything the
+      # default set reported was either fixed or made explicit at the call
+      # site. Pinned so a new release cannot turn a green branch red on its own.
+      - name: Lint
+        if: matrix.go-version == 'stable'
+        run: go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.13.1 run --timeout 10m ./...
+
       # -short keeps CI deterministic: it skips the live-network tests (which
       # hit play.google.com and flake on Google's jitter / rate limits) and
       # runs the offline, fixture-backed suite. Live drift detection lives in
@@ -49,6 +63,69 @@ jobs:
       # submodule (keeps the root zero-dependency), so the root test run above
       # never enters it. Run its drift tests here on the stable leg: they fail
       # if a new rpcid/path is undocumented or the committed spec is stale.
+      # lightfeed was previously built by no workflow at all. It needs go 1.27
+      # and resolves the root module from the proxy (no workspace), which is
+      # how a `go get` consumer builds it.
+      - name: Build and test lightfeed submodule
+        if: matrix.go-version == 'stable'
+        working-directory: lightfeed
+        run: |
+          go build ./...
+          go vet ./...
+          go test ./...
+
+      # The step above resolves the root module from the proxy, which is how a
+      # consumer builds lightfeed -- but it means lightfeed is tested against
+      # the last release, not against this branch. A root change that breaks it
+      # would only surface after the release. The workspace supplies HEAD.
+      - name: Build lightfeed against this branch
+        if: matrix.go-version == 'stable'
+        env:
+          GOWORK: ''
+        working-directory: lightfeed
+        run: |
+          go build ./...
+          go test ./...
+
+      # The benchmarks are run once each rather than measured: the point here
+      # is that they still compile and do not panic on the fixtures. Timing in
+      # CI is meaningless, and the numbers are only comparable within one
+      # toolchain anyway.
+      - name: Benchmarks compile and run
+        if: matrix.go-version == 'stable'
+        run: go test -run '^$' -bench . -benchtime 1x ./...
+
+      # A short fuzz run per target on top of the seed corpus. Not long enough
+      # to explore much, but enough that a parser which panics on the shapes
+      # already in testdata/ cannot merge. Deep runs belong in a scheduled job,
+      # not on the pull-request path.
+      # The differential targets are listed too, and were missing. The six
+      # panic-contract fuzzers only assert that a parser does not blow up; the
+      # two differential ones hold a hand-written scanner against the
+      # implementation it replaced, which is the check that actually catches a
+      # behaviour change. They found two real divergences before release, and
+      # then ran seed-corpus-only in CI, which is not fuzzing.
+      - name: Fuzz parsers briefly
+        if: matrix.go-version == 'stable'
+        run: |
+          for target in FuzzParseAppPage FuzzParseDataBlocks FuzzBatchExecute \
+                        FuzzParseReviews FuzzResultRows FuzzSitemapLoc \
+                        FuzzDataBlockScanMatchesRegex FuzzShardScanMatchesXML \
+                        FuzzIndexScanMatchesXML; do
+            echo "== $target"
+            go test -run '^$' -fuzz "^$target$" -fuzztime 30s .
+          done
+
+      - name: Vulnerability scan
+        # Pinned, and the pin has to move with the toolchain: govulncheck
+        # v1.1.4 builds on golang.org/x/tools v0.29.0, whose SSA builder
+        # predates Go 1.27 and panics on it -- "unexpected expr:
+        # *ast.KeyValueExpr" on a composite literal inside a return. v1.7.0
+        # carries x/tools v0.49.0. When `stable` moves to a Go release this
+        # cannot parse, this is the line to bump.
+        if: matrix.go-version == 'stable'
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.7.0 ./...
+
       - name: Verify API docs (apidoc submodule)
         if: matrix.go-version == 'stable'
         working-directory: apidoc
@@ -71,12 +148,20 @@ jobs:
           npx --yes @redocly/cli@2.32.2 lint docs/swagger.yaml
           npx --yes @stoplight/spectral-cli@6.16.0 lint --fail-severity=warn docs/swagger.yaml
 
+      # The badge measures the library, not the binaries around it. Two reasons:
+      # examples/, internal/ and cmd/ are lightly covered by design and dilute the
+      # number, and their statement counts move between Go releases far more
+      # than the library's do -- on the same commit, go1.26.4 reports 74.3%
+      # over the full profile and go1.27.0 reports 68.5%, purely because
+      # coverage instrumentation changed. Filtering keeps the badge a signal
+      # about tests rather than about the toolchain CI happens to run.
       - name: Update coverage in README
         if: github.ref == 'refs/heads/main' && matrix.go-version == 'stable'
         run: |
-          COVERAGE=$(go tool cover -func=coverage.out | grep total | awk '{print $3}' | tr -d '%')
+          grep -vE '/(examples|internal|cmd)/' coverage.out > coverage.lib.out
+          COVERAGE=$(go tool cover -func=coverage.lib.out | grep total | awk '{print $3}' | tr -d '%')
           sed -i "s/coverage-[0-9.]*%25/coverage-${COVERAGE}%25/" README.md
-          echo "Coverage: $COVERAGE%"
+          echo "Library coverage: $COVERAGE%"
 
       - name: Commit coverage badge
         if: github.ref == 'refs/heads/main' && matrix.go-version == 'stable'

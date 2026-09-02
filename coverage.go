@@ -162,6 +162,9 @@ type CoverageResult struct {
 // apps) and the run continues — only context cancellation aborts and returns an
 // error.
 func (c *Client) CategoryApps(ctx context.Context, opts CoverageOptions) (CoverageResult, error) {
+	ctx, endTask := startTask(ctx, traceTaskCategoryApps)
+	defer endTask()
+
 	opts = withCoverageDefaults(opts)
 
 	rs := newResultSet()

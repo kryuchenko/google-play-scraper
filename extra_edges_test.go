@@ -13,20 +13,20 @@ import (
 // section[21][0]. parseListApp reads each app's AppID at [0][0].
 func listPageWithSections(t *testing.T, free, paid, grossing []string) []byte {
 	t.Helper()
-	mkApp := func(id string) interface{} {
-		return []interface{}{[]interface{}{id}, nil, nil, "Title " + id}
+	mkApp := func(id string) any {
+		return []any{[]any{id}, nil, nil, "Title " + id}
 	}
-	section := func(ids []string) interface{} {
-		s := make([]interface{}, 22)
-		apps := make([]interface{}, 0, len(ids))
+	section := func(ids []string) any {
+		s := make([]any, 22)
+		apps := make([]any, 0, len(ids))
 		for _, id := range ids {
 			apps = append(apps, mkApp(id))
 		}
-		s[21] = []interface{}{apps}
+		s[21] = []any{apps}
 		return s
 	}
-	ds4 := []interface{}{
-		[]interface{}{nil, []interface{}{section(free), section(paid), section(grossing)}},
+	ds4 := []any{
+		[]any{nil, []any{section(free), section(paid), section(grossing)}},
 	}
 	raw, err := json.Marshal(ds4)
 	if err != nil {
@@ -105,13 +105,13 @@ func TestSearchPaginates(t *testing.T) {
 			defer mu.Unlock()
 			calls++
 			// Page 2 returns two more apps and no further token.
-			row := func(id string) interface{} {
-				r := make([]interface{}, 13)
-				r[12] = []interface{}{id}
+			row := func(id string) any {
+				r := make([]any, 13)
+				r[12] = []any{id}
 				return r
 			}
-			data := []interface{}{[]interface{}{[]interface{}{
-				[]interface{}{row("com.s3"), row("com.s4")}, nil, nil, nil, nil, nil, nil,
+			data := []any{[]any{[]any{
+				[]any{row("com.s3"), row("com.s4")}, nil, nil, nil, nil, nil, nil,
 			}}}
 			raw, _ := json.Marshal(data)
 			return mockResponse{Body: batchEnvelope("qnKhOb", string(raw))}, true
@@ -134,15 +134,15 @@ func TestSearchPaginates(t *testing.T) {
 // pagination token at [0][1][0][0][3][0], matching extractSearchResults.
 func searchHTMLPage(t *testing.T, appIDs []string, token string) []byte {
 	t.Helper()
-	apps := make([]interface{}, 0, len(appIDs))
+	apps := make([]any, 0, len(appIDs))
 	for _, id := range appIDs {
 		// parseSearchResultNew reads AppID at [0][0] and Title at [3].
-		apps = append(apps, []interface{}{[]interface{}{id}, nil, nil, "Title " + id})
+		apps = append(apps, []any{[]any{id}, nil, nil, "Title " + id})
 	}
-	inner := make([]interface{}, 4)
+	inner := make([]any, 4)
 	inner[0] = apps
-	inner[3] = []interface{}{token}
-	ds4 := []interface{}{[]interface{}{nil, []interface{}{[]interface{}{inner}}}}
+	inner[3] = []any{token}
+	ds4 := []any{[]any{nil, []any{[]any{inner}}}}
 	raw, err := json.Marshal(ds4)
 	if err != nil {
 		t.Fatalf("marshal search page: %v", err)
@@ -217,14 +217,14 @@ func TestParseReviewsResponseErrors(t *testing.T) {
 // TestParseDataEntries covers the optional flag and purpose mapping plus the
 // skipping of malformed entries.
 func TestParseDataEntries(t *testing.T) {
-	in := []interface{}{
-		[]interface{}{ // category "Personal info"
-			[]interface{}{nil, "Personal info"},
+	in := []any{
+		[]any{ // category "Personal info"
+			[]any{nil, "Personal info"},
 			nil, nil, nil,
-			[]interface{}{
-				[]interface{}{"Name", float64(0), "App functionality"},   // required
-				[]interface{}{"Email", float64(1), "Account management"}, // optional
-				[]interface{}{""}, // skipped: empty data name
+			[]any{
+				[]any{"Name", float64(0), "App functionality"},   // required
+				[]any{"Email", float64(1), "Account management"}, // optional
+				[]any{""}, // skipped: empty data name
 			},
 		},
 		"not-an-array", // skipped
