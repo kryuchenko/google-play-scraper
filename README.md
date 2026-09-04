@@ -1,580 +1,414 @@
 # google-play-scraper
 
 [![Tests](https://github.com/kryuchenko/google-play-scraper/actions/workflows/test.yml/badge.svg)](https://github.com/kryuchenko/google-play-scraper/actions/workflows/test.yml)
-![Coverage](https://img.shields.io/badge/coverage-74.3%25-brightgreen)
-[![Go Report Card](https://goreportcard.com/badge/github.com/kryuchenko/google-play-scraper)](https://goreportcard.com/report/github.com/kryuchenko/google-play-scraper)
+![Coverage](https://img.shields.io/badge/coverage-93.2%25-brightgreen)
 [![Go Reference](https://pkg.go.dev/badge/github.com/kryuchenko/google-play-scraper.svg)](https://pkg.go.dev/github.com/kryuchenko/google-play-scraper)
+[![Go Report Card](https://goreportcard.com/badge/github.com/kryuchenko/google-play-scraper)](https://goreportcard.com/report/github.com/kryuchenko/google-play-scraper)
 
-Go library for scraping Google Play Store app data — **no external dependencies**.
+Read public Google Play Store data from the shell or from Go: app details,
+reviews, search, charts, permissions, data safety, per-country availability,
+and the store's complete list of package ids.
 
-Inspired by [facundoolano/google-play-scraper](https://github.com/facundoolano/google-play-scraper) (Node.js).
+One engine, two surfaces. The `gpscrape` command writes newline-delimited JSON,
+so it composes with `jq` and anything else that reads a stream. The Go package
+exposes the same operations with contexts, iterators and batched lookups. The
+root module imports nothing outside the standard library, and a test fails if
+that ever changes.
 
-## Features
+It reads the anonymous web interface of `play.google.com`, so it sees what a
+browser sees. Lists and charts stop at about 200 apps and cannot be paged
+deeper; the whole store is reachable only through the sitemaps. See
+[Limitations](#limitations) before building on either.
 
-- **App Details** — full app info: description, rating, reviews count, screenshots, version, etc.
-- **Availability** — map an app's region availability across many countries (available / not-in-region / not-found)
-- **Search** — search apps with price filtering (free/paid) and full details
-- **Reviews** — fetch reviews with sorting, filtering by rating, and pagination
-- **Developer Apps** — list all apps by a developer (by name or ID)
-- **Similar Apps** — find apps similar to a given app
-- **Permissions** — get app permissions list
-- **Data Safety** — get privacy/data collection info
-- **Suggestions** — get search autocomplete suggestions
-- **Top Charts** — get top free/paid/grossing apps by category
-- **Category Coverage** — union many slices of one category to beat the ~200-app request ceiling
-- **Full Catalog** — enumerate every app id in the store via Google's public sitemaps (~3M ids)
-- **Categories** — list all Play Store categories
-- **Localization** — support for 50+ languages and countries
-- **Rate Limiting** — built-in throttling to avoid blocks
+Requires Go 1.25. Inspired by
+[facundoolano/google-play-scraper](https://github.com/facundoolano/google-play-scraper)
+(Node.js).
 
-## Installation
+## Quick start: command line
+
+```bash
+go install github.com/kryuchenko/google-play-scraper/cmd/gpscrape@latest
+```
+
+```console
+$ gpscrape app com.spotify.music | jq '{title, developer, score, installs}'
+{
+  "title": "Spotify: Music and Podcasts",
+  "developer": "Spotify AB",
+  "score": 4.344856,
+  "installs": "1,000,000,000+"
+}
+```
+
+One request, one JSON record per app, with every field the store page shows.
+Paging commands write records as they arrive. SIGINT stops a run without
+discarding what it has already written, and a second Ctrl-C exits at once:
+
+```console
+$ gpscrape reviews com.spotify.music -limit 2 | jq -c '{score, text}'
+{"score":3,"text":"I will give these apps three star because I like it a little bit"}
+{"score":5,"text":"so far so good, better than Amazon music."}
+```
+
+`gpscrape -h` lists the commands, `gpscrape <command> -h` the flags each one
+adds. The [Command line](#command-line) section below walks through the common
+jobs.
+
+## Quick start: Go
 
 ```bash
 go get github.com/kryuchenko/google-play-scraper
 ```
 
-## Quick Start
-
 ```go
-import "github.com/kryuchenko/google-play-scraper"
+package main
 
-client := googleplayscraper.NewClient()
-ctx := context.Background()
+import (
+	"context"
+	"fmt"
+	"log"
+	"time"
 
-app, _ := client.App(ctx, "com.spotify.music", googleplayscraper.AppOptions{})
-fmt.Println(app.Title, app.Score) // "Spotify" 4.3
-```
-
-## Client Options
-
-```go
-client := googleplayscraper.NewClient(
-    googleplayscraper.WithThrottle(500 * time.Millisecond), // Rate limiting
-    googleplayscraper.WithTimeout(60 * time.Second),        // Request timeout
-    googleplayscraper.WithUserAgent("MyApp/1.0"),           // Custom User-Agent
-    googleplayscraper.WithConcurrency(5),                   // Parallel FullDetail fetches (default 1)
+	gps "github.com/kryuchenko/google-play-scraper"
 )
-```
 
-`WithConcurrency(n)` controls how many `App()` detail lookups run in parallel
-when a listing is requested with `FullDetail: true` (Search, List, Developer,
-Similar). The default is `1` (sequential), so parallelism is opt-in;
-the configured `WithThrottle` interval still bounds the request rate across
-workers. Result order is always preserved.
+func main() {
+	client := gps.NewClient(gps.WithThrottle(200 * time.Millisecond))
 
-## API
-
-### App
-
-Retrieves full details of an application.
-
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| appId | string | *required* | App ID (e.g., `com.google.android.apps.maps`) |
-| lang | string | `"en"` | Language code (ISO 639-1) |
-| country | string | `"us"` | Country code (ISO 3166-1) |
-
-```go
-app, err := client.App(ctx, "com.google.android.apps.maps", googleplayscraper.AppOptions{
-    Lang:    "en",
-    Country: "us",
-})
-```
-
-<details>
-<summary>Available fields</summary>
-
-`AppID`, `Title`, `Summary`, `Description`, `DescriptionHTML`, `Developer`, `DeveloperID`, `DeveloperEmail`, `DeveloperWebsite`, `DeveloperAddress`, `Icon`, `Score`, `ScoreText`, `Ratings`, `Reviews`, `Histogram`, `Price`, `PriceText`, `Currency`, `Free`, `Installs`, `MinInstalls`, `MaxInstalls`, `Genre`, `GenreID`, `Categories`, `Version`, `AndroidVersion`, `ContentRating`, `Released`, `Updated`, `URL`, `Screenshots`, `Video`, `VideoImage`, `HeaderImage`, `PreviewVideo`, `PrivacyPolicy`, `Available`
-
-Monetization: `AdSupported`, `OffersIAP`, `IAPRange`, `OriginalPrice`, `DiscountEndDate`
-
-Distribution: `IsAvailableInPlayPass`, `Preregister`, `EarlyAccessEnabled`
-
-Content & changelog: `RecentChanges`, `ContentRatingDescription`
-
-Developer (EU DSA trader info, empty for non-EU traders): `DeveloperInternalID`, `DeveloperLegalName`, `DeveloperLegalEmail`, `DeveloperLegalAddress`, `DeveloperLegalPhoneNumber`
-
-</details>
-
-`Available` reflects whether the app is installable in the requested `country`:
-it is `false` for a region-locked listing or a pre-registration (unreleased)
-entry. (Previously it was hardcoded `true`.) To map availability across many
-countries at once, use `Availability` below.
-
----
-
-### Availability
-
-Probes an app's region availability across many countries and returns a
-per-country status. Each probe fetches the listing and reads only the
-availability node, so it is much cheaper than a full `App` call per country.
-
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| appId | string | *required* | App ID to probe |
-| Countries | []string | `AllCountries` | Country codes to probe (lowercased and deduplicated) |
-| Lang | string | `"en"` | Language code |
-| Concurrency | int | client's `WithConcurrency` (1) | Countries probed in parallel |
-| Progress | func | nil | Called once per probed country |
-
-Each country resolves to one of four statuses:
-
-| Status | Meaning |
-|--------|---------|
-| `StatusAvailable` | Installable in the country |
-| `StatusNotInRegion` | Listing exists but the app is not offered there (region-locked, or a pre-registration entry) |
-| `StatusNotFound` | Google returned 404 — no listing for the app in that country |
-| `StatusFetchError` | Transport/HTTP error other than 404; availability is unknown (the error is recorded in `Result.Errors`) |
-
-```go
-result, err := client.Availability(ctx, "com.spotify.music", googleplayscraper.AvailabilityOptions{
-    Countries: []string{"us", "de", "cn"},
-})
-// result.Statuses["cn"] == googleplayscraper.StatusNotInRegion
-
-// Or just the installable countries:
-countries, err := client.AvailableCountries(ctx, "com.spotify.music", googleplayscraper.AvailabilityOptions{})
-```
-
-A single country's 404 or transport error never aborts the sweep; only context
-cancellation does, in which case the partial result is returned alongside
-`ctx.Err()`. `result.GloballyRemoved` is `true` only when every conclusively
-probed country returned 404 — it is meaningful only on a full `AllCountries`
-sweep, not on a narrow `Countries` subset.
-
-**Cost & etiquette.** A full sweep issues roughly one request per country
-(`AllCountries` is ~177 codes), so at a 500ms throttle a complete sweep takes
-~90s. This is *active probing*, not an official availability feed: keep the
-throttle gentle to avoid rate limiting, and prefer a targeted `Countries` list
-when you don't need the whole world. See `examples/app-availability`.
-
----
-
-### Search
-
-Search for apps on Google Play.
-
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| term | string | *required* | Search term |
-| num | int | `20` | Number of results; values above 250 are clamped to 250 |
-| lang | string | `"en"` | Language code |
-| country | string | `"us"` | Country code |
-| price | string | `"all"` | `"free"`, `"paid"`, or `"all"` |
-| fullDetail | bool | `false` | Fetch full details for each app |
-
-```go
-results, err := client.Search(ctx, googleplayscraper.SearchOptions{
-    Term:  "weather",
-    Num:   20,
-    Price: "free",
-})
-```
-
----
-
-### Reviews
-
-Fetch app reviews with filtering and pagination.
-
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| appId | string | *required* | App ID |
-| lang | string | `"en"` | Language code |
-| country | string | `"us"` | Country code |
-| sort | Sort | `SortNewest` | `SortNewest`, `SortRating`, `SortHelpfulness` |
-| count | int | `150` | Number of reviews per request (max 150) |
-| filterScore | int | `0` | Filter by rating: 1-5, or 0 for all |
-| nextToken | string | `""` | Pagination token |
-
-```go
-result, err := client.Reviews(ctx, "com.instagram.android", googleplayscraper.ReviewOptions{
-    Sort:        googleplayscraper.SortNewest,
-    Count:       100,
-    FilterScore: 1, // Only 1-star reviews
-})
-
-// Pagination
-nextPage, _ := client.Reviews(ctx, appID, googleplayscraper.ReviewOptions{
-    NextToken: result.NextToken,
-})
-```
-
----
-
-### ReviewsAll
-
-Fetch multiple pages of reviews automatically.
-
-```go
-reviews, err := client.ReviewsAll(ctx, "com.instagram.android", googleplayscraper.ReviewOptions{
-    Count:       500, // Total reviews to fetch
-    FilterScore: 5,   // Only 5-star reviews
-})
-```
-
----
-
-### Developer
-
-List apps by a developer.
-
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| devId | string | *required* | Developer name or numeric ID |
-| num | int | `60` | Number of results |
-| lang | string | `"en"` | Language code |
-| country | string | `"us"` | Country code |
-| fullDetail | bool | `false` | Fetch full details for each app |
-
-```go
-apps, err := client.Developer(ctx, googleplayscraper.DeveloperOptions{
-    DevID: "Google LLC",
-    Num:   20,
-})
-```
-
----
-
-### Similar
-
-Find similar apps.
-
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| appId | string | *required* | App ID |
-| lang | string | `"en"` | Language code |
-| country | string | `"us"` | Country code |
-| fullDetail | bool | `false` | Fetch full details for each app |
-
-```go
-similar, err := client.Similar(ctx, googleplayscraper.SimilarOptions{
-    AppID: "com.google.android.apps.maps",
-})
-```
-
----
-
-### Permissions
-
-Get app permissions.
-
-```go
-perms, err := client.Permissions(ctx, googleplayscraper.PermissionsOptions{
-    AppID: "com.instagram.android",
-})
-
-for _, p := range perms {
-    fmt.Println(p.Type, p.Permission)
+	app, err := client.App(context.Background(), "com.spotify.music", gps.AppOptions{})
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Println(app.Title, app.Score, app.Installs)
+	// Spotify: Music and Podcasts 4.344856 1,000,000,000+
 }
 ```
 
----
+Every method takes a `context.Context` and honours cancellation. Errors that
+carry an HTTP status are `*StatusError`, so a missing app is distinguishable
+from a transport failure. Set a throttle: the default is unthrottled, which
+suits one-off lookups and nothing else. Signatures, option fields and
+per-method caveats are on
+[pkg.go.dev](https://pkg.go.dev/github.com/kryuchenko/google-play-scraper).
 
-### DataSafety
+## What you can read
 
-Get data safety information.
+- **App details**, for one app or for many in a single request.
+- **Reviews**: one page, or every review an app has, in every language.
+- **Search**, autocomplete suggestions, similar apps, and a developer's apps.
+- **Charts**: top free, top paid, grossing, new and movers, per category.
+- **Permissions** and the **data-safety** declaration.
+- **Availability** across the 177 storefront country codes.
+- **The catalog**: every package id the store lists, counted in ninety seconds
+  or swept in full, kept current as a snapshot, and indexed by genre.
+
+## Command line
+
+Every command takes `-lang`, `-country`, `-throttle`, `-concurrency` and
+`-timeout`. `-adaptive` turns `-throttle` into a floor and lets the client find
+its own rate. Output is one JSON record per line on stdout; progress and errors
+go to stderr.
+
+### One app, or many
+
+```bash
+gpscrape app com.spotify.music | jq .score
+gpscrape app com.spotify.music com.whatsapp com.duolingo   # all three in one request
+gpscrape permissions com.spotify.music com.whatsapp        # likewise
+gpscrape datasafety com.spotify.music
+gpscrape availability com.spotify.music -countries us,de,cn
+```
+
+Several ids ride in one `batchexecute` request, so a list of apps costs one
+throttle interval rather than one per app. An id that fails in a batched run
+is still one line of output, in its position — `{"appId":"…","error":"…"}` —
+so the stream has one record per id asked for and a pipeline never has to
+reconcile stdout with stderr.
+
+`availability` reports one status per country by name under `statuses`:
+`available`, `not_in_region`, `not_found` or `error`, with the reason for an
+`error` under `errors`. `globallyRemoved` is true only when every country
+answered and none of them lists the app.
+
+### Reviews, including all of them
+
+```bash
+gpscrape reviews com.spotify.music -limit 500 | jq -r .text
+gpscrape reviews com.spotify.music -sort rating -score 1 -limit 100
+gpscrape reviews com.spotify.music -langs en,ru,de -limit 500   # three corpora
+gpscrape reviews com.spotify.music -langs all -limit 500        # every measured corpus
+```
+
+Language does not filter reviews, it partitions them: each `hl` code is served
+its own corpus and the corpora do not overlap, so reading all of an app's
+reviews means reading every language. `-limit` applies per language when
+`-langs` is given, and records carry the corpus they came from. There is no
+country filter, because a review carries no country: `ru/kz` and `ru/us` return
+the same reviews id for id.
+
+### Search and charts
+
+```bash
+gpscrape search "podcast player" -num 50
+gpscrape suggest spoti
+gpscrape list -collection new_free GAME_PUZZLE      # what is new in a category
+gpscrape list -collection top_free -full            # details for each app, batched
+gpscrape categories -kind game                      # the genre ids list accepts
+gpscrape similar com.spotify.music
+gpscrape developer "Spotify AB"
+```
+
+Google returns roughly one page for any of these, about 200 apps at most, and
+rejects the continuation token for stateless clients. Breadth comes from
+multiplying sources (categories, collections, locales, the similar graph), not
+from paging deeper.
+
+### The catalog
+
+`catalog` is a group of verbs. The right-hand column is what each costs in
+requests against Google:
+
+| Verb | What it does | Requests |
+| --- | --- | --- |
+| `check` | has Google republished the catalog? | 2 |
+| `new` | apps the store lists as recently published | 17 |
+| `size` | how many apps there are, give or take 1% | ~900 |
+| `genres` | genre changes and removals, from a snapshot | ~3.4k, plus ~310 per `-confirm-gone` storefront |
+| `sweep` | the complete id list, and the exact count | 83k |
+| `apps` | the id list by genre, from what is on disk | none |
+| `diff` | compare two snapshots already on disk | none |
+| `ids` | stream ids without keeping any state | as many as you ask for |
+
+```console
+$ gpscrape catalog check -dir ./catalog
+{"generation":"2026-08-23_1787500934","built":"2026-08-23T16:02:14Z","ageHours":287,"shards":83445,"upToDate":false}
+$ gpscrape catalog size | jq -c '{apps, halfWidth, shardsRead, shardsTotal, metTarget}'
+{"apps":3549110,"halfWidth":35366,"shardsRead":866,"shardsTotal":83445,"metTarget":true}
+```
+
+That is 3,549,110 apps give or take 35,366 at 95% confidence, from 866 of
+83,445 shards, in about ninety seconds. The record also carries the dispersion
+check that justifies the interval; the exact count costs a full sweep.
+
+A full sweep is ~83k requests, about four and a half hours at the default
+throttle, so keep a snapshot directory and let the tool decide when a sweep is
+due. Google republishes its sitemaps every few days, not daily, and shard names
+carry the generation that produced them:
+
+```bash
+gpscrape catalog sweep -dir ./catalog            # sweeps only if a new generation exists
+gpscrape catalog sweep -dir ./catalog -keep 3    # and keeps the three newest snapshots
+gpscrape catalog diff -dir ./catalog -changes    # one record per id added or removed
+```
+
+Within a generation shards are immutable, so an interrupted sweep resumes from
+the shards it has not reached. Each completed sweep writes a sorted snapshot,
+a manifest with the generation id and a checksum, and a delta against the
+previous snapshot, and prints the manifest as its one output record.
+
+A snapshot directory takes one writer at a time. `sweep` and `genres` hold a
+`sweep.lock` in it while they run, a second run against the same directory is
+refused, and a lock left behind by a process that has died is cleared on the
+next run. `check`, `new`, `size`, `apps`, `diff` and `ids` do not take it;
+`new` only appends to its own signal log.
+
+The genre table turns a snapshot into an app list by category. Build it once,
+then read it with no network at all:
+
+```bash
+gpscrape catalog genres -dir ./catalog                        # ~3.4k requests, plus ~310 per -confirm-gone storefront
+gpscrape catalog apps -dir ./catalog -genre 'GAME_*' -ids-only > games.txt
+gpscrape catalog apps -dir ./catalog -genre GAME_PUZZLE
+```
+
+`genres` asks a thousand ids per request and re-checks apparent removals in
+other storefronts before calling an app gone, because an app can be listed in
+Brazil and invisible from the United States. `-confirm-gone` names those
+storefronts. A lookup that fails in that confirm pass is reported as an
+`error`, not a removal, and the row is kept. `-prune` drops rows for ids the
+snapshot no longer lists.
+
+Without a snapshot, `catalog ids` streams ids straight from the sitemaps:
+
+```bash
+gpscrape catalog ids -shards 0-99 -ids-only > ids.txt
+```
+
+### Debugging a run
+
+```bash
+gpscrape reviews com.spotify.music -limit 50 -debug              # every request, to stderr
+GPSCRAPE_DEBUG=1 gpscrape catalog check                          # the same, for a script
+gpscrape catalog sweep -dir ./catalog -debug -log-file sweep.log -trace sweep.trace
+```
+
+`-debug` writes one line per request, response, retry and throttle change,
+and the connection timings behind each request. The first line names the
+build and the settings the run used. Results stay on stdout, so a pipeline
+is unaffected:
+
+```text
+level=DEBUG msg=request method=GET url="https://play.google.com/store/apps/details?id=com.spotify.music&hl=en&gl=us" attempt=1 waited=0s
+level=DEBUG-4 msg=connection dns=24.077208ms connect=19.079541ms tls=54.277042ms reused=false addr=216.58.204.174:443 ttfb=242.611416ms
+level=DEBUG msg=response method=GET url="https://play.google.com/store/apps/details?id=com.spotify.music&hl=en&gl=us" attempt=1 status=200 took=242.692542ms bytes=1254486
+```
+
+Bodies and headers are never logged. `-trace` keeps a Go execution trace of
+the last minutes of the run in memory and writes it at exit, after Ctrl-C
+too; `go tool trace sweep.trace` then shows where the time went, and how much
+of it was the throttle rather than Google.
+
+Two things need no flag. The transport is Go's default, so
+`HTTPS_PROXY=http://127.0.0.1:8080` routes every request through mitmproxy,
+and `GODEBUG=http2debug=1` prints the HTTP/2 frames.
+
+## Go package
+
+| Method | Returns |
+| --- | --- |
+| `App` / `AppsMany` | full details for one app / for many, batched |
+| `Search` | search results, optionally price-filtered and detail-enriched |
+| `Reviews` / `ReviewsSeq` | one page of reviews / an iterator that keeps paginating |
+| `Developer` | a developer's apps, by name or numeric id |
+| `Similar` | apps Google lists as similar |
+| `Permissions` / `PermissionsMany` | requested permissions with their group label |
+| `DataSafety` | the data-safety declaration and privacy policy URL |
+| `Suggest` / `SuggestMany` | search autocomplete terms |
+| `List` | a store collection for a category: top free/paid/grossing, newest, movers |
+| `ClusterURLs` / `Cluster` | the clusters on a category page, and one cluster's apps |
+| `Categories` | the 54 store categories (a static list; no request) |
+| `Availability` / `AvailableCountries` | per-country status across the 177 codes in `AllCountries` |
+| `CategoryApps` | many slices of one category, unioned and deduplicated |
+| `CatalogSeq` / `CatalogSize` | every app id in the store via the sitemaps / the estimated count |
+| `CatalogShardSeq` | the same sweep with the shard as its unit, so a run can resume from the URLs it did not reach |
+| `DigestsSeq` | a few fields (genre, and whether the app is listed) for very many apps, a thousand per request |
+| `SitemapGeneration` / `Generation` | which build of the catalog Google is serving, in two requests, with its build time and ordering |
+| `ReviewLanguages` | the 71 language codes that each serve their own review corpus (a static list; no request) |
+| `CurrentThrottle` | the interval between requests the client is using now, which is what the adaptive controller moves |
+
+Most option structs take `Lang` (ISO 639-1) and `Country` (ISO 3166-1
+alpha-2), defaulting to `en`/`us`.
+
+Client options: `WithThrottle`, `WithConcurrency`, `WithTimeout`,
+`WithUserAgent`, `WithHTTPClient`, `WithRetry`, `WithAdaptiveThrottle`,
+`WithHooks`. Every request goes through one path: cache seam, retry with full
+jitter, throttle, HTTP.
+
+### Batched lookups
+
+`AppsMany`, `PermissionsMany` and `SuggestMany` pack up to 32 lookups into one
+request, and the packs go out over `WithConcurrency` workers. The throttle
+meters requests rather than lookups, so this is the difference between 32
+intervals and one: 32 apps took 9.76s over 32 page
+fetches and 146ms over one batched request, at about 20KB per app instead of a
+megabyte of markup.
 
 ```go
-safety, err := client.DataSafety(ctx, googleplayscraper.DataSafetyOptions{
-    AppID: "com.instagram.android",
-})
-
-fmt.Println("Collected:", len(safety.CollectedData))
-fmt.Println("Shared:", len(safety.SharedData))
-fmt.Println("Privacy Policy:", safety.PrivacyPolicyURL)
+for _, r := range client.AppsMany(ctx, appIDs, gps.AppOptions{}) {
+	if r.Err != nil {
+		log.Printf("%s: %v", r.AppID, r.Err)
+		continue
+	}
+	fmt.Println(r.App.Title, r.App.Score)
+}
 ```
 
----
+Results are positional, `out[i]` describes `appIDs[i]` whatever order Google
+answers in, and each carries its own error, so a failed chunk does not cost the
+rest of the run.
 
-### Suggest
+### Iterators
 
-Get search suggestions.
+`ReviewsSeq` and `CatalogSeq` are `iter.Seq2` values, so a caller stops where
+it wants to instead of waiting for a sweep to finish:
 
 ```go
-suggestions, err := client.Suggest(ctx, googleplayscraper.SuggestOptions{
-    Term: "weath",
-})
-// ["weather", "weather app", "weather forecast", ...]
+for pkg, err := range client.CatalogSeq(ctx, opts) {
+	if err != nil {
+		return err
+	}
+	if seen(pkg) {
+		break
+	}
+}
 ```
 
----
+`ReviewsAll` and `EnumerateCatalog` are deprecated as of 1.4.0 and will be
+removed in v2.
 
-### List
-
-Get top apps by collection and category.
-
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| collection | Collection | `CollectionTopFree` | App collection |
-| category | Category | `""` | App category |
-| age | Age | `""` | Age rating filter (see caveat below) |
-| num | int | `500` | Number of results; values >660 are clamped to 660. Google returns ~200 max per collection in practice |
-| lang | string | `"en"` | Language code |
-| country | string | `"us"` | Country code |
-| fullDetail | bool | `false` | Fetch full details for each app |
+### Logging and tracing
 
 ```go
-apps, err := client.List(ctx, googleplayscraper.ListOptions{
-    Collection: googleplayscraper.CollectionTopFree,
-    Category:   googleplayscraper.CategoryGame,
-    Num:        500,
-})
+logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: gps.LevelTrace}))
+client := gps.NewClient(gps.WithThrottle(200*time.Millisecond), gps.WithLogger(logger))
 ```
 
-**Collections:** `CollectionTopFree`, `CollectionTopPaid`, `CollectionGrossing`
+The client is silent by default and never logs above Debug: requests,
+responses, retries, throttle waits and adaptive interval changes. `LevelTrace`
+adds the connection timings behind each request. For anything else,
+`WithHooks` gives callbacks for a metrics registry, `WithHTTPClient` accepts
+an instrumented transport such as `otelhttp.NewTransport`, and every
+operation that makes a request opens a `runtime/trace` task, so
+`go tool trace` attributes each request to the call that made it.
 
-**Age ratings:** `AgeFive` (5 and under), `AgeSix` (6-8), `AgeNine` (9-12)
+## Limitations
 
-> **Age filter caveat:** `Age` is currently a no-op on the primary list path.
-> The vyAe2 batchexecute endpoint reads filters from the request body, not the
-> URL, and ignores the `age` query parameter, so filtered and unfiltered lists
-> come back identical (verified for both `CategoryFamily` and `CategoryGame`).
-> The parameter is still sent for parity with the reference implementation and
-> is honoured only by the legacy HTML fallback.
+- **Lists and charts cap at ~200 apps** per category and collection. The
+  continuation-token pagination behind `List` and `Search` is rejected for
+  stateless clients. This is server-side; the Node and Python libraries hit
+  the same wall. `CategoryApps` multiplies sources instead, and a single
+  `GAME_ACTION` run reached ~1,800 unique apps, but an app that never charts,
+  never ranks in search and appears in no similarity graph is not reachable
+  this way.
+- **The whole store is reachable only through the sitemaps**, and they carry
+  package ids and nothing else: no titles, no ratings. Pair a sweep with
+  `AppsMany` to resolve the ids you care about.
+- **Rate limits are real and asymmetric.** The sitemap CDN sustained 32
+  requests per second for 90 seconds with no failures. The details endpoint
+  tolerated a short burst but not sustained load, and an availability sweep
+  across 177 countries lost several to fetch errors. Be conservative, or use
+  `WithAdaptiveThrottle` and let the client find the rate.
+- **Payload shapes change without notice.** Parsers are defensive by design: a
+  field that moves yields a zero value rather than failing a crawl. A canary
+  suite (build tag `canary`) runs against the live store to catch drift.
+- **No authenticated API.** Real pagination and bulk detail lookups exist on
+  Google Play's mobile protobuf API, which needs a Google account token, a
+  device check-in and ongoing maintenance of reverse-engineered schemas. This
+  library does not implement it. The reference implementation is
+  [AuroraOSS/gplayapi](https://gitlab.com/AuroraOSS/gplayapi).
 
----
+## Submodules
 
-### ClusterURLs / Cluster
+- [`apidoc/`](apidoc/): an auto-generated OpenAPI 3.1 description of the
+  private, undocumented Google Play endpoints this library calls.
+- [`lightfeed/`](lightfeed/): `FeedBrowser` support for `Cluster`, driving
+  [Lightpanda](https://lightpanda.io) over CDP to scroll a category page past
+  the depth a stateless client can reach. `Cluster` returns
+  `ErrFeedPaginatorRequired` unless you inject the paginator, so the
+  dependency is always explicit. `FeedMode: FeedLightweight` is the middle
+  step and lives in the root module: it replays the page's own stateless feed
+  tokens, one extra request per topic, and takes `GAME_ACTION` from ~18 apps
+  to ~77 where the browser reaches ~149.
 
-Discover the app clusters ("Popular apps", "New releases", …) on a category or
-top-charts page with `ClusterURLs`, then fetch a cluster's apps with `Cluster`.
+Both are separate Go modules; the root library stays stdlib-only.
 
-```go
-clusters, err := client.ClusterURLs(ctx, googleplayscraper.ClusterURLsOptions{
-    Category: googleplayscraper.CategoryGame,
-})
-// clusters[i].Title, clusters[i].URL
+## Documentation
 
-apps, err := client.Cluster(ctx, googleplayscraper.ClusterOptions{
-    Path:     clusters[0].URL,
-    Num:      100,
-    FeedMode: googleplayscraper.FeedLightweight, // follow the recommendation feed
-})
+- [API reference](https://pkg.go.dev/github.com/kryuchenko/google-play-scraper)
+- [CHANGELOG.md](CHANGELOG.md): what each release changed, and what was
+  measured and rejected along the way
+- Runnable programs in [`examples/`](examples/): `app-availability`,
+  `catalog-crawler`, `category-coverage`, `verify-game-genre`,
+  `yandex-taxi-reviews`
+- [CONTRIBUTING.md](CONTRIBUTING.md) for layout, tests and the release process
+- [SECURITY.md](SECURITY.md) for reporting a vulnerability
+
+## Development
+
+```bash
+GOWORK=off go test -short -race ./...                  # the library, offline; what CI runs
+go test -tags canary -run TestCanary -v -timeout 15m ./...   # live contract tests, slow
 ```
-
-#### Feed pagination (`FeedMode`)
-
-`Cluster` returns the page's initial grid (~20–50 apps) by default. A category
-page also carries a "recommended for you" feed that can extend that set;
-`ClusterOptions.FeedMode` chooses how far to follow it:
-
-| Mode | Depth (GAME_ACTION) | Cost |
-|------|---------------------|------|
-| `FeedNone` (default) | ~19 (initial grid) | one request, zero-dependency |
-| `FeedLightweight` | ~77 | one extra request per feed topic, zero-dependency |
-| `FeedBrowser` | ~130–149 | runs a headless browser (see below) |
-
-**Which to use:** the feed only pays off on a **category landing page**
-(`/store/apps/category/{id}`), where `FeedLightweight` adds ~25–60 apps for its
-extra requests. On a **specific cluster URL** (what `ClusterURLs` returns), the
-feed surfaces only apps already in that cluster's own grid — so `FeedLightweight`
-there spends ~6 requests for **zero** new apps; keep `FeedNone`. That is exactly
-why `CategoryApps` leaves the feed off during its cluster sweep. `FeedNone` is
-also the right pick when you want a predictable single-request cost.
-
-`FeedLightweight` is the stateless sweet spot: it follows each feed topic's
-`recs_topic` continuation token in one request apiece, in pure Go. (The legacy
-`FollowFeed: true` field is deprecated and maps to `FeedLightweight`.)
-
-A feed topic exhausts after ~3 pages server-side, and the deeper continuation
-cursor is computed by the page's JavaScript from render state — it is not
-present in any network response, so a stateless client cannot go past
-`FeedLightweight`. `FeedBrowser` runs a real (lightweight) browser to reach that
-depth; see [`lightfeed/`](lightfeed/) below.
-
-> Note: `Search` is still limited to its first page plus inline results — search
-> results have no feed and no working continuation token (a Google-side limit).
-
-#### `FeedBrowser` — deep pagination via Lightpanda (`lightfeed/`)
-
-`FeedBrowser` drives [Lightpanda](https://lightpanda.io) — a 64 MB headless
-browser (no Chromium) — over CDP to scroll the page and harvest the rendered
-DOM, reaching depth a stateless client cannot. It lives in the **optional
-`lightfeed` submodule** so the root package stays zero-dependency: you must
-inject a `FeedPaginator`, otherwise `Cluster` returns `ErrFeedPaginatorRequired`
-(no silent fallback — the strategy is always explicit).
-
-```go
-import "github.com/kryuchenko/google-play-scraper/lightfeed"
-
-pg, _ := lightfeed.New(lightfeed.WithLightpandaPath("/usr/local/bin/lightpanda"))
-defer pg.Close()
-
-apps, _ := client.Cluster(ctx, googleplayscraper.ClusterOptions{
-    Path:          "/store/apps/category/GAME_ACTION",
-    FeedMode:      googleplayscraper.FeedBrowser,
-    FeedPaginator: pg,
-})
-```
-
-`FeedBrowser` returns thin results (AppID/Title/URL/Icon); enrich via `App()` if
-you need full fields. See `lightfeed/README.md` for setup and trade-offs.
-
----
-
-### Categories
-
-Get all available categories.
-
-```go
-categories, err := client.Categories(ctx, googleplayscraper.CategoriesOptions{})
-```
-
-Returns 54 categories including: `GAME_ACTION`, `GAME_PUZZLE`, `BUSINESS`, `SOCIAL`, `COMMUNICATION`, etc.
-
----
-
-## Localization
-
-All methods support language and country parameters:
-
-- **Language**: ISO 639-1 code (`"en"`, `"es"`, `"ru"`, `"ja"`, `"de"`, `"fr"`, ...)
-- **Country**: ISO 3166-1 alpha-2 code (`"us"`, `"es"`, `"ru"`, `"jp"`, `"de"`, `"fr"`, ...)
-
-```go
-// Spanish results from Spain
-app, _ := client.App(ctx, appID, googleplayscraper.AppOptions{
-    Lang:    "es",
-    Country: "es",
-})
-```
-
-## API documentation
-
-The [`apidoc/`](apidoc/) directory holds an auto-generated **OpenAPI 3.1**
-specification of the *private, undocumented* Google Play HTTP endpoints this
-library calls (the `/store/...` HTML pages and the `batchexecute` RPCs). It lives
-in a **separate nested Go module** so the root library stays
-**zero-dependency** — only `apidoc/` pulls in [swaggo](https://github.com/swaggo/swag).
-
-Regenerate the spec with `cd apidoc && make gen` (or `./gen.sh`); the committed
-output is `apidoc/docs/swagger.{json,yaml}`. See [`apidoc/README.md`](apidoc/README.md)
-for details and the Terms-of-Service disclaimer — these endpoints are not a
-public Google API and may change without notice.
-
-## Coverage & limitations
-
-This library scrapes the **anonymous public web** interface of Google Play
-(`play.google.com`), so it is bound by what that interface exposes:
-
-- **Lists/charts cap at ~200 apps** per category × collection. Google does not
-  serve a full catalog. List/search continuation-token pagination (the `qnKhOb`
-  RPC) is rejected for stateless clients, so `List`/`Search` return roughly one
-  page; the category **feed** is the exception — `Cluster` with `FeedMode` can
-  extend it (see the `Cluster` note above). This is a server-side design, not a
-  library bug; the reference Node library (`facundoolano/google-play-scraper`)
-  and the Python libraries hit the same wall.
-- **Get broad coverage by multiplying sources**, not by paginating deeper:
-  iterate categories × collections × countries/languages, fetch each category's
-  clusters, and crawl the app graph via `Similar` and `Developer`. Filter to
-  games by `GenreID` starting with `GAME`. The `CategoryApps` method below
-  automates exactly this.
-
-### CategoryApps — automated category coverage
-
-`CategoryApps` unions many independent slices of one category (collections ×
-locales × age buckets × a search-term dictionary × a `Similar`/`Developer`
-graph walk), deduplicating by `AppID`, with a saturation stop on the expensive
-phases. It is the practical answer to "give me everything in this category"
-within the anonymous web limits.
-
-```go
-result, err := client.CategoryApps(ctx, googleplayscraper.CoverageOptions{
-    Category:    googleplayscraper.CategoryGameAction,
-    Locales:     googleplayscraper.CoverageLocales[:3], // us/en, gb/en, in/en, …
-    GraphDepth:  1,                                     // Similar/Developer BFS
-    MaxApps:     5000,
-})
-// result.Apps, result.PerSourceNew, result.RequestsMade, result.Saturated
-```
-
-**What to expect (measured):** a single `GAME_ACTION` run reached ~1,800 unique
-apps — roughly 9× the ~200 single-request ceiling — with zero duplicates. The
-**search-term dictionary contributes far more unique apps than adding locales**,
-so widen `SearchTerms` before adding countries. The example CLI
-(`examples/category-coverage`) exposes `-locales`, `-graph-depth`, `-suggest`,
-and `-no-search` to control the request budget.
-
-**Honest boundary:** this collects the *commercially visible* layer of a
-category — typically thousands of apps, **not the full catalog**. Apps with no
-ratings that never surface in any chart, search, or similarity graph are not
-reachable through the category/search/graph channels. To enumerate the *entire*
-store — including those never-charted apps — use `EnumerateCatalog` below, which
-reads Google's own sitemaps. Wiring a `FeedBrowser` paginator into the cluster
-phase (`ClusterFeedMode`) adds a modest number of extra apps the feed surfaces;
-everything else stays the same.
-
-### EnumerateCatalog — the full catalog via sitemaps
-
-Where `CategoryApps` maximizes one category, `EnumerateCatalog` walks Google's
-**public sitemaps** — the one anonymous channel that lists the *whole* store.
-`robots.txt` advertises two sitemap indexes; together they point at ~80,945
-gzipped shards, each a `<urlset>` of whole-store URLs (books, movies, music
-**and** apps interleaved). The crawler keeps only the `/store/apps/details?id=`
-locs, yielding on the order of **3 million** app package ids.
-
-```go
-client := googleplayscraper.NewClient(googleplayscraper.WithThrottle(200 * time.Millisecond))
-
-err := client.EnumerateCatalog(ctx, func(pkg string) {
-    // called once per app id, serially — append/insert without locking
-    fmt.Println(pkg)
-}, googleplayscraper.CatalogOptions{
-    Concurrency: 8,          // parallel shard fetches (throttle still applies)
-    Shards:      []int{0, 1}, // optional: a subset of shards for sampling/resume; nil = all
-    OnShardDone: func(idx int, url string, n int) { /* progress */ },
-})
-```
-
-The lower-level steps are exported too, so you can drive the crawl yourself:
-`SitemapIndexURLs` (read the indexes from `robots.txt`), `AllSitemapShards`
-(the full ~80,945-entry work list), and `SitemapShardPackages` (fetch + gunzip +
-filter one shard). `emit` is **not** deduplicated across shards (ids are unique
-within a shard); deduplicate on your side if needed. The sweep is
-context-cancellable and returns a partial catalog on cancel; a single shard's
-failure is reported via `OnShardError` and skipped, never aborting the run.
-
-A full sweep is large (tens of thousands of requests) — be polite with
-`WithThrottle` and a sane `Concurrency`. The CLI
-(`examples/catalog-crawler`) writes ids to a file and can `-resolve` the first N
-to titles as a sanity check:
-
-```sh
-go run ./examples/catalog-crawler -shards 50 -concurrency 4 -out catalog.txt
-go run ./examples/catalog-crawler -shards 0  -concurrency 8 -throttle 200ms -out catalog.txt   # everything
-```
-
-**What this gives you:** package ids only — the sitemap carries no ratings,
-titles, or rankings. Pair it with `App()` (optionally `WithConcurrency`) to
-resolve the ids you care about. It is the breadth channel; `CategoryApps` is the
-ranked-and-enriched channel.
-
-### Need deeper access? The mobile protobuf API (FDFE)
-
-For browser-grade feed depth without leaving the anonymous web, use
-`FeedBrowser` (above); for the full list of app ids, use `EnumerateCatalog`
-(above). If you instead need **batched detail lookups** — resolving thousands of
-ids to metadata far faster than one `App()` call each — the option is Google
-Play's **mobile protobuf API**, the
-same `android.clients.google.com/fdfe/` endpoints the Play Store app uses. It
-supports real `nextPageUrl` pagination and `bulkDetails` (hundreds of package
-names per request, a natural companion to a sitemap id dump).
-
-This library does **not** implement it, because it requires a different (and
-heavier) setup with a different risk profile:
-
-- a Google account token (or an anonymous one from a token dispenser) — i.e.
-  **authenticated** access, a clearer ToS violation than anonymous scraping;
-- device check-in / registration with a protobuf device profile;
-- ongoing maintenance of reverse-engineered protobuf schemas and token rotation
-  (anonymous accounts get banned periodically).
-
-The reference implementation is **[AuroraOSS/gplayapi](https://gitlab.com/AuroraOSS/gplayapi)**
-(Kotlin, on GitLab — the GitHub `whyorean/GPlayApi` repo is an outdated mirror),
-as used by the [Aurora Store](https://github.com/whyorean/AuroraStore) client.
-For a fully managed option, commercial APIs (SerpApi, 42matters) wrap the same
-data behind their own pagination.
 
 ## License
 

@@ -1,0 +1,47 @@
+version: 2
+
+# The root module has no third-party dependencies and a test that enforces it,
+# so it is listed only for the toolchain: a `go` directive bump still wants
+# review. Everything else lives in the two submodules.
+updates:
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "deps"
+
+  - package-ecosystem: gomod
+    directory: /apidoc
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "deps(apidoc)"
+    groups:
+      # go-openapi moves as a family behind swaggo; separate PRs for each of
+      # its dozen modules would be noise that nobody reads.
+      openapi:
+        patterns:
+          - "github.com/go-openapi/*"
+          - "github.com/pb33f/*"
+          - "github.com/swaggo/*"
+
+  - package-ecosystem: gomod
+    directory: /lightfeed
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "deps(lightfeed)"
+    groups:
+      # cdproto tracks the Chrome DevTools Protocol and chromedp tracks
+      # cdproto; updating one without the other is how the pair breaks.
+      chromedp:
+        patterns:
+          - "github.com/chromedp/*"
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: "ci"

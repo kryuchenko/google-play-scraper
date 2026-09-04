@@ -37,7 +37,7 @@ func parallelIndexed(ctx context.Context, n, workers int, fn func(ctx context.Co
 	}
 
 	if workers == 1 {
-		for i := 0; i < n; i++ {
+		for i := range n {
 			if err := ctx.Err(); err != nil {
 				return err
 			}
@@ -66,7 +66,7 @@ func parallelIndexed(ctx context.Context, n, workers int, fn func(ctx context.Co
 			}
 		}()
 	}
-	for i := 0; i < n; i++ {
+	for i := range n {
 		indexes <- i
 	}
 	close(indexes)

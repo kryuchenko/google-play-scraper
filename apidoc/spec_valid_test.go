@@ -15,7 +15,6 @@ import (
 // and JSON outputs since downstream tools consume either.
 func TestSpecIsValidOpenAPI(t *testing.T) {
 	for _, name := range []string{"swagger.yaml", "swagger.json"} {
-		name := name
 		t.Run(name, func(t *testing.T) {
 			data, err := os.ReadFile(filepath.Join("docs", name))
 			if err != nil {

@@ -2,7 +2,6 @@ package googleplayscraper
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/url"
 	"strings"
@@ -69,12 +68,16 @@ type ClusterOptions struct {
 	// adds 0 unique apps. CategoryApps therefore leaves it off: its cluster sweep
 	// already covers everything the feed would surface (verified live 2026-06-12).
 	//
-	// Deprecated: use FeedMode (FollowFeed:true == FeedMode:FeedLightweight).
+	// Deprecated: this field will be removed in v2. Use FeedMode
+	// (FollowFeed:true == FeedMode:FeedLightweight).
 	FollowFeed bool
 }
 
 // ClusterURLs returns the clusters advertised on a category or top-charts page.
 func (c *Client) ClusterURLs(ctx context.Context, opts ClusterURLsOptions) ([]ClusterInfo, error) {
+	ctx, endTask := startTask(ctx, traceTaskClusterURLs)
+	defer endTask()
+
 	if opts.Lang == "" {
 		opts.Lang = "en"
 	}
@@ -102,22 +105,11 @@ func (c *Client) ClusterURLs(ctx context.Context, opts ClusterURLsOptions) ([]Cl
 // [21,1,2,4,2]. Sections without a cluster link (e.g. inlined app grids) are
 // skipped.
 func parseClusterURLs(body []byte) []ClusterInfo {
-	html := string(body)
-	matches := scriptDataRegex.FindAllStringSubmatch(html, -1)
-
 	var clusters []ClusterInfo
 	seen := make(map[string]bool)
 
-	for _, match := range matches {
-		if len(match) < 3 {
-			continue
-		}
-		var data interface{}
-		if err := json.Unmarshal([]byte(strings.TrimSpace(match[2])), &data); err != nil {
-			continue
-		}
-
-		sections, ok := getPath(data, 0, 1).([]interface{})
+	for _, data := range dataBlockSeq(body) {
+		sections, ok := getPath(data, 0, 1).([]any)
 		if !ok {
 			continue
 		}
@@ -144,6 +136,9 @@ func parseClusterURLs(body []byte) []ClusterInfo {
 // Cluster fetches the apps listed in a single cluster, following pagination
 // while results are available, up to opts.Num.
 func (c *Client) Cluster(ctx context.Context, opts ClusterOptions) ([]SearchResult, error) {
+	ctx, endTask := startTask(ctx, traceTaskCluster)
+	defer endTask()
+
 	if opts.Path == "" {
 		return nil, fmt.Errorf("cluster path is required")
 	}
@@ -260,8 +255,8 @@ func clusterSourcePath(path string) string {
 	if u, err := url.Parse(path); err == nil && u.Path != "" {
 		return u.Path
 	}
-	if i := strings.IndexByte(path, '?'); i >= 0 {
-		return path[:i]
+	if before, _, ok := strings.Cut(path, "?"); ok {
+		return before
 	}
 	return path
 }
@@ -275,19 +270,8 @@ func clusterSourcePath(path string) string {
 // payload on replay. Feed continuation is driven instead by extractFeedTokens,
 // which derives a working token per recommendation section from its cluster URL.
 func parseClusterPage(body []byte) ([]SearchResult, error) {
-	html := string(body)
-	matches := scriptDataRegex.FindAllStringSubmatch(html, -1)
-
-	for _, match := range matches {
-		if len(match) < 3 {
-			continue
-		}
-		var data interface{}
-		if err := json.Unmarshal([]byte(strings.TrimSpace(match[2])), &data); err != nil {
-			continue
-		}
-
-		apps, ok := getPath(data, 0, 1, 0, 21, 0).([]interface{})
+	for _, data := range dataBlockSeq(body) {
+		apps, ok := getPath(data, 0, 1, 0, 21, 0).([]any)
 		if !ok || len(apps) == 0 {
 			continue
 		}

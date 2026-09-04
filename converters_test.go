@@ -33,7 +33,7 @@ func TestToInt64TypedBranches(t *testing.T) {
 		t.Errorf("toInt64(int64) = %d, want 9000000000", got)
 	}
 	// An unhandled type falls through to 0.
-	if got := toInt64([]interface{}{1}); got != 0 {
+	if got := toInt64([]any{1}); got != 0 {
 		t.Errorf("toInt64(slice) = %d, want 0", got)
 	}
 }
@@ -51,10 +51,10 @@ func TestToFloat64UnhandledTypeIsZero(t *testing.T) {
 }
 
 func TestExtractScreenshots(t *testing.T) {
-	in := []interface{}{
-		[]interface{}{nil, nil, nil, []interface{}{0, 0, "https://img/1.png"}},
-		[]interface{}{nil, nil, nil, []interface{}{0, 0, "https://img/2.png"}},
-		[]interface{}{"too", "short"}, // skipped: len <= 3
+	in := []any{
+		[]any{nil, nil, nil, []any{0, 0, "https://img/1.png"}},
+		[]any{nil, nil, nil, []any{0, 0, "https://img/2.png"}},
+		[]any{"too", "short"}, // skipped: len <= 3
 	}
 	got := extractScreenshots(in)
 	want := []string{"https://img/1.png", "https://img/2.png"}
@@ -70,8 +70,8 @@ func TestExtractScreenshots(t *testing.T) {
 // makeAppDataWith18 builds an app-data array long enough to address index 18,
 // whose [18][0] carries the supplied availability marker. Shared by orchestrator
 // tests that synthesize app pages.
-func makeAppDataWith18(marker int) []interface{} {
-	data := make([]interface{}, 19)
-	data[18] = []interface{}{float64(marker)}
+func makeAppDataWith18(marker int) []any {
+	data := make([]any, 19)
+	data[18] = []any{float64(marker)}
 	return data
 }

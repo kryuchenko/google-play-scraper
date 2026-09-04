@@ -1,10 +1,16 @@
 package googleplayscraper
 
+// BaseURL is the origin every request in this package is built from. It is a
+// const so that a caller cannot repoint the library at another host by
+// assignment; tests intercept requests with a transport instead
+// (WithHTTPClient).
 const BaseURL = "https://play.google.com"
 
 // Sort options for reviews
 type Sort int
 
+// Sort orders the reviews endpoint accepts. The numbers are Google's, not this
+// package's, and travel to the RPC as they are.
 const (
 	SortHelpfulness Sort = 1
 	SortNewest      Sort = 2
@@ -15,22 +21,67 @@ const (
 type Collection string
 
 const (
+	// CollectionTopFree, CollectionTopPaid and CollectionGrossing are the three
+	// original top charts: the only ones the legacy HTML page carries, and so
+	// the only ones with a fallback when the RPC is unavailable.
 	CollectionTopFree  Collection = "TOP_FREE"
 	CollectionTopPaid  Collection = "TOP_PAID"
 	CollectionGrossing Collection = "GROSSING"
+
+	// CollectionNewFree and CollectionNewPaid are the store's recently
+	// published listings. They answer a question the top charts cannot: what
+	// has appeared lately.
+	//
+	// Measured across the seventeen GAME_* categories, CollectionNewFree
+	// returns 1,230 distinct apps in 17 requests, of which 99% were released
+	// within thirty days and 12% within seven. That makes it a cheap daily
+	// signal for new titles -- seventeen requests against the 83k of a full
+	// catalog sweep.
+	//
+	// It is ranked, though, so an app with no traction never appears in it.
+	// Treat it as a signal with high precision and unmeasured recall: useful
+	// for finding new things quickly, not for establishing that nothing else
+	// was added.
+	CollectionNewFree Collection = "NEW_FREE"
+	CollectionNewPaid Collection = "NEW_PAID"
+
+	// CollectionMoversShakers is the store's rising-apps cluster.
+	CollectionMoversShakers Collection = "MOVERS_SHAKERS"
 )
 
-// clusterNames maps a Collection to the cluster identifier Google Play
-// expects in the vyAe2 batchexecute payload.
+// htmlSections maps a Collection to its position in the legacy HTML listing
+// page. Only the three original charts appear there; the newer clusters are
+// reachable through the vyAe2 RPC alone, and listViaHTML refuses them rather
+// than guessing a section.
+var htmlSections = map[Collection]int{
+	CollectionTopFree:  0,
+	CollectionTopPaid:  1,
+	CollectionGrossing: 2,
+}
+
+// clusterNames maps a Collection to the cluster identifier Google Play expects
+// in the vyAe2 batchexecute payload.
+//
+// The three beyond the original three were found by asking the endpoint
+// directly. Google also rejects plenty of plausible-looking names --
+// new_free, new_paid, topselling_trending, topselling_rising and
+// topselling_new_grossing all come back empty -- so this table is what the
+// endpoint answered to, not what its naming suggests.
 var clusterNames = map[Collection]string{
-	CollectionTopFree:  "topselling_free",
-	CollectionTopPaid:  "topselling_paid",
-	CollectionGrossing: "topgrossing",
+	CollectionTopFree:       "topselling_free",
+	CollectionTopPaid:       "topselling_paid",
+	CollectionGrossing:      "topgrossing",
+	CollectionNewFree:       "topselling_new_free",
+	CollectionNewPaid:       "topselling_new_paid",
+	CollectionMoversShakers: "movers_shakers",
 }
 
 // Category types
 type Category string
 
+// The categories the store browses by, as the ids the RPC expects rather than
+// the display names it shows. Apps and games are one namespace here, the way
+// Google spells them, which is why the game ids carry their own prefix.
 const (
 	// App categories
 	CategoryApplication      Category = "APPLICATION"

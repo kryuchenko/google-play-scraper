@@ -11,18 +11,18 @@ import (
 // extractMonetization (OriginalPrice and DiscountEndDate) that the fixtures do
 // not exercise, on a hand-built app-data node.
 func TestExtractMonetizationDiscount(t *testing.T) {
-	appData := make([]interface{}, 58)
+	appData := make([]any, 58)
 	// AdSupported marker at [48].
-	appData[48] = []interface{}{"Contains ads"}
+	appData[48] = []any{"Contains ads"}
 	// IAPRange at [19][0].
-	appData[19] = []interface{}{"$0.99 - $99.99 per item"}
+	appData[19] = []any{"$0.99 - $99.99 per item"}
 	// Price block carrying OriginalPrice at [57][0][0][0][0][1][1][0] and
 	// DiscountEndDate at [57][0][0][0][0][14][0][0].
-	priceInner := make([]interface{}, 15)
-	priceInner[1] = []interface{}{nil, []interface{}{float64(4990000)}} // [1][1][0] original price micros
-	priceInner[14] = []interface{}{[]interface{}{float64(1700000000)}}  // [14][0][0] discount end unix
+	priceInner := make([]any, 15)
+	priceInner[1] = []any{nil, []any{float64(4990000)}} // [1][1][0] original price micros
+	priceInner[14] = []any{[]any{float64(1700000000)}}  // [14][0][0] discount end unix
 	// Nest priceInner at [57][0][0][0][0].
-	appData[57] = []interface{}{[]interface{}{[]interface{}{[]interface{}{priceInner}}}}
+	appData[57] = []any{[]any{[]any{[]any{priceInner}}}}
 
 	app := &App{}
 	extractMonetization(app, appData)
@@ -44,7 +44,7 @@ func TestExtractMonetizationDiscount(t *testing.T) {
 func TestExtractMonetizationNoExtras(t *testing.T) {
 	// An app with none of the optional monetization nodes leaves the fields zero.
 	app := &App{}
-	extractMonetization(app, []interface{}{})
+	extractMonetization(app, []any{})
 	if app.AdSupported || app.OffersIAP || app.OriginalPrice != 0 || app.DiscountEndDate != 0 {
 		t.Errorf("expected all monetization fields zero, got %+v", app)
 	}
@@ -66,10 +66,10 @@ func TestPostBodyReadError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Length", "2048")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("partial"))
+		_, _ = w.Write([]byte("partial"))
 		if hj, ok := w.(http.Hijacker); ok {
 			conn, _, _ := hj.Hijack()
-			conn.Close()
+			_ = conn.Close()
 		}
 	}))
 	defer server.Close()
@@ -92,7 +92,7 @@ func TestSimilarClusterRequestError(t *testing.T) {
 }
 
 func TestFindAppsInDataNoMatch(t *testing.T) {
-	if got := findAppsInData([]interface{}{"no", "apps", "here"}); got != nil {
+	if got := findAppsInData([]any{"no", "apps", "here"}); got != nil {
 		t.Errorf("findAppsInData(no apps) = %v, want nil", got)
 	}
 	if got := findAppsInData("not an array"); got != nil {

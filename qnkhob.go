@@ -101,7 +101,7 @@ func (c *Client) fetchQnKhOb(ctx context.Context, token string, p qnkhobParams) 
 // still return it for response-shape drift detection, but pagination does not
 // use it: paginateQnKhOb fetches one token per recommendation section instead,
 // each derived statelessly from the page's cluster URLs (see extractFeedTokens).
-func parseQnKhObResponse(data []interface{}) ([]SearchResult, string) {
+func parseQnKhObResponse(data []any) ([]SearchResult, string) {
 	if data == nil {
 		return nil, ""
 	}

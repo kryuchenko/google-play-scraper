@@ -128,7 +128,7 @@ func TestParseListBatchFixture(t *testing.T) {
 	if err != nil {
 		t.Fatalf("decodeBatchEnvelope: %v", err)
 	}
-	apps, ok := getPath(data, 0, 1, 0, 28, 0).([]interface{})
+	apps, ok := getPath(data, 0, 1, 0, 28, 0).([]any)
 	if !ok {
 		t.Fatal("apps array not found at [0][1][0][28][0]")
 	}

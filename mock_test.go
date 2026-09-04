@@ -16,6 +16,9 @@ type mockResponse struct {
 	Body   []byte
 	Status int
 	Err    error
+	// Header lets a route model the response headers a retry policy reads,
+	// Retry-After above all.
+	Header http.Header
 }
 
 // routeFunc decides the response for a request. Returning ok=false means the
@@ -44,10 +47,14 @@ func (rt *routingTransport) RoundTrip(req *http.Request) (*http.Response, error)
 			if status == 0 {
 				status = http.StatusOK
 			}
+			hdr := resp.Header
+			if hdr == nil {
+				hdr = make(http.Header)
+			}
 			return &http.Response{
 				StatusCode: status,
 				Body:       io.NopCloser(strings.NewReader(string(resp.Body))),
-				Header:     make(http.Header),
+				Header:     hdr,
 				Request:    req,
 			}, nil
 		}
@@ -119,6 +126,18 @@ func batchEnvelope(rpcID, innerJSON string) []byte {
 	return []byte(fmt.Sprintf(")]}'\n\n[[\"wrb.fr\",%q,\"%s\",null,null,null,\"generic\"]]", rpcID, escaped))
 }
 
+// droppedFrame is a well-formed batchexecute body that carries no wrb.fr frame
+// at all: Google's `er` error frame. decodeBatchFrames parses it and returns an
+// empty map, so every call in the request comes back Present=false.
+//
+// It is the distinction the rpcFrame type exists for. An emptyFrame() is an
+// answer -- present, with a null payload -- and callers read data into it. This
+// is the absence of an answer, and a caller that cannot tell the two apart
+// reports a dropped response as a fact about the app.
+func droppedFrame() []byte {
+	return []byte(")]}'\n\n[[\"er\",null,null,null,null,[3]]]")
+}
+
 // htmlWithDataBlocks renders an HTML page carrying the given ds:N script blocks,
 // each value being a JSON string. It mirrors the AF_initDataCallback layout that
 // parseDataBlocks / scriptDataRegex consume, letting tests build minimal pages
@@ -130,10 +149,10 @@ func htmlWithDataBlocks(blocks map[string]string) []byte {
 	// pagination path) finds an f.sid/bl on mocked pages.
 	sb.WriteString(`<script>window.WIZ_global_data = {"FdrFJe":"-1","cfb2h":"boq_test_p0"};</script>`)
 	for key, data := range blocks {
-		sb.WriteString(fmt.Sprintf(
+		fmt.Fprintf(&sb,
 			"<script>AF_initDataCallback({key: '%s', hash: '1', data:%s, sideChannel: {}});</script>",
 			key, data,
-		))
+		)
 	}
 	sb.WriteString("</body></html>")
 	return []byte(sb.String())

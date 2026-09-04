@@ -162,12 +162,18 @@ func TestDeveloperOptionsWithFullDetail(t *testing.T) {
 }
 
 func TestParseDeveloperPage(t *testing.T) {
-	// Case 1: Empty or invalid JSON
-	_, err := parseDeveloperPage([]byte("invalid"), false, 10)
+	// Case 1: input with no AF_initDataCallback block at all. The parser is
+	// deliberately lenient -- Google's payloads shift without notice, and a
+	// page that no longer matches must not fail a whole crawl. So this is not
+	// an error: it is zero results and no error, and both halves matter. An
+	// error here would abort callers that are sweeping thousands of pages; a
+	// non-empty result would mean the parser invented apps out of garbage.
+	res, err := parseDeveloperPage([]byte("invalid"), false, 10)
 	if err != nil {
-		// Should handle gracefully or return error depending on implementation
-		// Implementation loops over regex matches, if none, returns nil results, nil error (unless dataBlocks lookup fails)
-		// If "ds:3" missing, returns nil, nil
+		t.Fatalf("parseDeveloperPage on unparseable input returned an error, want nil: %v", err)
+	}
+	if len(res) != 0 {
+		t.Errorf("parseDeveloperPage on unparseable input returned %d results, want 0: %+v", len(res), res)
 	}
 
 	// Case 2: Valid structure but empty apps
@@ -175,7 +181,7 @@ func TestParseDeveloperPage(t *testing.T) {
 		<script>AF_initDataCallback({key: 'ds:3', isError: false , hash: '1', data: [[1,[[null,[],null]]]]});</script>
 	`
 	// Path to apps for numeric ID: [0][1][0][21][0]
-	res, err := parseDeveloperPage([]byte(body), true, 10)
+	res, err = parseDeveloperPage([]byte(body), true, 10)
 	if err != nil {
 		t.Fatalf("unexpected error for empty apps data: %v", err)
 	}
@@ -198,8 +204,8 @@ func TestParseDeveloperPage(t *testing.T) {
 func TestParseDeveloperApp(t *testing.T) {
 	// Test edge cases where fields are missing
 	// Numeric ID format
-	itemNumeric := []interface{}{
-		[]interface{}{"app.id"}, // [0][0] = appID
+	itemNumeric := []any{
+		[]any{"app.id"}, // [0][0] = appID
 		nil,
 		nil,
 		"Title", // [3] = Title
@@ -214,9 +220,9 @@ func TestParseDeveloperApp(t *testing.T) {
 
 	// String ID format
 	// appId: [0][0][0]
-	itemString := []interface{}{
-		[]interface{}{
-			[]interface{}{"app.id.str"},
+	itemString := []any{
+		[]any{
+			[]any{"app.id.str"},
 			nil,
 			nil,
 			"TitleStr", // [0][3]

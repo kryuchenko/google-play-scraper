@@ -1,6 +1,7 @@
 package googleplayscraper
 
 import (
+	"os"
 	"os/exec"
 	"strings"
 	"testing"
@@ -54,7 +55,13 @@ const rootModulePath = "github.com/kryuchenko/google-play-scraper"
 
 func goList(t *testing.T, args ...string) string {
 	t.Helper()
-	out, err := exec.Command("go", append([]string{"list"}, args...)...).CombinedOutput()
+	cmd := exec.Command("go", append([]string{"list"}, args...)...)
+	// Force module mode: a contributor's local go.work (see CONTRIBUTING) puts
+	// every workspace module's requirements into `go list -m all`, which would
+	// fail this test for reasons that have nothing to do with the root module's
+	// own dependency set.
+	cmd.Env = append(os.Environ(), "GOWORK=off")
+	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("go list %v: %v\n%s", args, err, out)
 	}
@@ -63,7 +70,7 @@ func goList(t *testing.T, args ...string) string {
 
 func nonEmptyLines(s string) []string {
 	var lines []string
-	for _, l := range strings.Split(s, "\n") {
+	for l := range strings.SplitSeq(s, "\n") {
 		if l = strings.TrimSpace(l); l != "" {
 			lines = append(lines, l)
 		}

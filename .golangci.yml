@@ -1,0 +1,41 @@
+version: "2"
+
+# The default set (errcheck, govet, ineffassign, staticcheck, unused) passes
+# clean, so it is the floor rather than an aspiration. Everything it reports
+# was either fixed or made explicit at the call site -- there are deliberately
+# no exclusions here. An ignored error should be visible as `_ =` in the code
+# that ignores it, not hidden in this file where a reader of that code will
+# never look for it.
+linters:
+  default: standard
+  enable:
+    # Three additions, each earning its place: bodyclose because every code
+    # path here opens an HTTP response, copyloopvar because the pre-1.22 idiom
+    # it removes is pure noise now, unconvert because the payload parsers are
+    # full of numeric conversions and a redundant one usually means a
+    # misunderstanding of what the payload actually holds.
+    #
+    # misspell was tried and removed: its only findings were British spellings
+    # in prose (cancelled, catalogue, honours) and the exported Criterias
+    # field, which mirrors Google's own JSON key. It imposes a dialect rather
+    # than finding defects, and acting on it would have broken the public API.
+    - bodyclose
+    - copyloopvar
+    - unconvert
+
+  settings:
+    errcheck:
+      # Blank assignments still count as unchecked. Requiring them to be
+      # written out is the point: `_ = resp.Body.Close()` documents that the
+      # error was considered, which a bare call does not.
+      check-blank: false
+
+formatters:
+  enable:
+    - gofmt
+
+issues:
+  # Report everything. Defaults cap output per linter and per file, which
+  # quietly hides the tail of a regression.
+  max-issues-per-linter: 0
+  max-same-issues: 0

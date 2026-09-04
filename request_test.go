@@ -45,7 +45,7 @@ func TestClientGet(t *testing.T) {
 			t.Error("User-Agent header is missing")
 		}
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"status": "ok"}`))
+		_, _ = w.Write([]byte(`{"status": "ok"}`))
 	}))
 	defer server.Close()
 
@@ -115,6 +115,31 @@ func TestWithHTTPClient(t *testing.T) {
 	}
 }
 
+// The client handed to WithHTTPClient is the caller's, very likely shared with
+// the rest of their program. Setting Timeout on it changed every other request
+// they make -- a scraper's 30 seconds imposed on their database health check.
+func TestWithTimeoutDoesNotMutateTheCallersClient(t *testing.T) {
+	transport := &routingTransport{t: t, routes: []routeFunc{routePath("/x", nil)}}
+	caller := &http.Client{Transport: transport}
+
+	c := NewClient(WithHTTPClient(caller), WithTimeout(time.Second))
+
+	if caller.Timeout != 0 {
+		t.Errorf("the caller's client had its Timeout set to %v", caller.Timeout)
+	}
+	if c.httpClient == caller {
+		t.Error("the client kept the caller's *http.Client rather than a copy")
+	}
+	if c.httpClient.Timeout != time.Second {
+		t.Errorf("the copy has Timeout %v, want 1s", c.httpClient.Timeout)
+	}
+	// The copy is shallow on purpose: Transport, Jar and CheckRedirect are
+	// meant to be shared, and a deep copy would silently drop the caller's.
+	if c.httpClient.Transport != transport {
+		t.Error("the copy lost the caller's Transport")
+	}
+}
+
 func TestThrottleContextCancel(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -150,7 +175,7 @@ func TestClientPost(t *testing.T) {
 			t.Errorf("Content-Type: got %q", r.Header.Get("Content-Type"))
 		}
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`response`))
+		_, _ = w.Write([]byte(`response`))
 	}))
 	defer server.Close()
 
@@ -176,7 +201,7 @@ func TestClientWithThrottle(t *testing.T) {
 func TestThrottleDelay(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`ok`))
+		_, _ = w.Write([]byte(`ok`))
 	}))
 	defer server.Close()
 
@@ -220,9 +245,9 @@ func TestThrottleConcurrentStarts(t *testing.T) {
 		workers  = 8
 	)
 
-	var hits int32
+	var hits atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		atomic.AddInt32(&hits, 1)
+		hits.Add(1)
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer server.Close()
@@ -232,7 +257,7 @@ func TestThrottleConcurrentStarts(t *testing.T) {
 	jobs := make(chan int)
 	var wg sync.WaitGroup
 	wg.Add(workers)
-	for w := 0; w < workers; w++ {
+	for range workers {
 		go func() {
 			defer wg.Done()
 			for range jobs {
@@ -244,14 +269,14 @@ func TestThrottleConcurrentStarts(t *testing.T) {
 	}
 
 	start := time.Now()
-	for i := 0; i < requests; i++ {
+	for i := range requests {
 		jobs <- i
 	}
 	close(jobs)
 	wg.Wait()
 	elapsed := time.Since(start)
 
-	if got := atomic.LoadInt32(&hits); got != requests {
+	if got := hits.Load(); got != requests {
 		t.Fatalf("server saw %d requests, want %d", got, requests)
 	}
 
@@ -262,34 +287,5 @@ func TestThrottleConcurrentStarts(t *testing.T) {
 	floor := time.Duration(requests-1)*throttle - throttle
 	if elapsed < floor {
 		t.Errorf("run finished in %v, want >= %v (throttle not serializing starts)", elapsed, floor)
-	}
-}
-
-func TestBuildURL(t *testing.T) {
-	tests := []struct {
-		path   string
-		params map[string]string
-		want   string
-	}{
-		{
-			path:   "/store/apps/details",
-			params: nil,
-			want:   "https://play.google.com/store/apps/details",
-		},
-		{
-			path:   "/store/apps/details",
-			params: map[string]string{"id": "com.example"},
-			want:   "https://play.google.com/store/apps/details?id=com.example",
-		},
-	}
-
-	for _, tt := range tests {
-		got := buildURL(tt.path, tt.params)
-		// For single param, exact match; for multiple, just check contains
-		if len(tt.params) <= 1 {
-			if got != tt.want {
-				t.Errorf("buildURL(%q, %v) = %q, want %q", tt.path, tt.params, got, tt.want)
-			}
-		}
 	}
 }

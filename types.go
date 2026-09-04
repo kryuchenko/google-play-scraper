@@ -19,7 +19,7 @@ type Review struct {
 	Text string `json:"text" example:"Works great, exactly what I needed."`
 	// ReplyDate is when the developer replied; zero/absent when there is no
 	// reply (serialized RFC 3339).
-	ReplyDate time.Time `json:"replyDate,omitempty" format:"date-time"`
+	ReplyDate time.Time `json:"replyDate" format:"date-time"`
 	// ReplyText is the developer's reply body; absent when there is no reply.
 	ReplyText string `json:"replyText,omitempty"`
 	// Version is the app version the review was left on; may be absent.

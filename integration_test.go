@@ -216,7 +216,7 @@ func TestReviewsFilterScore(t *testing.T) {
 	t.Logf("Got %d 1-star reviews", len(result.Reviews))
 }
 
-func TestReviewsAll(t *testing.T) {
+func TestReviewsSeqPaginatesLive(t *testing.T) {
 	if testing.Short() {
 		t.Skip("network test")
 	}
@@ -224,19 +224,25 @@ func TestReviewsAll(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	// Fetch 200 reviews with auto-pagination (should be 2 pages)
-	reviews, err := client.ReviewsAll(ctx, "com.instagram.android", googleplayscraper.ReviewOptions{
-		Count: 200,
-	})
-	if err != nil {
-		t.Fatalf("ReviewsAll() error: %v", err)
+	// A page is 150, so stopping at 200 proves the token chain advanced
+	// against the live store rather than just parsing one response.
+	const want = 200
+	var n int
+	for _, err := range client.ReviewsSeq(ctx, "com.instagram.android", googleplayscraper.ReviewOptions{}) {
+		if err != nil {
+			t.Fatalf("ReviewsSeq() error after %d reviews: %v", n, err)
+		}
+		n++
+		if n == want {
+			break
+		}
 	}
 
-	if len(reviews) < 150 {
-		t.Errorf("Expected at least 150 reviews (multi-page), got %d", len(reviews))
+	if n < 150 {
+		t.Errorf("Expected at least 150 reviews (multi-page), got %d", n)
 	}
 
-	t.Logf("ReviewsAll fetched %d reviews", len(reviews))
+	t.Logf("ReviewsSeq streamed %d reviews", n)
 }
 
 // ============== SEARCH TESTS ==============

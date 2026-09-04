@@ -165,3 +165,72 @@ func TestDefaultSearchTerms(t *testing.T) {
 		t.Errorf("unknown category returned %v, want nil", terms)
 	}
 }
+
+// The review language list is measured, not copied from a locale table, and
+// two properties have to hold or a multi-language read wastes requests and
+// misses corpora.
+//
+// Aliases are the waste: tg and tk are served the Russian corpus verbatim, ga
+// and cy the English one, so including them costs requests and returns nothing
+// new. Kazakh is the miss: the first version of this list skipped it, which
+// made "all languages" silently exclude an entire country's reviews.
+func TestReviewLanguagesHasNoAliasesAndCoversCentralAsia(t *testing.T) {
+	seen := map[string]int{}
+	for _, l := range ReviewLanguages() {
+		seen[l]++
+	}
+	for l, n := range seen {
+		if n > 1 {
+			t.Errorf("%q appears %d times; the union would fetch it twice", l, n)
+		}
+	}
+
+	// Measured aliases. Each was checked against the corpus it duplicates and
+	// found identical id for id.
+	for _, alias := range []string{"tg", "tk", "ga", "cy"} {
+		if _, present := seen[alias]; present {
+			t.Errorf("%q is an alias of a corpus already in the list", alias)
+		}
+	}
+
+	// Languages whose absence was a real gap rather than a matter of taste.
+	for _, want := range []string{"kk", "az", "uz", "ky", "ka", "hy", "be"} {
+		if _, present := seen[want]; !present {
+			t.Errorf("%q is a distinct corpus and is missing", want)
+		}
+	}
+
+	if len(ReviewLanguages()) < 60 {
+		t.Errorf("list has %d codes; the measured set was larger", len(ReviewLanguages()))
+	}
+}
+
+// ReviewLanguages was an exported slice, which made the measured list a global
+// any caller could reorder, truncate or empty for every other caller in the
+// process. Handing out a copy is the fix, and this is the property that says it
+// worked: the damage a caller can do stops at its own copy.
+func TestReviewLanguagesHandsOutACopy(t *testing.T) {
+	first := ReviewLanguages()
+	if len(first) == 0 {
+		t.Fatal("ReviewLanguages() is empty")
+	}
+
+	// The two things a caller can do to a slice it was handed.
+	first[0] = "zz"
+	first = append(first[:1], first[3:]...)
+
+	second := ReviewLanguages()
+	if second[0] == "zz" {
+		t.Error("writing to the returned slice changed what the next caller gets")
+	}
+	if len(second) != len(first)+2 {
+		t.Errorf("the list is %d codes after a caller resliced its copy; the copy is not independent", len(second))
+	}
+
+	// The count is the measured set: 71 codes, each exercised against the live
+	// endpoint and found to serve a corpus no other code serves.
+	const measured = 71
+	if len(second) != measured {
+		t.Errorf("ReviewLanguages() has %d codes, want the %d that were measured", len(second), measured)
+	}
+}

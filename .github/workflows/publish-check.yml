@@ -1,0 +1,49 @@
+name: Publish check
+
+# Resolves the submodules the way an outside consumer does: from the module
+# proxy, with no access to this repository's go.work or any `replace`.
+#
+# This deliberately does NOT run on pull requests. `go get @latest` resolves
+# whatever the proxy already serves, so on a PR it would report on the last
+# published state and pass or fail for reasons unrelated to the change under
+# review. It runs after a push to main, on a schedule to catch proxy/tag drift,
+# and on demand before cutting a release.
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  resolve:
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        module:
+          - github.com/kryuchenko/google-play-scraper
+          - github.com/kryuchenko/google-play-scraper/lightfeed
+          - github.com/kryuchenko/google-play-scraper/apidoc
+
+    steps:
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: stable
+
+      # A `replace` directive is ignored outside the module that declares it,
+      # and a `require` on an untagged version cannot resolve at all. Both
+      # failures are invisible from inside the repo and only appear here.
+      - name: Resolve ${{ matrix.module }} from the proxy
+        run: |
+          tmp=$(mktemp -d)
+          cd "$tmp"
+          go mod init publishcheck
+          GOFLAGS=-mod=mod go get '${{ matrix.module }}@latest'
+          echo "resolved:"
+          go list -m all | grep kryuchenko

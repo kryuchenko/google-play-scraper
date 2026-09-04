@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("<sitemapindex><sitemap><loc>0</loc><loc>0</loc></sitemap></sitemapindex>")

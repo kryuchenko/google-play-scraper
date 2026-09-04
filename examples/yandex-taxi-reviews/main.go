@@ -1,3 +1,14 @@
+// Command yandex-taxi-reviews collects the last year of ru.yandex.taxi's
+// Russian-language reviews from the Russian storefront and writes them to a
+// dated JSON file, with a score histogram and the latest review on stdout.
+//
+// It reads newest-first through ReviewsSeq and stops at the first review older
+// than the cutoff, so it fetches what it keeps rather than a count picked in
+// advance.
+//
+// Usage:
+//
+//	go run ./examples/yandex-taxi-reviews
 package main
 
 import (
@@ -20,29 +31,31 @@ func main() {
 
 	fmt.Printf("Fetching reviews for %s (Russia, Russian)...\n", appID)
 
-	// Fetch reviews - up to 5000 (Google Play limit in practice)
-	reviews, err := client.ReviewsAll(ctx, appID, googleplayscraper.ReviewOptions{
+	// Sorted newest first, so the first review older than the cutoff means
+	// every review after it is older too. The iterator lets the loop stop
+	// there instead of paginating to some number picked in advance and
+	// throwing most of it away.
+	oneYearAgo := time.Now().AddDate(-1, 0, 0)
+	var filtered []googleplayscraper.Review
+	var fetched int
+
+	for r, err := range client.ReviewsSeq(ctx, appID, googleplayscraper.ReviewOptions{
 		Lang:    "ru",
 		Country: "ru",
 		Sort:    googleplayscraper.SortNewest,
-		Count:   5000,
-	})
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error fetching reviews: %v\n", err)
-		os.Exit(1)
-	}
-
-	// Filter reviews from the last year
-	oneYearAgo := time.Now().AddDate(-1, 0, 0)
-	var filtered []googleplayscraper.Review
-
-	for _, r := range reviews {
-		if r.Date.After(oneYearAgo) {
-			filtered = append(filtered, r)
+	}) {
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error fetching reviews: %v\n", err)
+			os.Exit(1)
 		}
+		fetched++
+		if !r.Date.After(oneYearAgo) {
+			break
+		}
+		filtered = append(filtered, r)
 	}
 
-	fmt.Printf("Total reviews fetched: %d\n", len(reviews))
+	fmt.Printf("Reviews scanned: %d\n", fetched)
 	fmt.Printf("Reviews from last year: %d\n", len(filtered))
 
 	// Save to JSON file

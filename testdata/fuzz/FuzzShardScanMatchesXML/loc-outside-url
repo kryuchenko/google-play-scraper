@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("<urlset><loc>https://play.google.com/store/apps/details?id=com.a</loc></urlset>")

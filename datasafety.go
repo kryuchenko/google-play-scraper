@@ -50,6 +50,9 @@ type DataSafetyOptions struct {
 
 // DataSafety fetches data safety information for an app
 func (c *Client) DataSafety(ctx context.Context, opts DataSafetyOptions) (*DataSafety, error) {
+	ctx, endTask := startTask(ctx, traceTaskDataSafety)
+	defer endTask()
+
 	if opts.AppID == "" {
 		return nil, fmt.Errorf("appID is required")
 	}
@@ -73,9 +76,8 @@ func (c *Client) DataSafety(ctx context.Context, opts DataSafetyOptions) (*DataS
 }
 
 func parseDataSafetyPage(body []byte) (*DataSafety, error) {
-	dataBlocks := parseDataBlocks(body)
 
-	ds3, ok := dataBlocks["ds:3"]
+	ds3, ok := dataBlock(body, "ds:3")
 	if !ok {
 		return nil, nil
 	}
@@ -110,8 +112,8 @@ func parseDataSafetyPage(body []byte) (*DataSafety, error) {
 	return result, nil
 }
 
-func parseDataEntries(data interface{}) []DataSafetyEntry {
-	arr, ok := data.([]interface{})
+func parseDataEntries(data any) []DataSafetyEntry {
+	arr, ok := data.([]any)
 	if !ok {
 		return nil
 	}
@@ -119,7 +121,7 @@ func parseDataEntries(data interface{}) []DataSafetyEntry {
 	var entries []DataSafetyEntry
 
 	for _, item := range arr {
-		itemArr, ok := item.([]interface{})
+		itemArr, ok := item.([]any)
 		if !ok {
 			continue
 		}
@@ -133,13 +135,13 @@ func parseDataEntries(data interface{}) []DataSafetyEntry {
 			continue
 		}
 
-		dataItemsArr, ok := dataItems.([]interface{})
+		dataItemsArr, ok := dataItems.([]any)
 		if !ok {
 			continue
 		}
 
 		for _, dataItem := range dataItemsArr {
-			dataItemArr, ok := dataItem.([]interface{})
+			dataItemArr, ok := dataItem.([]any)
 			if !ok {
 				continue
 			}
@@ -172,8 +174,8 @@ func parseDataEntries(data interface{}) []DataSafetyEntry {
 	return entries
 }
 
-func parseSecurityPractices(data interface{}) []SecurityPractice {
-	arr, ok := data.([]interface{})
+func parseSecurityPractices(data any) []SecurityPractice {
+	arr, ok := data.([]any)
 	if !ok {
 		return nil
 	}
@@ -181,7 +183,7 @@ func parseSecurityPractices(data interface{}) []SecurityPractice {
 	var practices []SecurityPractice
 
 	for _, item := range arr {
-		itemArr, ok := item.([]interface{})
+		itemArr, ok := item.([]any)
 		if !ok || len(itemArr) < 3 {
 			continue
 		}

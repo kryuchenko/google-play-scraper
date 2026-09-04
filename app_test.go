@@ -14,11 +14,11 @@ func TestAppValidation(t *testing.T) {
 }
 
 func TestGetPath(t *testing.T) {
-	data := []interface{}{
+	data := []any{
 		"zero",
-		[]interface{}{
+		[]any{
 			"one-zero",
-			[]interface{}{
+			[]any{
 				"two-zero",
 				"two-one",
 			},
@@ -46,7 +46,7 @@ func TestGetPath(t *testing.T) {
 }
 
 func TestGetPathNil(t *testing.T) {
-	data := []interface{}{"zero", nil}
+	data := []any{"zero", nil}
 
 	if got := getPath(data, 5); got != nil {
 		t.Errorf("expected nil for out of bounds, got %v", got)
@@ -58,7 +58,7 @@ func TestGetPathNil(t *testing.T) {
 
 func TestToString(t *testing.T) {
 	tests := []struct {
-		input interface{}
+		input any
 		want  string
 	}{
 		{nil, ""},
@@ -77,7 +77,7 @@ func TestToString(t *testing.T) {
 
 func TestToInt(t *testing.T) {
 	tests := []struct {
-		input interface{}
+		input any
 		want  int
 	}{
 		{nil, 0},
@@ -97,13 +97,13 @@ func TestToInt(t *testing.T) {
 func TestExtractHistogram(t *testing.T) {
 	// Real Google Play shape: a 6-element array whose first element is a null
 	// placeholder, followed by 1-star..5-star, each a ["formatted", count] pair.
-	data := []interface{}{
+	data := []any{
 		nil,
-		[]interface{}{"50", float64(50)},     // 1-star
-		[]interface{}{"100", float64(100)},   // 2-star
-		[]interface{}{"200", float64(200)},   // 3-star
-		[]interface{}{"500", float64(500)},   // 4-star
-		[]interface{}{"1000", float64(1000)}, // 5-star
+		[]any{"50", float64(50)},     // 1-star
+		[]any{"100", float64(100)},   // 2-star
+		[]any{"200", float64(200)},   // 3-star
+		[]any{"500", float64(500)},   // 4-star
+		[]any{"1000", float64(1000)}, // 5-star
 	}
 
 	hist := extractHistogram(data)
@@ -302,7 +302,7 @@ func TestAppFullDetails(t *testing.T) {
 
 func TestToInt64(t *testing.T) {
 	tests := []struct {
-		input interface{}
+		input any
 		want  int64
 	}{
 		{nil, 0},
@@ -323,7 +323,7 @@ func TestToInt64(t *testing.T) {
 
 func TestToFloat64(t *testing.T) {
 	tests := []struct {
-		input interface{}
+		input any
 		want  float64
 	}{
 		{nil, 0},
@@ -339,11 +339,4 @@ func TestToFloat64(t *testing.T) {
 			t.Errorf("toFloat64(%v) = %f, want %f", tt.input, got, tt.want)
 		}
 	}
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
 }

@@ -147,25 +147,30 @@ func TestFindSimilarCluster(t *testing.T) {
 	`))
 	// Should return empty string, no error
 
-	// Case 3: Invalid JSON in script
-	_, err = findSimilarCluster([]byte(`
+	// Case 3: a well-formed script block whose payload is not valid JSON. The
+	// unmarshal loop skips blocks it cannot decode and keeps going, so a single
+	// malformed block must not fail the page -- but it must also not yield a
+	// cluster URL, or callers would follow a link derived from nothing.
+	url, err = findSimilarCluster([]byte(`
 		<script>AF_initDataCallback({key: 'ds:7', isError: false , hash: '1', data: {invalid-json}});</script>
 	`))
 	if err != nil {
-		// Currently function ignores invalid JSON blocks and continues, so this shouldn't error out unless fatal
-		// The code loop `if err := json.Unmarshal([]byte(dataStr), &data); err != nil { continue }`
-		// So it should just assume no data.
+		t.Fatalf("findSimilarCluster on a malformed data block returned an error, want nil: %v", err)
+	}
+	if url != "" {
+		t.Errorf("findSimilarCluster on a malformed data block returned %q, want empty", url)
 	}
 }
 
 func TestParseSimilarPage(t *testing.T) {
-	// Empty body
+	// Empty body: no error, no results. Same contract as every other parser
+	// here -- absence of data is a normal outcome, not a failure.
 	res, err := parseSimilarPage([]byte{})
 	if err != nil {
-		// Should return nil
+		t.Fatalf("parseSimilarPage on an empty body returned an error, want nil: %v", err)
 	}
 	if len(res) != 0 {
-		t.Error("expected 0 results")
+		t.Errorf("parseSimilarPage on an empty body returned %d results, want 0: %+v", len(res), res)
 	}
 
 	// Missing ds:3

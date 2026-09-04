@@ -19,3 +19,17 @@
 
 # OS
 .DS_Store
+
+# Built binaries
+# The built binary at the repo root only. Without the leading slash this
+# pattern matches any path component, which silently swallowed the whole
+# cmd/gpscrape/ source directory -- already-tracked files kept working, so the
+# only symptom was a new file there never showing up in git status.
+/gpscrape
+
+# The default -dir for the catalog verbs. Anchored, like /gpscrape above: an
+# unanchored "catalog" would match any directory of that name anywhere.
+/catalog/
+
+# Local agent/editor state, never part of a release
+.claude/

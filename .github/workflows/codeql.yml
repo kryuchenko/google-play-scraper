@@ -1,0 +1,50 @@
+name: CodeQL
+
+# Static analysis for the classes golangci-lint does not cover: taint through
+# the parsers, and the handling of data that arrives from Google. Everything
+# this library reads is third-party input, so the analysis has something real
+# to chew on rather than being a badge.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Weekly, because the query packs change even when the code does not.
+    - cron: '0 5 * * 2'
+
+permissions:
+  contents: read
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      actions: read
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: stable
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v4
+        with:
+          languages: go
+          queries: security-and-quality
+
+      # Built explicitly rather than by autobuild: the repository holds three
+      # modules and a committed go.work, and autobuild would either miss the
+      # submodules or trip over the workspace.
+      - name: Build
+        run: |
+          GOWORK=off go build ./...
+          (cd apidoc && GOWORK=off go build ./...)
+          (cd lightfeed && GOWORK=off go build ./...)
+
+      - name: Analyze
+        uses: github/codeql-action/analyze@v4

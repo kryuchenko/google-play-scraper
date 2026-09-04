@@ -289,6 +289,31 @@ func batchReviewsOCPfdb() {}
 // @Router       /_/PlayStoreUi/data/batchexecute(xdSrCf) [post]
 func batchPermissionsXdSrCf() {}
 
+// batchAppDetailsWs7gDc documents the Ws7gDc app-details RPC.
+//
+// This is the RPC the app details page is built from: the page's own
+// AF_dataServiceRequests map names it as the source of the ds:5 script block,
+// along with the exact request body. AppsMany calls it directly rather than
+// fetching and scraping a megabyte of rendered HTML, and the payload it returns
+// is structurally identical to ds:5.
+//
+// @Summary      App details RPC (Ws7gDc)
+// @Description  POST /_/PlayStoreUi/data/batchexecute?rpcids=Ws7gDc. Returns the
+// @Description  batchexecute envelope; the inner payload is the same structure
+// @Description  the details page carries in its ds:5 block, and App is decoded
+// @Description  from it by the same extractor.
+// @Id           batchAppDetailsWs7gDc
+// @Tags         batchexecute-rpc
+// @Accept       x-www-form-urlencoded
+// @Produce      plain
+// @Param        rpcids  query     string  true   "Fixed rpcid for this operation"  enums(Ws7gDc)
+// @Param        f.req   formData  string  true   "URL-encoded JSON envelope [[['Ws7gDc','<inner-args>',null,'0']]]. The package id sits at [5][0][0] of the inner args; the leading field-number array selects which fields Google returns and is copied verbatim from what the page sends."
+// @Success      200     {object}  App  "Decoded from batchexecute envelope. A null inner payload means the app id does not exist, which the scraper reports as an error for that app rather than an empty App."
+// @Failure      429     {object}  ErrorResponse  "Rate-limited / anti-bot challenge. Google may return 429, or 200 redirecting to google.com/sorry (CAPTCHA). Sustained scraping from one IP triggers this."
+// @Failure      500     {object}  ErrorResponse  "Upstream Google error (any 5xx). Surfaced as StatusError with the observed code."
+// @Router       /_/PlayStoreUi/data/batchexecute(Ws7gDc) [post]
+func batchAppDetailsWs7gDc() {}
+
 // batchSuggestIJ4APc documents the IJ4APc search-suggest RPC.
 //
 // @Summary      Search suggestions RPC (IJ4APc)
@@ -313,7 +338,7 @@ func batchSuggestIJ4APc() {}
 // @Summary      Robots / sitemap discovery (text)
 // @Description  GET /robots.txt. Returns text/plain. The catalog enumerator
 // @Description  (SitemapIndexURLs) parses the `Sitemap:` directives, currently
-// @Description  two indexes under /sitemaps/, which together list all ~80,945
+// @Description  two indexes under /sitemaps/, which together list all ~83k
 // @Description  shards. Read live so it tracks Google's own advertisement.
 // @Id           getRobotsTxt
 // @Tags         sitemap-endpoints
@@ -329,8 +354,8 @@ func getRobotsTxt() {}
 // @Summary      Sitemap index (XML)
 // @Description  GET /sitemaps/sitemaps-index-{n}.xml. Returns application/xml: a
 // @Description  <sitemapindex> whose <sitemap><loc> entries point at the
-// @Description  per-shard .xml.gz files (…-NNNNN-of-80945.xml.gz). index-0 lists
-// @Description  shards 00000..49999, index-1 lists 50000..80944. SitemapShards
+// @Description  per-shard .xml.gz files (…-NNNNN-of-NNNNN.xml.gz). index-0 lists
+// @Description  shards 00000..49999, index-1 lists the rest. SitemapShards
 // @Description  parses the loc list.
 // @Id           getSitemapIndex
 // @Tags         sitemap-endpoints
@@ -354,7 +379,7 @@ func getSitemapIndex() {}
 // @Id           getSitemapShard
 // @Tags         sitemap-endpoints
 // @Produce      application/gzip
-// @Param        shard  path  string  true  "Shard file name, e.g. play_sitemaps_2026-06-08_1780977767-00000-of-80945"  example(play_sitemaps_2026-06-08_1780977767-00000-of-80945)
+// @Param        shard  path  string  true  "Shard file name, e.g. play_sitemaps_2026-06-08_1780977767-00000-of-83445"  example(play_sitemaps_2026-06-08_1780977767-00000-of-83445)
 // @Success      200  {array}   string  "App package ids extracted from the shard's /store/apps/details locs"
 // @Failure      404  {object}  ErrorResponse  "No such shard."
 // @Failure      429  {object}  ErrorResponse  "Rate-limited / anti-bot challenge."

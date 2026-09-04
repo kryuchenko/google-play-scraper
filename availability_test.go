@@ -11,8 +11,8 @@ import (
 // appDataWith18 builds a minimal app-data array whose [18] node is the given
 // value, padding the leading slots so getPath(appData, 18, ...) is reachable.
 // It lets the classifier be tested without a full page fixture.
-func appDataWith18(node18 interface{}) []interface{} {
-	appData := make([]interface{}, 19)
+func appDataWith18(node18 any) []any {
+	appData := make([]any, 19)
 	appData[18] = node18
 	return appData
 }
@@ -20,12 +20,12 @@ func appDataWith18(node18 interface{}) []interface{} {
 func TestClassifyAvailability(t *testing.T) {
 	tests := []struct {
 		name   string
-		node18 interface{}
+		node18 any
 		want   Status
 	}{
-		{"available", []interface{}{float64(2)}, StatusAvailable},
-		{"preregister", []interface{}{float64(1)}, StatusNotInRegion},
-		{"region_locked_empty", []interface{}{}, StatusNotInRegion},
+		{"available", []any{float64(2)}, StatusAvailable},
+		{"preregister", []any{float64(1)}, StatusNotInRegion},
+		{"region_locked_empty", []any{}, StatusNotInRegion},
 		{"nil_node", nil, StatusNotInRegion},
 	}
 	for _, tt := range tests {
@@ -51,7 +51,7 @@ func TestClassifyAvailability(t *testing.T) {
 //
 // so early access can never produce a false Available=false.
 func TestEarlyAccessDoesNotSuppressAvailable(t *testing.T) {
-	appData := appDataWith18([]interface{}{float64(2), nil, "Early access"})
+	appData := appDataWith18([]any{float64(2), nil, "Early access"})
 
 	if got := classifyAvailability(appData); got != StatusAvailable {
 		t.Errorf("classifyAvailability(early-access [18]=[2,nil,string]) = %v, want StatusAvailable", got)

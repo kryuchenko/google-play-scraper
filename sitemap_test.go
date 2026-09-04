@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"encoding/binary"
 	"fmt"
 	"net/http"
 	"sort"
@@ -329,5 +330,151 @@ func TestEnumerateCatalogCancel(t *testing.T) {
 	err := c.EnumerateCatalog(ctx, func(string) {}, CatalogOptions{})
 	if err == nil {
 		t.Error("expected ctx.Err() from a cancelled sweep")
+	}
+}
+
+// The gzip trailer is a hint from whoever served the response, so the
+// pre-allocation it drives must be bounded and must never change the output.
+func TestGunzipHintIsBoundedAndHonest(t *testing.T) {
+	// A real stream: the hint must be exact.
+	var gzbuf bytes.Buffer
+	zw := gzip.NewWriter(&gzbuf)
+	payload := bytes.Repeat([]byte("<url><loc>https://play.google.com/store/apps/details?id=com.x</loc></url>"), 500)
+	if _, err := zw.Write(payload); err != nil {
+		t.Fatal(err)
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	data := gzbuf.Bytes()
+	if got := gunzipHint(data); got != len(payload) {
+		t.Errorf("hint = %d, want the payload's %d", got, len(payload))
+	}
+	out, err := gunzipIfNeeded(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(out, payload) {
+		t.Error("decompressed content differs from the input")
+	}
+
+	// A lying trailer must not become a huge allocation.
+	lying := append([]byte(nil), data...)
+	binary.LittleEndian.PutUint32(lying[len(lying)-4:], 0xFFFFFFFF)
+	if got := gunzipHint(lying); got != gunzipHintMax {
+		t.Errorf("a 4GB claim gave a hint of %d, want it clamped to %d", got, gunzipHintMax)
+	}
+	// And the content must still come out correctly despite the wrong hint:
+	// gzip's own checksum rejects the tampered trailer, which is the point --
+	// the hint is never trusted for correctness.
+	if _, err := gunzipIfNeeded(lying); err == nil {
+		t.Error("a tampered trailer decompressed without complaint")
+	}
+
+	// Too short to carry a trailer at all.
+	if got := gunzipHint([]byte{0x1f, 0x8b}); got != 0 {
+		t.Errorf("hint from a truncated stream = %d, want 0", got)
+	}
+
+	// Not gzip: passed through untouched.
+	plain := []byte("<urlset></urlset>")
+	got, err := gunzipIfNeeded(plain)
+	if err != nil || !bytes.Equal(got, plain) {
+		t.Errorf("plain input was altered: %q, %v", got, err)
+	}
+}
+
+// The shard is the unit of resumability, so a failed shard must arrive in the
+// stream with its URL rather than only through a callback: a caller that means
+// to retry it needs it where the rest of its bookkeeping is.
+func TestCatalogShardSeqCarriesFailuresInTheStream(t *testing.T) {
+	shards := []string{
+		"https://x/play_sitemaps_2026-08-23_1-00000-of-3.xml.gz",
+		"https://x/play_sitemaps_2026-08-23_1-00001-of-3.xml.gz",
+		"https://x/play_sitemaps_2026-08-23_1-00002-of-3.xml.gz",
+	}
+	good := []byte(`<urlset><url><loc>https://play.google.com/store/apps/details?id=com.a</loc></url></urlset>`)
+
+	c := newMockClient(t, func(req *http.Request) (mockResponse, bool) {
+		switch {
+		case strings.HasSuffix(req.URL.Path, "-00001-of-3.xml.gz"):
+			return mockResponse{Status: http.StatusInternalServerError}, true
+		case strings.Contains(req.URL.Path, "play_sitemaps_"):
+			return mockResponse{Body: good}, true
+		}
+		return mockResponse{}, false
+	})
+
+	var got []CatalogShard
+	for sh, err := range c.CatalogShardSeq(context.Background(), CatalogOptions{ShardURLs: shards}) {
+		if err != nil {
+			t.Fatalf("terminal: %v", err)
+		}
+		got = append(got, sh)
+	}
+	if len(got) != 3 {
+		t.Fatalf("got %d shards, want 3", len(got))
+	}
+
+	var failed int
+	for _, sh := range got {
+		if sh.Err == nil {
+			continue
+		}
+		failed++
+		if sh.URL == "" {
+			t.Error("a failed shard arrived without its URL; it cannot be retried")
+		}
+		if sh.Packages != nil {
+			t.Errorf("a failed shard carried %d packages", len(sh.Packages))
+		}
+	}
+	if failed != 1 {
+		t.Errorf("%d shards failed, want 1", failed)
+	}
+	// And the sweep carried on past it: one shard of 83,445 failing is not a
+	// reason to abandon the rest.
+	var ids int
+	for _, sh := range got {
+		ids += len(sh.Packages)
+	}
+	if ids != 2 {
+		t.Errorf("collected %d ids from the two good shards, want 2", ids)
+	}
+}
+
+// ShardURLs is how a run resumes: an index names a shard only within one
+// generation, so a resumable job records URLs and hands back what it missed.
+func TestCatalogOptionsShardURLsSkipsDiscovery(t *testing.T) {
+	var discovery int
+	c := newMockClient(t, func(req *http.Request) (mockResponse, bool) {
+		switch {
+		case req.URL.Path == "/robots.txt" || strings.Contains(req.URL.Path, "sitemaps-index"):
+			discovery++
+			return mockResponse{Body: []byte("")}, true
+		case strings.Contains(req.URL.Path, "play_sitemaps_"):
+			return mockResponse{Body: []byte(
+				`<urlset><url><loc>https://play.google.com/store/apps/details?id=com.a</loc></url></urlset>`)}, true
+		}
+		return mockResponse{}, false
+	})
+
+	var n int
+	for pkg, err := range c.CatalogSeq(context.Background(), CatalogOptions{
+		ShardURLs: []string{"https://x/play_sitemaps_2026-08-23_1-00000-of-1.xml.gz"},
+	}) {
+		if err != nil {
+			t.Fatal(err)
+		}
+		if pkg == "" {
+			t.Error("empty package id")
+		}
+		n++
+	}
+	if n != 1 {
+		t.Errorf("got %d ids, want 1", n)
+	}
+	if discovery != 0 {
+		t.Errorf("made %d discovery requests despite being given the shard list", discovery)
 	}
 }

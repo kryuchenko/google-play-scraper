@@ -26,7 +26,7 @@ func newLinkSet() *linkSet {
 // addRaw parses the collector JS output — newline-separated `id\thref\ttitle\ticon`
 // records — and adds any apps not already seen.
 func (s *linkSet) addRaw(raw string) {
-	for _, line := range strings.Split(raw, "\n") {
+	for line := range strings.SplitSeq(raw, "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" {
 			continue
