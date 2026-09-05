@@ -4,7 +4,7 @@ go 1.27
 
 require (
 	github.com/kryuchenko/google-play-scraper v1.4.0
-	github.com/pb33f/libopenapi v0.37.3
+	github.com/pb33f/libopenapi v0.38.7
 	github.com/pb33f/libopenapi-validator v0.13.8
 	github.com/swaggo/swag/v2 v2.0.0-rc5
 	gopkg.in/yaml.v3 v3.0.1
@@ -26,9 +26,9 @@ require (
 	github.com/pb33f/ordered-map/v2 v2.3.1 // indirect
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.2 // indirect
 	github.com/sv-tools/openapi v0.4.0 // indirect
-	go.yaml.in/yaml/v4 v4.0.0-rc.4 // indirect
+	go.yaml.in/yaml/v4 v4.0.0-rc.6 // indirect
 	golang.org/x/net v0.54.0 // indirect
-	golang.org/x/sync v0.21.0 // indirect
+	golang.org/x/sync v0.22.0 // indirect
 	golang.org/x/text v0.37.0 // indirect
 	golang.org/x/tools v0.45.0 // indirect
 )
