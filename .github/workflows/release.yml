@@ -27,7 +27,7 @@ jobs:
           ref: ${{ github.event.inputs.tag || github.ref }}
 
       - name: Setup Go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@v7
         with:
           # Pinned to stable rather than the module's floor: the binaries
           # should carry the newest runtime and allocator, which is where most
