@@ -1,16 +1,14 @@
 version: 2
 
-# The root module has no third-party dependencies and a test that enforces it,
-# so it is listed only for the toolchain: a `go` directive bump still wants
-# review. Everything else lives in the two submodules.
+# The root module has no third-party dependencies and a test that enforces
+# it, so it is deliberately not listed. It was, once, "for the toolchain" --
+# and with go.work in the tree dependabot read the workspace from the root,
+# bumped the submodules' dependencies a second time from there, and raised
+# the root's `go` directive to whatever the new dependency wanted. That is
+# the one change CONTRIBUTING says must never happen by accident, and it
+# broke the 1.25 leg of CI three times on the morning it was tried. Raising
+# the floor is a decision, made in a minor release with a changelog entry.
 updates:
-  - package-ecosystem: gomod
-    directory: /
-    schedule:
-      interval: weekly
-    commit-message:
-      prefix: "deps"
-
   - package-ecosystem: gomod
     directory: /apidoc
     schedule:
