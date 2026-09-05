@@ -227,18 +227,20 @@ func TestCanaryCLI(t *testing.T) {
 		}
 	})
 
-	// sync -check is the cheap half of the batch job: it reports the
-	// generation without starting a sweep, and without creating anything.
-	t.Run("sync_check", func(t *testing.T) {
+	// catalog check against a directory is the cheap half of the batch job:
+	// it reports the generation without starting a sweep, and without
+	// creating anything. (It used to be spelled `sync -check`; both the
+	// command and the flag are gone, and this is the one surface for it.)
+	t.Run("catalog_check_dir", func(t *testing.T) {
 		dir := filepath.Join(t.TempDir(), "not-created-yet")
-		rec := ndjson(t, run(t, bin, "sync", "-check", "-dir", dir))[0]
+		rec := ndjson(t, run(t, bin, "catalog", "check", "-dir", dir))[0]
 		nonEmptyString(t, rec, "generation")
 		if _, ok := rec["upToDate"].(bool); !ok {
 			t.Errorf("upToDate missing or not a bool: %v", rec["upToDate"])
 		}
 		// Asking a question must not create the snapshot directory.
 		if _, err := os.Stat(dir); err == nil {
-			t.Errorf("-check created %s as a side effect", dir)
+			t.Errorf("catalog check created %s as a side effect", dir)
 		}
 	})
 
