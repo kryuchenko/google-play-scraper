@@ -3,6 +3,7 @@ package googleplayscraper
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -93,21 +94,146 @@ func TestAppsManyPacksAppsIntoFewRequests(t *testing.T) {
 }
 
 func TestAppsManyReportsAMissingPayload(t *testing.T) {
-	c := newMockClient(t, func(req *http.Request) (mockResponse, bool) {
-		if req.URL.Path != pathBatch {
-			return mockResponse{}, false
-		}
-		// Only the second app is answered.
-		return mockResponse{Body: framesEnvelope("Ws7gDc",
-			map[string]string{"1": minimalDS5("second")}, []string{"1"})}, true
-	})
+	c := newMockClient(t,
+		func(req *http.Request) (mockResponse, bool) {
+			if req.URL.Path != pathBatch {
+				return mockResponse{}, false
+			}
+			// Only com.b is ever answered, first time and on the retry.
+			body, _ := io.ReadAll(req.Body)
+			if !strings.Contains(string(body), "com.b") {
+				return mockResponse{Body: framesEnvelope("Ws7gDc", map[string]string{}, nil)}, true
+			}
+			return mockResponse{Body: framesEnvelope("Ws7gDc",
+				map[string]string{"1": minimalDS5("second")}, []string{"1"})}, true
+		},
+		routePathStatus("/store/apps/details", http.StatusNotFound),
+	)
 
 	got := c.AppsMany(context.Background(), []string{"com.a", "com.b"}, AppOptions{})
-	if got[0].Err == nil {
-		t.Error("an app with no frame returned no error")
+	if !errors.Is(got[0].Err, ErrNotFound) {
+		t.Errorf("an app with no frame and a 404 page: err = %v, want ErrNotFound", got[0].Err)
 	}
 	if got[1].Err != nil || got[1].App.Title != "second" {
 		t.Errorf("the answered app came back wrong: %+v", got[1])
+	}
+}
+
+// batchAnswering answers a Ws7gDc pack with a title for every app id in it,
+// except the ids skip says to leave out on that call. It counts calls.
+func batchAnswering(calls *int, skip func(call int, id string) bool) routeFunc {
+	appRe := regexp.MustCompile(`\[\\"([^"\\]+)\\",7\]`)
+	return func(req *http.Request) (mockResponse, bool) {
+		if req.URL.Path != pathBatch {
+			return mockResponse{}, false
+		}
+		*calls++
+		body, _ := io.ReadAll(req.Body)
+		decoded, _ := url.QueryUnescape(strings.TrimPrefix(string(body), "f.req="))
+		byIndex := map[string]string{}
+		var order []string
+		for i, m := range appRe.FindAllStringSubmatch(decoded, -1) {
+			if skip(*calls, m[1]) {
+				continue
+			}
+			byIndex[fmt.Sprint(i)] = minimalDS5("title-of-" + m[1])
+			order = append(order, fmt.Sprint(i))
+		}
+		return mockResponse{Body: framesEnvelope("Ws7gDc", byIndex, order)}, true
+	}
+}
+
+func appIDsN(n int) []string {
+	var ids []string
+	for i := range n {
+		ids = append(ids, fmt.Sprintf("com.example.app%d", i))
+	}
+	return ids
+}
+
+// Issue #18: an item Google drops from one pack usually comes back on a second
+// request. That second request is for the dropped items only.
+func TestAppsManyRetriesEmptyItems(t *testing.T) {
+	var calls int
+	c := newMockClient(t, batchAnswering(&calls, func(call int, id string) bool {
+		return call == 1 && (id == "com.example.app3" || id == "com.example.app7")
+	}))
+	got := c.AppsMany(context.Background(), appIDsN(10), AppOptions{})
+	for _, r := range got {
+		if r.Err != nil || r.App.Title != "title-of-"+r.AppID {
+			t.Errorf("%s: %+v", r.AppID, r)
+		}
+	}
+	if calls != 2 {
+		t.Errorf("%d batch requests, want 2: the run and one retry", calls)
+	}
+}
+
+// An item still empty after the retry is settled by its details page: 200
+// means the app exists (here, the Maps fixture), 404 means ErrNotFound.
+func TestAppsManySettlesStillEmptyItemsByPage(t *testing.T) {
+	var calls int
+	page := readFixture(t, "app_page.html")
+	c := newMockClient(t,
+		batchAnswering(&calls, func(_ int, id string) bool {
+			return id == "com.example.app1" || id == "com.example.app2"
+		}),
+		func(req *http.Request) (mockResponse, bool) {
+			if req.URL.Path != "/store/apps/details" {
+				return mockResponse{}, false
+			}
+			if req.URL.Query().Get("id") == "com.example.app1" {
+				return mockResponse{Body: page}, true
+			}
+			return mockResponse{Status: http.StatusNotFound}, true
+		},
+	)
+	got := c.AppsMany(context.Background(), appIDsN(6), AppOptions{})
+	if got[1].Err != nil || got[1].App == nil || got[1].App.Title != "Google Maps" {
+		t.Errorf("app1 should come from its page: %+v", got[1])
+	}
+	if !errors.Is(got[2].Err, ErrNotFound) {
+		t.Errorf("app2: err = %v, want ErrNotFound", got[2].Err)
+	}
+	if got[0].Err != nil || got[3].Err != nil {
+		t.Error("answered apps should be untouched")
+	}
+}
+
+// When most of a run comes back empty, Google is declining the batch, not
+// dropping items. Asking again item by item would multiply that traffic.
+func TestAppsManyDoesNotRetryAMostlyEmptyRun(t *testing.T) {
+	var calls int
+	c := newMockClient(t, batchAnswering(&calls, func(_ int, id string) bool {
+		return id != "com.example.app0"
+	}))
+	got := c.AppsMany(context.Background(), appIDsN(10), AppOptions{})
+	if calls != 1 {
+		t.Errorf("%d batch requests, want 1", calls)
+	}
+	if !errors.Is(got[5].Err, errEmptyPayload) {
+		t.Errorf("err = %v, want the empty-payload error left as is", got[5].Err)
+	}
+}
+
+// Recovery requests draw on the retry budget: with one token, the retry pack
+// goes out and no page requests follow.
+func TestAppsManyRecoveryUsesRetryBudget(t *testing.T) {
+	var calls, pages int
+	c := newMockClient(t,
+		batchAnswering(&calls, func(_ int, id string) bool { return id == "com.example.app4" }),
+		func(req *http.Request) (mockResponse, bool) {
+			if req.URL.Path != "/store/apps/details" {
+				return mockResponse{}, false
+			}
+			pages++
+			return mockResponse{Status: http.StatusNotFound}, true
+		},
+	)
+	WithRetry(RetryPolicy{Budget: 0.01, Burst: 1})(c)
+	c.AppsMany(context.Background(), appIDsN(10), AppOptions{})
+	if calls != 2 || pages != 0 {
+		t.Errorf("batch requests %d, page requests %d; want 2 and 0", calls, pages)
 	}
 }
 
