@@ -468,6 +468,9 @@ func appPermissionsStub(t *testing.T, store *fakeStore, ok map[string]string) {
 		}
 		return http.StatusOK, framesEnvelope(rpc, byIndex, order)
 	})
+	// An app whose frame never arrives is settled by its details page, which
+	// Google answers 404 for an id it does not know.
+	store.set("/store/apps/details", http.StatusNotFound, nil)
 }
 
 // Batched `app` dropped a failed id from stdout and named it only on stderr, so

@@ -335,7 +335,7 @@ func TestErrorsDoNotEchoEnormousIDs(t *testing.T) {
 		}
 		return mockResponse{Body: framesEnvelope("Ws7gDc",
 			map[string]string{"0": ""}, []string{"0"})}, true
-	})
+	}, routePathStatus("/store/apps/details", http.StatusNotFound))
 	got := c.AppsMany(context.Background(), []string{huge}, AppOptions{})
 	if got[0].Err == nil {
 		t.Fatal("no error for a missing app")
