@@ -179,7 +179,9 @@ func (c *Client) do(ctx context.Context, method, url string, newReq func() (*htt
 			}
 			return nil, err
 		}
-		if attempt == 1 {
+		// A recovery request (AppsMany asking again for dropped items) was
+		// paid for as a retry, so it earns nothing back as a first attempt.
+		if attempt == 1 && !isRecovery(ctx) {
 			c.noteFirstAttempt()
 		}
 
@@ -518,4 +520,17 @@ func transportErr(err error) error {
 		return nil
 	}
 	return err
+}
+
+type recoveryKey struct{}
+
+// withRecovery marks requests made on ctx as recovery: already paid from the
+// retry budget, so not credited to it as first attempts.
+func withRecovery(ctx context.Context) context.Context {
+	return context.WithValue(ctx, recoveryKey{}, true)
+}
+
+func isRecovery(ctx context.Context) bool {
+	v, _ := ctx.Value(recoveryKey{}).(bool)
+	return v
 }

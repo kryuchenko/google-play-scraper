@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 )
 
 // Fetching app details over batchexecute instead of the details page.
@@ -177,10 +178,14 @@ func (c *Client) AppsMany(ctx context.Context, appIDs []string, opts AppOptions)
 // recoverEmpty gives the empty items of an AppsMany run a second chance.
 //
 // Both steps are extra requests, so both draw on the client's retry budget
-// (RetryPolicy.Budget) and go through the normal throttle and breaker. And
-// both are skipped when most of the run came back empty: that is not a few
-// dropped items but Google declining the whole batch, and asking again item
-// by item would multiply exactly the traffic it declined.
+// (RetryPolicy.Budget) and go through the normal throttle and breaker. A token
+// is spent only for a request that is actually sent, and the requests are
+// marked as recovery so that they do not earn budget back as first attempts.
+// Both steps are skipped when most of the run came back empty: that is not a
+// few dropped items but Google declining the whole batch, and asking again item
+// by item would multiply exactly the traffic it declined. A refusal or a
+// cancellation during recovery ends it and is reported on the items it
+// reached, so a caller checking for a block still sees one.
 func (c *Client) recoverEmpty(ctx context.Context, out []AppResult, opts AppOptions) {
 	var empty []int
 	for i := range out {
@@ -196,40 +201,54 @@ func (c *Client) recoverEmpty(ctx context.Context, out []AppResult, opts AppOpti
 			slog.Int("empty", len(empty)), slog.Int("of", len(out)))
 		return
 	}
+	rctx := withRecovery(ctx)
 
-	// Step 1: one more batched request for the empty items only. A pack is
-	// one request, so it takes one retry token.
-	ids := make([]string, 0, len(empty))
-	for _, i := range empty {
-		ids = append(ids, out[i].AppID)
+	// Step 1: one more batched request for the empty items only. Each pack is
+	// one request and takes one token; packs the budget cannot pay for are
+	// not sent. Results are addressed by position in empty, never by id, so a
+	// list that repeats an id cannot send two workers to the same slot.
+	ids := make([]string, len(empty))
+	for k, i := range empty {
+		ids[k] = out[i].AppID
 	}
-	allowed := 0
-	for range chunked(ids, maxRPCsPerRequest) {
-		if !c.takeRetry() {
-			break
-		}
-		allowed += maxRPCsPerRequest
+	packs := (len(ids) + maxRPCsPerRequest - 1) / maxRPCsPerRequest
+	paid := 0
+	for paid < packs && c.takeRetry() {
+		paid++
 	}
-	ids = ids[:min(allowed, len(ids))]
+	ids = ids[:min(paid*maxRPCsPerRequest, len(ids))]
+	var stop error // a refusal or cancellation that ends recovery
 	if len(ids) > 0 {
-		at := map[string]int{}
-		for _, i := range empty {
-			at[out[i].AppID] = i
-		}
-		c.fanOutPacked(ctx, opts.Lang, opts.Country, ids,
+		unsent := make([]bool, packs)
+		var mu sync.Mutex
+		c.fanOutPacked(rctx, opts.Lang, opts.Country, ids,
 			func(_ int, id string) (rpcCall, bool) { return appDetailsRPC(id), true },
-			func(_ int, id string, frame rpcFrame, err error) {
+			func(k int, id string, frame rpcFrame, err error) {
+				i := empty[k]
 				if err != nil {
-					return // keep the first answer; this was only a second try
+					mu.Lock()
+					defer mu.Unlock()
+					if notSent(rctx, err) {
+						unsent[k/maxRPCsPerRequest] = true
+					}
+					if isBlockErr(err) || rctx.Err() != nil {
+						out[i].Err = err
+						if stop == nil {
+							stop = err
+						}
+					}
+					return // otherwise keep the first answer: this was a second try
 				}
-				// Packs run on parallel workers, but every id has its own
-				// slot in out, so the writes do not overlap.
 				app, perr := parseAppRPCPayload(frame.Payload, id, appPageURL(id, opts.Lang, opts.Country))
 				if perr == nil {
-					i := at[id]
 					out[i].App, out[i].Err = app, nil
 				}
 			})
+		for _, u := range unsent {
+			if u {
+				c.refundRetry()
+			}
+		}
 	}
 	recovered := 0
 	for _, i := range empty {
@@ -238,17 +257,20 @@ func (c *Client) recoverEmpty(ctx context.Context, out []AppResult, opts AppOpti
 		}
 	}
 
-	// Step 2: settle what is still empty with the details page, which says
-	// 404 for an id that does not exist.
+	// Step 2: settle what is still empty with the details page: 404 means the
+	// storefront does not list the app.
 	notFound, settled := 0, 0
 	for _, i := range empty {
-		if !errors.Is(out[i].Err, errEmptyPayload) || ctx.Err() != nil {
+		if stop != nil || ctx.Err() != nil {
+			break
+		}
+		if !errors.Is(out[i].Err, errEmptyPayload) {
 			continue
 		}
 		if !c.takeRetry() {
 			break
 		}
-		app, err := c.App(ctx, out[i].AppID, opts)
+		app, err := c.App(rctx, out[i].AppID, opts)
 		var se *StatusError
 		switch {
 		case err == nil:
@@ -257,12 +279,27 @@ func (c *Client) recoverEmpty(ctx context.Context, out []AppResult, opts AppOpti
 		case errors.As(err, &se) && se.Code == http.StatusNotFound:
 			out[i].Err = fmt.Errorf("%w: %s", ErrNotFound, shortenID(out[i].AppID))
 			notFound++
+		default:
+			if notSent(rctx, err) {
+				c.refundRetry()
+			}
+			if isBlockErr(err) || rctx.Err() != nil {
+				out[i].Err = err
+				stop = err
+			}
 		}
 	}
 	c.log().LogAttrs(ctx, slog.LevelDebug, "apps-many: empty items",
 		slog.Int("empty", len(empty)), slog.Int("recovered_by_retry", recovered),
 		slog.Int("recovered_by_page", settled), slog.Int("not_found", notFound),
-		slog.Int("unresolved", len(empty)-recovered-settled-notFound))
+		slog.Int("unresolved", len(empty)-recovered-settled-notFound),
+		slog.Any("stopped_by", stop))
+}
+
+// notSent reports whether a request ended before reaching the server: the
+// breaker refused to admit it, or the context ended while it waited.
+func notSent(ctx context.Context, err error) bool {
+	return errors.Is(err, ErrBlocked) || (ctx.Err() != nil && errors.Is(err, ctx.Err()))
 }
 
 // appPageURL is the canonical page address for an app. The batched path never

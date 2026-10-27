@@ -380,3 +380,72 @@ func extractDataServiceRequest(t *testing.T, body []byte, dsKey string) string {
 	t.Fatalf("%s request is not bracket-balanced", dsKey)
 	return ""
 }
+
+// Review of #19: a list that repeats an id must resolve every occurrence, and
+// two workers must never write one slot (run with -race).
+func TestAppsManyRecoveryWithRepeatedIDs(t *testing.T) {
+	var calls int
+	ids := append(appIDsN(10), "com.example.app3", "com.example.app3")
+	c := newMockClient(t, batchAnswering(&calls, func(call int, id string) bool {
+		return call == 1 && id == "com.example.app3"
+	}))
+	got := c.AppsMany(context.Background(), ids, AppOptions{})
+	for k, r := range got {
+		if r.Err != nil {
+			t.Errorf("item %d (%s): %v", k, r.AppID, r.Err)
+		}
+	}
+}
+
+// Review of #19: a refusal while recovering is the caller's business. It
+// lands on the item, ends recovery (no page request follows) and is what
+// isBlockErr sees.
+func TestAppsManyRecoveryReportsARefusal(t *testing.T) {
+	var calls, pages int
+	c := newMockClient(t,
+		func(req *http.Request) (mockResponse, bool) {
+			if req.URL.Path != pathBatch {
+				return mockResponse{}, false
+			}
+			calls++
+			if calls > 1 {
+				return mockResponse{Status: http.StatusTooManyRequests}, true
+			}
+			return batchAnswering(new(int), func(_ int, id string) bool { return id == "com.example.app2" })(req)
+		},
+		func(req *http.Request) (mockResponse, bool) {
+			if req.URL.Path != "/store/apps/details" {
+				return mockResponse{}, false
+			}
+			pages++
+			return mockResponse{Status: http.StatusNotFound}, true
+		},
+	)
+	got := c.AppsMany(context.Background(), appIDsN(10), AppOptions{})
+	if !isBlockErr(got[2].Err) {
+		t.Errorf("err = %v, want the 429 from the retry", got[2].Err)
+	}
+	if pages != 0 {
+		t.Errorf("%d page requests after a refusal, want 0", pages)
+	}
+}
+
+// Review of #19: recovery requests are paid as retries and must not earn
+// budget back as first attempts.
+func TestAppsManyRecoveryDoesNotRefillTheBudget(t *testing.T) {
+	var calls int
+	c := newMockClient(t,
+		batchAnswering(&calls, func(_ int, id string) bool { return id == "com.example.app4" }),
+		routePathStatus("/store/apps/details", http.StatusNotFound),
+	)
+	WithRetry(RetryPolicy{Budget: 0.5, Burst: 2})(c)
+	c.AppsMany(context.Background(), appIDsN(10), AppOptions{})
+	// 2 to start, +0.5 for the run (capped at 2), -1 for the retry pack, -1
+	// for the page: nothing left, and nothing credited back.
+	c.budgetLock.Lock()
+	tokens := c.budgetTokens
+	c.budgetLock.Unlock()
+	if tokens != 0 {
+		t.Errorf("budget = %.2f after recovery, want 0", tokens)
+	}
+}
