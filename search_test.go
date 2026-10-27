@@ -532,3 +532,38 @@ func TestSearchAboveOnePageUsesTheRPC(t *testing.T) {
 		t.Errorf("Num 500 should ask for 50 in one call; calls %d", n)
 	}
 }
+
+// Review of #20: the RPC list is merged into the page's, not swapped for it.
+func TestMergeSearchResults(t *testing.T) {
+	ids := func(rs []SearchResult) string {
+		var s []string
+		for _, r := range rs {
+			s = append(s, r.AppID)
+		}
+		return strings.Join(s, ",")
+	}
+	r := func(id string) SearchResult { return SearchResult{AppID: id} }
+
+	cases := []struct {
+		name       string
+		page, more []SearchResult
+		want       string
+	}{
+		{"equal length, disjoint", []SearchResult{r("a"), r("b")}, []SearchResult{r("c"), r("d")}, "a,b,c,d"},
+		{"shorter, overlapping, with a new app", []SearchResult{r("a"), r("b"), r("c")}, []SearchResult{r("b"), r("x")}, "a,b,c,x"},
+		{"reordered", []SearchResult{r("a"), r("b"), r("c")}, []SearchResult{r("c"), r("a"), r("b"), r("d")}, "a,b,c,d"},
+		{"repeats in the RPC list", []SearchResult{r("a")}, []SearchResult{r("b"), r("b"), r("a")}, "a,b"},
+	}
+	for _, tc := range cases {
+		if got := ids(mergeSearchResults(tc.page, tc.more)); got != tc.want {
+			t.Errorf("%s: got %s, want %s", tc.name, got, tc.want)
+		}
+	}
+
+	page := []SearchResult{{AppID: "a", Title: "Page title"}}
+	more := []SearchResult{{AppID: "a", Title: "RPC title", DeveloperID: "DEV", Score: 4.5}}
+	got := mergeSearchResults(page, more)[0]
+	if got.Title != "Page title" || got.DeveloperID != "DEV" || got.Score != 4.5 {
+		t.Errorf("merged = %+v; want the page's title with the RPC's developer and score", got)
+	}
+}

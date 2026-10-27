@@ -114,19 +114,17 @@ func (c *Client) Search(ctx context.Context, opts SearchOptions) ([]SearchResult
 
 	_ = token // the page's continuation token; nothing pages a query any more
 
-	// More than a page: ask the RPC for the whole list at once. Its results
-	// start with the same ones the page showed, so it replaces them. A failed
-	// call keeps the page's results -- unless Google is refusing the client,
-	// which the caller has to hear about rather than mistake for a short list.
+	// More than a page: ask the RPC for the whole list at once and merge it
+	// into the page's results. A failed call keeps the page's results --
+	// unless Google is refusing the client, which the caller has to hear
+	// about rather than mistake for a short list.
 	if opts.Num > len(results) && opts.Num > searchPageSize && price == 0 && len(results) > 0 {
 		more, err := c.searchRPC(ctx, opts)
 		if isBlockErr(err) {
 			return nil, fmt.Errorf("more results: %w", err)
 		}
-		// At equal length the RPC still wins: it is the same list, and its
-		// featured card carries fields the page's grid rows do not.
-		if err == nil && len(more) >= len(results) {
-			results = more
+		if err == nil {
+			results = mergeSearchResults(results, more)
 		}
 	}
 
@@ -169,6 +167,56 @@ func getPriceValue(price string) int {
 	default:
 		return 0 // all
 	}
+}
+
+// mergeSearchResults keeps the page's results in the page's order, fills in
+// fields the RPC knows and the page row did not (the RPC's featured card
+// carries the developer link, for one), and appends the RPC's other results in
+// the RPC's order. The two lists mostly agree, but the RPC can order them
+// differently, and neither is guaranteed to contain the other.
+func mergeSearchResults(page, more []SearchResult) []SearchResult {
+	byID := make(map[string]SearchResult, len(more))
+	for _, r := range more {
+		if _, seen := byID[r.AppID]; !seen {
+			byID[r.AppID] = r
+		}
+	}
+	out := make([]SearchResult, 0, len(page)+len(more))
+	have := make(map[string]bool, len(page)+len(more))
+	for _, r := range page {
+		if m, ok := byID[r.AppID]; ok {
+			r = fillSearchResult(r, m)
+		}
+		out = append(out, r)
+		have[r.AppID] = true
+	}
+	for _, r := range more {
+		if !have[r.AppID] {
+			out = append(out, r)
+			have[r.AppID] = true
+		}
+	}
+	return out
+}
+
+// fillSearchResult copies into r every field r lacks and m has.
+func fillSearchResult(r, m SearchResult) SearchResult {
+	for _, f := range []struct{ dst, src *string }{
+		{&r.Title, &m.Title}, {&r.URL, &m.URL}, {&r.Icon, &m.Icon}, {&r.Developer, &m.Developer},
+		{&r.DeveloperID, &m.DeveloperID}, {&r.Currency, &m.Currency}, {&r.Summary, &m.Summary},
+		{&r.ScoreText, &m.ScoreText},
+	} {
+		if *f.dst == "" {
+			*f.dst = *f.src
+		}
+	}
+	if r.Score == 0 {
+		r.Score = m.Score
+	}
+	if r.Price == 0 && m.Price != 0 {
+		r.Price, r.Free = m.Price, m.Free
+	}
+	return r
 }
 
 // searchRPC fetches up to opts.Num results for a query with one lGYRle call.
