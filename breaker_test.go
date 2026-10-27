@@ -421,3 +421,48 @@ func TestBreakerEscalationNeedsAFullCleanWindow(t *testing.T) {
 		t.Errorf("escalation = %d after a full clean window, want 0", k)
 	}
 }
+
+// Re-review finding: a retry cancelled before it reaches the server gives its
+// token back.
+func TestRetryBudgetRefundsCancelledRetry(t *testing.T) {
+	tr := &scripted{answer: func(int) (int, int) { return http.StatusInternalServerError, 0 }}
+	ctx, cancel := context.WithCancel(context.Background())
+	c := NewClient(
+		WithHTTPClient(&http.Client{Transport: tr}),
+		WithRetry(RetryPolicy{MaxAttempts: 2, BaseDelay: time.Microsecond, Budget: 0.01, Burst: 1}),
+		WithHooks(Hooks{OnRequest: func(_, _ string, attempt int) {
+			if attempt == 2 {
+				cancel()
+			}
+		}}),
+	)
+	_, _ = c.get(ctx, BaseURL+"/x")
+	c.budgetLock.Lock()
+	tokens := c.budgetTokens
+	c.budgetLock.Unlock()
+	if tokens < 1 {
+		t.Errorf("budget = %.2f after a cancelled retry, want the token back", tokens)
+	}
+}
+
+// Re-review finding: a consent page interrupts a clean window too.
+func TestBreakerCleanWindowInterruptedByInterstitial(t *testing.T) {
+	c, _ := breakerClient(&scripted{answer: func(int) (int, int) { return 200, 0 }},
+		AdaptivePolicy{Cooldown: time.Hour, Window: 5})
+	c.throttleLock.Lock()
+	c.brk.k = 2
+	c.throttleLock.Unlock()
+	ctx := context.Background()
+	feed := func(o outcome) { c.record(ctx, &ticket{gen: c.brk.gen}, o) }
+	for range 4 {
+		feed(outcome{status: http.StatusOK})
+	}
+	feed(outcome{status: http.StatusOK, verdict: VerdictInterstitial})
+	feed(outcome{status: http.StatusOK})
+	c.throttleLock.Lock()
+	k := c.brk.k
+	c.throttleLock.Unlock()
+	if k != 2 {
+		t.Errorf("escalation = %d, want 2: the window was interrupted", k)
+	}
+}

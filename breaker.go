@@ -394,9 +394,7 @@ func (c *Client) complete(t *ticket, o outcome) (BreakerEvent, bool) {
 	// Anything else -- a transport error, a malformed page, a consent page --
 	// says nothing about the rate. It does interrupt a clean window, and a
 	// probe that got one hands the probe on.
-	if o.signal() == signalSoft {
-		b.clean = 0
-	}
+	b.clean = 0
 	if t.probe && current {
 		b.probeOut = false
 		b.broadcast()

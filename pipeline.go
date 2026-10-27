@@ -179,12 +179,18 @@ func (c *Client) do(ctx context.Context, method, url string, newReq func() (*htt
 			}
 			return nil, err
 		}
-		charged = false
 		if attempt == 1 {
 			c.noteFirstAttempt()
 		}
 
-		body, status, err := c.attempt(ctx, t, method, url, newReq, validate, attempt, waited)
+		body, status, sent, err := c.attempt(ctx, t, method, url, newReq, validate, attempt, waited)
+		// A retry that never reached the server -- the request could not be
+		// built, or the context ended before it went out -- gives its token
+		// back.
+		if charged && (!sent || ctx.Err() != nil) {
+			c.refundRetry()
+		}
+		charged = false
 		// An attempt that never produced an outcome -- the request could not
 		// be built, the context ended -- must still hand on a probe ticket,
 		// or every request waiting on the half-open breaker waits forever.
@@ -265,10 +271,10 @@ func (c *Client) attempt(
 	validate validator,
 	attempt int,
 	waited time.Duration,
-) (body []byte, status int, err error) {
+) (body []byte, status int, sent bool, err error) {
 	req, err := newReq()
 	if err != nil {
-		return nil, 0, fmt.Errorf("create request: %w", err)
+		return nil, 0, false, fmt.Errorf("create request: %w", err)
 	}
 
 	if c.hooks.OnRequest != nil {
@@ -293,6 +299,7 @@ func (c *Client) attempt(
 	logTrace(ctx, "http.url", url)
 	started := time.Now()
 
+	sent = true
 	resp, err := c.httpClient.Do(req)
 	took := time.Since(started)
 	if timings != nil {
@@ -310,7 +317,7 @@ func (c *Client) attempt(
 		if debug {
 			c.logResponse(ctx, method, url, attempt, 0, took, 0, err, nil)
 		}
-		return nil, 0, fmt.Errorf("do request: %w", err)
+		return nil, 0, sent, fmt.Errorf("do request: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
@@ -351,21 +358,21 @@ func (c *Client) attempt(
 		drainBody(resp.Body)
 		sb := &SoftBlockError{Verdict: v, Reason: reason, URL: final.String(), Code: status}
 		finish(outcome{err: sb, verdict: v}, sb)
-		return nil, status, sb
+		return nil, status, sent, sb
 	}
 
 	if status != http.StatusOK {
 		drainBody(resp.Body)
 		se := &StatusError{Code: status, RetryAfter: after}
 		finish(outcome{}, se)
-		return nil, status, se
+		return nil, status, sent, se
 	}
 
 	body, err = io.ReadAll(resp.Body)
 	if err != nil {
 		err = fmt.Errorf("read body: %w", err)
 		finish(outcome{err: err}, err)
-		return nil, status, err
+		return nil, status, sent, err
 	}
 
 	verdict := VerdictOK
@@ -374,11 +381,11 @@ func (c *Client) attempt(
 		if verdict, reason = validate(body); verdict != VerdictOK && verdict != VerdictEmpty {
 			sb := &SoftBlockError{Verdict: verdict, Reason: reason, URL: final.String(), Code: status}
 			finish(outcome{err: sb, verdict: verdict}, sb)
-			return nil, status, sb
+			return nil, status, sent, sb
 		}
 	}
 	finish(outcome{verdict: verdict}, nil)
-	return body, status, nil
+	return body, status, sent, nil
 }
 
 // drainBody reads what is left of a response the caller will not use, so the
