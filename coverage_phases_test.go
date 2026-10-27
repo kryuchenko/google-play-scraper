@@ -203,15 +203,6 @@ func TestBrowserFeedPhaseNilPaginatorNoOp(t *testing.T) {
 	}
 }
 
-func containsAppID(rs []SearchResult, id string) bool {
-	for _, r := range rs {
-		if r.AppID == id {
-			return true
-		}
-	}
-	return false
-}
-
 // FullDetail enrichment fetches a batch now rather than a page per result, but
 // the per-item contract is unchanged: an app the batch could not return keeps
 // its original un-enriched value, in its own slot, and does not cost the rest
