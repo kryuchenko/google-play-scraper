@@ -78,19 +78,27 @@ func (c *Client) Search(ctx context.Context, opts SearchOptions) ([]SearchResult
 	searchURL := fmt.Sprintf("%s/store/search?q=%s&hl=%s&gl=%s&price=%d&c=apps",
 		BaseURL, url.QueryEscape(opts.Term), opts.Lang, opts.Country, price)
 
-	body, err := c.get(ctx, searchURL)
+	// The page is parsed once, inside the check: whether it holds results is
+	// exactly what tells a search with no matches from a page that is not a
+	// search at all.
+	var results []SearchResult
+	var token string
+	_, err := c.getPage(ctx, searchURL, func(body []byte) (Verdict, string) {
+		results, token, _ = parseSearchPage(body, opts.Num)
+		return classifySearchPage(body, results)
+	})
 	if err != nil {
 		return nil, fmt.Errorf("request failed: %w", err)
 	}
 
-	results, token, err := parseSearchPage(body, opts.Num)
-	if err != nil {
-		return nil, err
-	}
-
-	// Fetch more results if needed
+	// Fetch more results if needed. A failed page ends the listing with what
+	// it has -- unless Google is refusing the client, which the caller has to
+	// hear about rather than mistake for a short result list.
 	for len(results) < opts.Num && token != "" {
 		moreResults, nextToken, err := c.fetchMoreApps(ctx, token, opts.Lang, opts.Country)
+		if isBlockErr(err) {
+			return nil, fmt.Errorf("next page: %w", err)
+		}
 		if err != nil || len(moreResults) == 0 {
 			break
 		}
@@ -109,6 +117,23 @@ func (c *Client) Search(ctx context.Context, opts SearchOptions) ([]SearchResult
 	}
 
 	return results, nil
+}
+
+// classifySearchPage judges a search page from what its parser found. Results
+// mean ok; none, with Google's zero-results section present, mean a search that
+// matched nothing; none and no such section mean the page is not the search
+// the parser knows.
+func classifySearchPage(body []byte, results []SearchResult) (Verdict, string) {
+	if len(results) > 0 {
+		return VerdictOK, ""
+	}
+	if v, reason := validateHTMLPage(body); v != VerdictOK {
+		return v, reason
+	}
+	if ds4, ok := dataBlock(body, "ds:4"); ok && isZeroResultsSearch(ds4) {
+		return VerdictEmpty, ""
+	}
+	return VerdictMalformed, "search-without-results-or-marker"
 }
 
 func getPriceValue(price string) int {
@@ -432,6 +457,9 @@ func (c *Client) enrichSearchResults(ctx context.Context, results []SearchResult
 	}
 
 	for i, got := range c.AppsMany(ctx, ids, AppOptions{Lang: lang, Country: country}) {
+		if isBlockErr(got.Err) {
+			return nil, fmt.Errorf("full detail: %w", got.Err)
+		}
 		if got.Err != nil || got.App == nil {
 			continue
 		}

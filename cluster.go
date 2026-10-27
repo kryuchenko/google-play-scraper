@@ -92,7 +92,7 @@ func (c *Client) ClusterURLs(ctx context.Context, opts ClusterURLsOptions) ([]Cl
 		reqURL = fmt.Sprintf("%s/store/apps/category/%s?hl=%s&gl=%s", BaseURL, opts.Category, opts.Lang, opts.Country)
 	}
 
-	body, err := c.get(ctx, reqURL)
+	body, err := c.getPage(ctx, reqURL, validateHTMLPage)
 	if err != nil {
 		return nil, fmt.Errorf("request failed: %w", err)
 	}
@@ -162,7 +162,7 @@ func (c *Client) Cluster(ctx context.Context, opts ClusterOptions) ([]SearchResu
 		return nil, ErrFeedPaginatorRequired
 	}
 
-	body, err := c.get(ctx, withLangCountry(absoluteURL(opts.Path), opts.Lang, opts.Country))
+	body, err := c.getPage(ctx, withLangCountry(absoluteURL(opts.Path), opts.Lang, opts.Country), validateHTMLPage)
 	if err != nil {
 		return nil, fmt.Errorf("request failed: %w", err)
 	}

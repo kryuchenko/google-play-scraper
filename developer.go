@@ -48,7 +48,7 @@ func (c *Client) Developer(ctx context.Context, opts DeveloperOptions) ([]Search
 	devURL := fmt.Sprintf("%s%s?id=%s&hl=%s&gl=%s",
 		BaseURL, path, url.QueryEscape(opts.DevID), opts.Lang, opts.Country)
 
-	body, err := c.get(ctx, devURL)
+	body, err := c.getPage(ctx, devURL, requireBlock("ds:3"))
 	if err != nil {
 		return nil, fmt.Errorf("request failed: %w", err)
 	}

@@ -120,7 +120,7 @@ func TestLoggerReportsThrottleChanges(t *testing.T) {
 
 func TestLoggerIsNilSafeAndSilentByDefault(t *testing.T) {
 	var c Client // a zero Client, as tests build them
-	c.logResponse(context.Background(), http.MethodGet, "u", 1, 200, time.Millisecond, 0, nil)
+	c.logResponse(context.Background(), http.MethodGet, "u", 1, 200, time.Millisecond, 0, nil, nil)
 	c.logThrottle(context.Background(), time.Second, 2*time.Second, "x")
 	if c.log() != discardLogger {
 		t.Error("a zero Client should log to the discard logger")

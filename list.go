@@ -212,7 +212,7 @@ func (c *Client) listViaHTML(ctx context.Context, opts ListOptions) ([]SearchRes
 		reqURL += "&age=" + string(opts.Age)
 	}
 
-	body, err := c.get(ctx, reqURL)
+	body, err := c.getPage(ctx, reqURL, validateHTMLPage)
 	if err != nil {
 		return nil, err
 	}

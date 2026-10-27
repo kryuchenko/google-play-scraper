@@ -131,6 +131,24 @@ type AdaptivePolicy struct {
 	// ratio of 1.5 against an all-time best fires more or less constantly --
 	// which is exactly what an early version of this did.
 	LatencyRatio float64
+
+	// Cooldown turns on the breaker (breaker.go): after a refusal -- 429, 503,
+	// or a soft block -- the whole client stops for a jittered pause between
+	// Cooldown/2 and Cooldown, doubling with each refused probe, then sends
+	// one request and waits for its answer. Zero keeps the client going at
+	// the slowed-down interval, which is what it did before.
+	Cooldown time.Duration
+
+	// MaxCooldown caps the escalating pause, and is how long the client stays
+	// stopped once MaxProbes probes in a row have been refused. Zero means
+	// 10 × Cooldown.
+	MaxCooldown time.Duration
+
+	// MaxProbes is how many refused probes in a row stop the client: waiting
+	// and new requests then fail fast with ErrBlocked until MaxCooldown has
+	// passed, and the next request probes again. Zero means 3; negative means
+	// never stop, only pause.
+	MaxProbes int
 }
 
 // WithAdaptiveThrottle replaces the fixed interval with one that finds its own
@@ -172,6 +190,17 @@ func WithAdaptiveThrottle(p AdaptivePolicy) ClientOption {
 	if p.LatencyRatio <= 1 {
 		p.LatencyRatio = 2
 	}
+	if p.Cooldown < 0 {
+		p.Cooldown = 0
+	}
+	if p.Cooldown > 0 {
+		if p.MaxCooldown < p.Cooldown {
+			p.MaxCooldown = 10 * p.Cooldown
+		}
+		if p.MaxProbes == 0 {
+			p.MaxProbes = 3
+		}
+	}
 	// Max < Min is already normalised above, so this is well defined. A Start
 	// outside the bounds is the same promise broken as an out-of-bounds
 	// WithThrottle: the interval has to be inside the policy before the first
@@ -201,15 +230,26 @@ func WithAdaptiveThrottle(p AdaptivePolicy) ClientOption {
 // reserve a slot: the interval is read on every request and written here, and
 // a mutable field read without a lock is a race whether or not it looks benign.
 func (c *Client) observe(ctx context.Context, status int, rtt time.Duration, err error) {
+	c.record(ctx, nil, outcome{status: status, rtt: rtt, err: err})
+}
+
+// record applies one attempt's outcome to the interval and to the breaker in a
+// single critical section, so the pause and the interval are decided together.
+// t is the attempt's admission ticket; nil feeds the interval only.
+func (c *Client) record(ctx context.Context, t *ticket, o outcome) {
 	if c.adaptive == nil {
 		return
 	}
 	c.throttleLock.Lock()
 	before := c.throttle
-	reason := c.adjust(status, rtt, err)
+	reason := c.adjust(o)
+	ev, moved := c.complete(t, o)
 	after := c.throttle
 	c.throttleLock.Unlock()
 	c.logThrottle(ctx, before, after, reason)
+	if moved {
+		c.emitBreaker(ctx, ev)
+	}
 }
 
 // logThrottle records a change of interval. It runs outside throttleLock: a
@@ -230,8 +270,9 @@ func (c *Client) logThrottle(ctx context.Context, before, after time.Duration, r
 // adjust applies one observation to the interval and names the signal behind
 // the decision. Callers hold throttleLock; whether the interval actually moved
 // is for them to compare, since a decrease at the ceiling changes nothing.
-func (c *Client) adjust(status int, rtt time.Duration, err error) string {
+func (c *Client) adjust(o outcome) string {
 	p := c.adaptive
+	status, rtt, err := o.status, o.rtt, o.err
 
 	// The baseline is the minimum over a sliding window of recent successes,
 	// which is what a delay-based controller actually needs: it tracks the
@@ -250,18 +291,27 @@ func (c *Client) adjust(status int, rtt time.Duration, err error) string {
 	// it gets a gentler one. Latency gets the gentlest treatment of all and
 	// only after a streak, because a client cannot tell its own contribution
 	// to a shared CDN's queue from anything else happening on the path.
-	switch {
-	case status == http.StatusTooManyRequests || status == http.StatusServiceUnavailable:
+	//
+	// A soft block is a refusal that came back as a 200, and is treated as
+	// one. A malformed page is more likely a markup change than capacity
+	// feedback, so it is graded with transport errors. A consent page says
+	// nothing about rate at all.
+	switch o.signal() {
+	case signalRefusal:
 		c.cleanRun, c.slowRun = 0, 0
 		c.slower(p.Slowdown, p.Max)
 		return "refused"
 
-	case err != nil || status >= 500:
+	case signalSoft:
 		c.cleanRun, c.slowRun = 0, 0
 		c.slower(p.SoftSlowdown, p.Max)
 		return "error"
 
-	case baseline > 0 && rtt > time.Duration(float64(baseline)*p.LatencyRatio):
+	case signalNeutral:
+		return ""
+	}
+
+	if baseline > 0 && rtt > time.Duration(float64(baseline)*p.LatencyRatio) {
 		c.cleanRun = 0
 		c.slowRun++
 		if c.slowRun >= p.SlowStreak {

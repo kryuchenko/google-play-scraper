@@ -87,8 +87,10 @@ Classification happens in three steps:
 1. **Final URL, before the status branch.** `resp.Request.URL` is the last request of the
    redirect chain. A host other than the requested one decides the verdict whatever the status:
    `www.google.com` with path `/sorry` or `/sorry/...` is `blocked`; `consent.google.com` and
-   `accounts.google.com` are `interstitial`; any other foreign host is `malformed`. Matching is on
-   parsed host and path, never on substrings. A client whose redirect policy stops at a 3xx keeps
+   `accounts.google.com` are `interstitial`. Any other host is left to the body checks: a
+   caller's transport may legitimately rewrite the host (a proxy, a test server), and the first
+   implementation, which called every foreign host `malformed`, broke exactly those. Matching is
+   on parsed host and path, never on substrings. A client whose redirect policy stops at a 3xx keeps
    today's behaviour (a `StatusError`).
 2. **Status.** Non-200 statuses behave as today. 429 and 503 are refusals.
 3. **Body, by an endpoint validator.** Validators are attached per call, not to `get` or `post`:
@@ -100,7 +102,7 @@ Classification happens in three steps:
 | Search | the parser finds results | `ds:4` section token decodes to `zero_results_cluster` | generic | neither |
 | App details | `ds:5` present (region-locked pages included) | — | generic | `ds:5` absent |
 | Developer, Similar, Data safety | `ds:3` present | — | generic | `ds:3` absent |
-| `batchexecute` RPC | body starts with `)]}'` | — | body is HTML | anything else |
+| `batchexecute` RPC | anything the envelope decoder can try | — | body is HTML | — |
 
 The search check uses the parser's own result instead of a block-name rule, so the `ds:3`/`ds:1`
 fallback in `extractSearchResults` keeps working. The zero-results marker was checked on a live
@@ -125,7 +127,8 @@ not established, and the envelope decoder already reports them per item.
 healthy client for minutes. Only positive evidence of refusal opens the breaker.
 
 `Retry-After` is parsed in `attempt` and passed into the same observation, under the same lock,
-so the pause and the interval are decided together. `retryAfterHint` is removed.
+so the pause and the interval are decided together. With the breaker off, `retryAfterHint`
+keeps its current job of raising the interval, so that configuration behaves as before.
 
 ### 3. Pause the whole client after a refusal
 
@@ -243,6 +246,11 @@ classification.
 - Endpoint-specific validators for cluster pages and list pages are deferred: their parsers
   scan for a grid rather than read a fixed block, and the generic HTML check covers the block
   page case.
+- Both reviews flagged `Search` pagination as swallowing errors. Implementing that showed a
+  separate bug: pagination does not work at all. The token is read from a stale path and the
+  legacy qnKhOb payload returns nothing, so `Num > 20` yields one page. That needs a fresh
+  browser payload, as `Cluster` got, and is tracked in issue #16. The error propagation is in
+  place for when it works; `FullDetail` propagation is covered by tests now.
 
 ## Alternatives considered
 
