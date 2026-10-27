@@ -46,6 +46,13 @@ All notable changes to this project are documented here. The format is based on
   keeps the search page (about 20 results), since only the page applies it.
   The featured card is found in any section, not just the first: in Germany
   it follows a small cluster. (#16)
+- `AppsMany` no longer reports an app as missing because Google dropped it from
+  one pack. Empty items are asked for again in a pack of their own, and any
+  still empty are settled with the details page: 404 is the new `ErrNotFound`
+  (not listed in that storefront), anything else is the app. Both steps draw on
+  the retry budget, and neither runs when most of a batch came back empty. In a
+  293-app, 177-country sweep about half of the empty items were transient.
+  (#18)
 
 - `Search` returns the featured card Google shows above the result grid when
   one app matches the query outright. The card lives outside the grid, in an

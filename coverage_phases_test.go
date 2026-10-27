@@ -231,7 +231,7 @@ func TestEnrichmentFallsBackPerItem(t *testing.T) {
 			order = append([]string{fmt.Sprint(i)}, order...) // reversed, as Google does
 		}
 		return mockResponse{Body: framesEnvelope("Ws7gDc", byIndex, order)}, true
-	})
+	}, routePathStatus("/store/apps/details", http.StatusNotFound))
 
 	results := []SearchResult{
 		{AppID: "com.a", Title: "Original A"},

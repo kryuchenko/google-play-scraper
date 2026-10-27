@@ -5,8 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
+	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 )
 
 // Fetching app details over batchexecute instead of the details page.
@@ -85,6 +88,19 @@ func appDetailsRPC(appID string) rpcCall {
 	return ws7gdcRPC(appID, ws7gdcFullFields)
 }
 
+// ErrNotFound reports an app the requested storefront does not list: its
+// details page answers 404 for that country. That is not always "the id does
+// not exist". Most storefronts show a region-locked app with App.Available
+// false, but some answer 404 instead: in Vietnam and South Korea, games that
+// are not distributed there (8 Ball Pool, Pokerist) return 404 while the same
+// pages open in other countries. For availability, both mean "not offered".
+var ErrNotFound = errors.New("app not found in this storefront")
+
+// errEmptyPayload marks a batched item whose frame came back empty. Alone it
+// does not say whether the app exists: in a large sweep about half of these
+// are transient and come back on a second request.
+var errEmptyPayload = errors.New("no data returned")
+
 // AppResult is one app's outcome in an AppsMany fan-out.
 type AppResult struct {
 	AppID string
@@ -106,6 +122,14 @@ type AppResult struct {
 // rest of the run intact.
 //
 // The packs go out over WithConcurrency workers.
+//
+// An item that comes back empty is not reported as such straight away. Google
+// sometimes leaves one app of a pack unanswered while answering the others, and
+// in a 293-app, 177-country sweep about half of those came back on a second
+// request. So empty items are asked for once more, in a pack of their own, and
+// any still empty are settled with one details-page request each: 404 is
+// ErrNotFound (not listed in that storefront), anything else is the app. See
+// recoverEmpty.
 func (c *Client) AppsMany(ctx context.Context, appIDs []string, opts AppOptions) []AppResult {
 	ctx, endTask := startTask(ctx, traceTaskAppsMany)
 	defer endTask()
@@ -147,7 +171,126 @@ func (c *Client) AppsMany(ctx context.Context, appIDs []string, opts AppOptions)
 			out[i].App, out[i].Err = parseAppRPCPayload(
 				frame.Payload, id, appPageURL(id, opts.Lang, opts.Country))
 		})
+	c.recoverEmpty(ctx, out, opts)
 	return out
+}
+
+// recoverEmpty gives the empty items of an AppsMany run a second chance.
+//
+// Both steps are extra requests, so both draw on the client's retry budget
+// (RetryPolicy.Budget) and go through the normal throttle and breaker. A token
+// is refunded for every request that was paid for but never sent, counted by
+// the pipeline, and the requests are marked as recovery so that they do not
+// earn budget back as first attempts.
+// Both steps are skipped when most of the run came back empty: that is not a
+// few dropped items but Google declining the whole batch, and asking again item
+// by item would multiply exactly the traffic it declined. A refusal or a
+// cancellation during recovery ends it and is reported on the items it
+// reached, so a caller checking for a block still sees one.
+func (c *Client) recoverEmpty(ctx context.Context, out []AppResult, opts AppOptions) {
+	var empty []int
+	for i := range out {
+		if errors.Is(out[i].Err, errEmptyPayload) {
+			empty = append(empty, i)
+		}
+	}
+	if len(empty) == 0 || ctx.Err() != nil {
+		return
+	}
+	if len(out) >= 8 && 2*len(empty) > len(out) {
+		c.log().LogAttrs(ctx, slog.LevelDebug, "apps-many: most items empty, not retrying",
+			slog.Int("empty", len(empty)), slog.Int("of", len(out)))
+		return
+	}
+	rctx, rec := withRecovery(ctx)
+	charged := int64(0) // tokens taken; whatever was not sent is refunded at the end
+	defer func() {
+		for n := charged - rec.sent.Load(); n > 0; n-- {
+			c.refundRetry()
+		}
+	}()
+
+	// Step 1: one more batched request for the empty items only. Each pack is
+	// one request and takes one token; packs the budget cannot pay for are
+	// not sent. Results are addressed by position in empty, never by id, so a
+	// list that repeats an id cannot send two workers to the same slot.
+	ids := make([]string, len(empty))
+	for k, i := range empty {
+		ids[k] = out[i].AppID
+	}
+	packs := (len(ids) + maxRPCsPerRequest - 1) / maxRPCsPerRequest
+	paid := 0
+	for paid < packs && c.takeRetry() {
+		paid++
+	}
+	charged += int64(paid)
+	ids = ids[:min(paid*maxRPCsPerRequest, len(ids))]
+	var stop error // a refusal or cancellation that ends recovery
+	if len(ids) > 0 {
+		var mu sync.Mutex
+		c.fanOutPacked(rctx, opts.Lang, opts.Country, ids,
+			func(_ int, id string) (rpcCall, bool) { return appDetailsRPC(id), true },
+			func(k int, id string, frame rpcFrame, err error) {
+				i := empty[k]
+				if err != nil {
+					mu.Lock()
+					defer mu.Unlock()
+					if isBlockErr(err) || rctx.Err() != nil {
+						out[i].Err = err
+						if stop == nil {
+							stop = err
+						}
+					}
+					return // otherwise keep the first answer: this was a second try
+				}
+				app, perr := parseAppRPCPayload(frame.Payload, id, appPageURL(id, opts.Lang, opts.Country))
+				if perr == nil {
+					out[i].App, out[i].Err = app, nil
+				}
+			})
+	}
+	recovered := 0
+	for _, i := range empty {
+		if out[i].Err == nil {
+			recovered++
+		}
+	}
+
+	// Step 2: settle what is still empty with the details page: 404 means the
+	// storefront does not list the app.
+	notFound, settled := 0, 0
+	for _, i := range empty {
+		if stop != nil || ctx.Err() != nil {
+			break
+		}
+		if !errors.Is(out[i].Err, errEmptyPayload) {
+			continue
+		}
+		if !c.takeRetry() {
+			break
+		}
+		charged++
+		app, err := c.App(rctx, out[i].AppID, opts)
+		var se *StatusError
+		switch {
+		case err != nil && (isBlockErr(err) || rctx.Err() != nil):
+			// Checked first: an error that wraps both a cancellation and a
+			// 404 is a cancellation.
+			out[i].Err = err
+			stop = err
+		case err == nil:
+			out[i].App, out[i].Err = app, nil
+			settled++
+		case errors.As(err, &se) && se.Code == http.StatusNotFound:
+			out[i].Err = fmt.Errorf("%w: %s", ErrNotFound, shortenID(out[i].AppID))
+			notFound++
+		}
+	}
+	c.log().LogAttrs(ctx, slog.LevelDebug, "apps-many: empty items",
+		slog.Int("empty", len(empty)), slog.Int("recovered_by_retry", recovered),
+		slog.Int("recovered_by_page", settled), slog.Int("not_found", notFound),
+		slog.Int("unresolved", len(empty)-recovered-settled-notFound),
+		slog.Any("stopped_by", stop))
 }
 
 // appPageURL is the canonical page address for an app. The batched path never
@@ -162,7 +305,7 @@ func appPageURL(appID, lang, country string) string {
 // presented under exactly that key rather than parsed a second way.
 func parseAppRPCPayload(payload, appID, pageURL string) (*App, error) {
 	if payload == "" {
-		return nil, fmt.Errorf("no data returned for %s", shortenID(appID))
+		return nil, fmt.Errorf("%w for %s", errEmptyPayload, shortenID(appID))
 	}
 	var ds5 any
 	if err := json.Unmarshal([]byte(payload), &ds5); err != nil {
