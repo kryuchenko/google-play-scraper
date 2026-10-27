@@ -304,3 +304,120 @@ func TestRetryBudget(t *testing.T) {
 		t.Errorf("%d requests, want 3: two first attempts and one budgeted retry", n)
 	}
 }
+
+// Review finding: a consent page served with a 429 is still a consent page.
+// The verdict decides before the status, so it neither slows the client nor
+// opens the breaker.
+func TestConsentWith429IsNeutral(t *testing.T) {
+	var calls atomic.Int32
+	c := NewClient(
+		WithHTTPClient(redirectTo("https://consent.google.com/m?continue=x", http.StatusTooManyRequests, "", &calls)),
+		WithAdaptiveThrottle(AdaptivePolicy{Min: time.Millisecond, Max: time.Second, Start: 10 * time.Millisecond,
+			Cooldown: time.Hour}),
+	)
+	_, err := c.App(context.Background(), "x", AppOptions{})
+	var sb *SoftBlockError
+	if !errors.As(err, &sb) || sb.Verdict != VerdictInterstitial {
+		t.Fatalf("err = %v, want interstitial", err)
+	}
+	if s, _ := c.Breaker(); s != BreakerClosed {
+		t.Errorf("breaker = %s, want closed", s)
+	}
+	if got := c.CurrentThrottle(); got != 10*time.Millisecond {
+		t.Errorf("interval = %v, want unchanged", got)
+	}
+}
+
+// Review finding: a long Retry-After on a request that was already in flight
+// must stop the client like it would from a current one, not leave every
+// waiter hanging on an hour-long pause.
+func TestBreakerStaleLongRetryAfterStops(t *testing.T) {
+	release := make(chan struct{})
+	var inFlight sync.WaitGroup
+	inFlight.Add(2)
+	var order atomic.Int32
+	tr := &scripted{answer: func(int) (int, int) {
+		inFlight.Done()
+		<-release
+		if order.Add(1) == 1 {
+			return http.StatusTooManyRequests, 0
+		}
+		return http.StatusTooManyRequests, 3600
+	}}
+	c, events := breakerClient(tr, AdaptivePolicy{Cooldown: 20 * time.Millisecond})
+	c.throttle = 0
+
+	var wg sync.WaitGroup
+	for range 2 {
+		wg.Add(1)
+		go func() { defer wg.Done(); _ = get(c) }()
+	}
+	inFlight.Wait()
+	close(release)
+	wg.Wait()
+
+	if s, until := c.Breaker(); s != BreakerStopped || time.Until(until) < 59*time.Minute {
+		t.Fatalf("breaker = %s until +%v, want stopped for the hour", s, time.Until(until))
+	}
+	if err := get(c); !errors.Is(err, ErrBlocked) {
+		t.Errorf("err = %v, want ErrBlocked at once", err)
+	}
+	last := (*events)[len(*events)-1]
+	if last.To != BreakerStopped || last.Reason != "retry-after" {
+		t.Errorf("last event = %s/%s, want stopped/retry-after", last.To, last.Reason)
+	}
+}
+
+// Review finding: a retry that is never sent must not spend the budget. Here
+// the server asks for longer than MaxDelay, so the first request gives up
+// without retrying; the second request must still have its retry.
+func TestRetryBudgetNotSpentOnUnsentRetry(t *testing.T) {
+	tr := &scripted{answer: func(n int) (int, int) {
+		if n == 1 {
+			return http.StatusTooManyRequests, 60
+		}
+		return http.StatusInternalServerError, 0
+	}}
+	c := NewClient(
+		WithHTTPClient(&http.Client{Transport: tr}),
+		WithRetry(RetryPolicy{MaxAttempts: 2, BaseDelay: time.Microsecond, MaxDelay: time.Second,
+			RespectRetryAfter: true, Budget: 0.01, Burst: 1}),
+	)
+	_ = get(c) // 429 with Retry-After 60s > MaxDelay: no retry, no token
+	_ = get(c) // 500: retried with the token that is still there
+	if n := tr.count(); n != 3 {
+		t.Errorf("%d requests, want 3", n)
+	}
+}
+
+// Review finding: the escalation exponent resets only after a full window of
+// clean responses, not after Window clean responses with errors in between.
+func TestBreakerEscalationNeedsAFullCleanWindow(t *testing.T) {
+	c, _ := breakerClient(&scripted{answer: func(int) (int, int) { return 200, 0 }},
+		AdaptivePolicy{Cooldown: time.Hour, Window: 5})
+	c.throttleLock.Lock()
+	c.brk.k = 2
+	c.throttleLock.Unlock()
+	ctx := context.Background()
+	feed := func(o outcome) { c.record(ctx, &ticket{gen: c.brk.gen}, o) }
+	for range 4 {
+		feed(outcome{status: http.StatusOK})
+	}
+	feed(outcome{status: http.StatusInternalServerError})
+	for range 4 {
+		feed(outcome{status: http.StatusOK})
+	}
+	c.throttleLock.Lock()
+	k := c.brk.k
+	c.throttleLock.Unlock()
+	if k != 2 {
+		t.Errorf("escalation = %d after an interrupted window, want 2", k)
+	}
+	feed(outcome{status: http.StatusOK})
+	c.throttleLock.Lock()
+	k = c.brk.k
+	c.throttleLock.Unlock()
+	if k != 0 {
+		t.Errorf("escalation = %d after a full clean window, want 0", k)
+	}
+}

@@ -117,12 +117,14 @@ const (
 )
 
 func (o outcome) signal() signal {
+	// The verdict comes first: a consent page served with a 429 is still a
+	// consent page, and waiting will not change it.
 	switch {
+	case o.verdict == VerdictInterstitial:
+		return signalNeutral
 	case o.status == http.StatusTooManyRequests || o.status == http.StatusServiceUnavailable ||
 		o.verdict == VerdictBlocked:
 		return signalRefusal
-	case o.verdict == VerdictInterstitial:
-		return signalNeutral
 	case o.err != nil || o.status >= 500 || o.verdict == VerdictMalformed:
 		return signalSoft
 	}
@@ -176,6 +178,12 @@ func (c *Client) setState(to BreakerState, reason string, err error) BreakerEven
 	b.state = to
 	if to != BreakerClosed {
 		b.gen++
+	}
+	if to == BreakerOpen || to == BreakerStopped {
+		// A probe out under the old generation can no longer resolve the
+		// breaker; leaving it marked would keep the next half-open waiting
+		// on an answer that will be ignored.
+		b.probeOut = false
 	}
 	b.broadcast()
 	return ev
@@ -325,11 +333,24 @@ func (c *Client) complete(t *ticket, o outcome) (BreakerEvent, bool) {
 	case signalRefusal:
 		if !current {
 			// Sent before the pause began. It says nothing new about the
-			// rate, but a Retry-After is still an instruction.
-			if o.retryAfter > 0 && (b.state == BreakerOpen || b.state == BreakerStopped) {
-				if u := time.Now().Add(o.retryAfter); u.After(b.until) {
-					b.until = u
-				}
+			// rate and never counts as a failed probe, but a Retry-After is
+			// still an instruction, and a long one stops the client exactly
+			// as it would have from a current request.
+			if o.retryAfter <= 0 {
+				return BreakerEvent{}, false
+			}
+			u := time.Now().Add(o.retryAfter)
+			switch {
+			case o.retryAfter > p.MaxCooldown && b.state != BreakerStopped:
+				b.last = o.cause
+				b.until = u
+				return c.setState(BreakerStopped, "retry-after", o.cause), true
+			case b.state == BreakerHalfOpen || b.state == BreakerClosed:
+				b.last = o.cause
+				b.until = u
+				return c.setState(BreakerOpen, "retry-after", o.cause), true
+			case u.After(b.until):
+				b.until = u
 			}
 			return BreakerEvent{}, false
 		}
@@ -371,7 +392,11 @@ func (c *Client) complete(t *ticket, o outcome) (BreakerEvent, bool) {
 	}
 
 	// Anything else -- a transport error, a malformed page, a consent page --
-	// says nothing about the rate. A probe that got one hands the probe on.
+	// says nothing about the rate. It does interrupt a clean window, and a
+	// probe that got one hands the probe on.
+	if o.signal() == signalSoft {
+		b.clean = 0
+	}
 	if t.probe && current {
 		b.probeOut = false
 		b.broadcast()
@@ -421,6 +446,16 @@ func (c *Client) noteFirstAttempt() {
 	}
 	c.budgetLock.Lock()
 	c.budgetTokens = min(float64(c.retry.Burst), c.budgetTokens+c.retry.Budget)
+	c.budgetLock.Unlock()
+}
+
+// refundRetry returns a token taken for a retry that was never sent.
+func (c *Client) refundRetry() {
+	if c.retry.Budget <= 0 {
+		return
+	}
+	c.budgetLock.Lock()
+	c.budgetTokens = min(float64(c.retry.Burst), c.budgetTokens+1)
 	c.budgetLock.Unlock()
 }
 

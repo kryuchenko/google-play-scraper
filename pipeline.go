@@ -166,6 +166,7 @@ func (c *Client) do(ctx context.Context, method, url string, newReq func() (*htt
 		attempts = 1
 	}
 
+	charged := false // this attempt is a retry that took a budget token
 	for attempt := 1; ; attempt++ {
 		// The throttle is inside the retry loop on purpose: every attempt
 		// reserves its own slot, so a run of failures spreads out instead of
@@ -173,8 +174,12 @@ func (c *Client) do(ctx context.Context, method, url string, newReq func() (*htt
 		// With the breaker on, admission also waits out any pause.
 		t, waited, err := c.admit(ctx)
 		if err != nil {
+			if charged {
+				c.refundRetry() // never sent
+			}
 			return nil, err
 		}
+		charged = false
 		if attempt == 1 {
 			c.noteFirstAttempt()
 		}
@@ -219,10 +224,6 @@ func (c *Client) do(ctx context.Context, method, url string, newReq func() (*htt
 			}
 			continue
 		}
-		if !c.takeRetry() {
-			return nil, err
-		}
-
 		delay, ok := c.retryDelay(attempt, err)
 		if !ok {
 			return nil, err // the server asked for longer than the policy allows
@@ -239,6 +240,12 @@ func (c *Client) do(ctx context.Context, method, url string, newReq func() (*htt
 		if werr := sleepCtx(ctx, delay); werr != nil {
 			return nil, werr
 		}
+		// The token is spent only once the retry is about to go out: a
+		// request cancelled during its backoff took nothing from the others.
+		if !c.takeRetry() {
+			return nil, err
+		}
+		charged = true
 	}
 }
 
