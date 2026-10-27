@@ -449,3 +449,34 @@ func TestAppsManyRecoveryDoesNotRefillTheBudget(t *testing.T) {
 		t.Errorf("budget = %.2f after recovery, want 0", tokens)
 	}
 }
+
+// Re-review of #19: refunds follow what the pipeline actually sent. The retry
+// pack goes out and stays paid; the page request is cancelled before it is
+// sent and is refunded; the cancellation, not a 404, is what the item reports.
+func TestAppsManyRecoveryRefundsOnlyUnsentRequests(t *testing.T) {
+	var calls int
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	c := newMockClient(t,
+		batchAnswering(&calls, func(_ int, id string) bool { return id == "com.example.app4" }),
+		routePathStatus("/store/apps/details", http.StatusNotFound),
+	)
+	WithRetry(RetryPolicy{Budget: 0.5, Burst: 2})(c)
+	WithHooks(Hooks{OnRequest: func(_, url string, _ int) {
+		if strings.Contains(url, "/store/apps/details") {
+			cancel()
+		}
+	}})(c)
+	got := c.AppsMany(ctx, appIDsN(10), AppOptions{})
+	if !errors.Is(got[4].Err, context.Canceled) {
+		t.Errorf("err = %v, want the cancellation", got[4].Err)
+	}
+	c.budgetLock.Lock()
+	tokens := c.budgetTokens
+	c.budgetLock.Unlock()
+	// 2, capped after the run; -1 for the sent retry pack; the page token is
+	// taken and given back.
+	if tokens != 1 {
+		t.Errorf("budget = %.2f, want 1", tokens)
+	}
+}

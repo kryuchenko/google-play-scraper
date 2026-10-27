@@ -179,8 +179,9 @@ func (c *Client) AppsMany(ctx context.Context, appIDs []string, opts AppOptions)
 //
 // Both steps are extra requests, so both draw on the client's retry budget
 // (RetryPolicy.Budget) and go through the normal throttle and breaker. A token
-// is spent only for a request that is actually sent, and the requests are
-// marked as recovery so that they do not earn budget back as first attempts.
+// is refunded for every request that was paid for but never sent, counted by
+// the pipeline, and the requests are marked as recovery so that they do not
+// earn budget back as first attempts.
 // Both steps are skipped when most of the run came back empty: that is not a
 // few dropped items but Google declining the whole batch, and asking again item
 // by item would multiply exactly the traffic it declined. A refusal or a
@@ -201,7 +202,13 @@ func (c *Client) recoverEmpty(ctx context.Context, out []AppResult, opts AppOpti
 			slog.Int("empty", len(empty)), slog.Int("of", len(out)))
 		return
 	}
-	rctx := withRecovery(ctx)
+	rctx, rec := withRecovery(ctx)
+	charged := int64(0) // tokens taken; whatever was not sent is refunded at the end
+	defer func() {
+		for n := charged - rec.sent.Load(); n > 0; n-- {
+			c.refundRetry()
+		}
+	}()
 
 	// Step 1: one more batched request for the empty items only. Each pack is
 	// one request and takes one token; packs the budget cannot pay for are
@@ -216,10 +223,10 @@ func (c *Client) recoverEmpty(ctx context.Context, out []AppResult, opts AppOpti
 	for paid < packs && c.takeRetry() {
 		paid++
 	}
+	charged += int64(paid)
 	ids = ids[:min(paid*maxRPCsPerRequest, len(ids))]
 	var stop error // a refusal or cancellation that ends recovery
 	if len(ids) > 0 {
-		unsent := make([]bool, packs)
 		var mu sync.Mutex
 		c.fanOutPacked(rctx, opts.Lang, opts.Country, ids,
 			func(_ int, id string) (rpcCall, bool) { return appDetailsRPC(id), true },
@@ -228,9 +235,6 @@ func (c *Client) recoverEmpty(ctx context.Context, out []AppResult, opts AppOpti
 				if err != nil {
 					mu.Lock()
 					defer mu.Unlock()
-					if notSent(rctx, err) {
-						unsent[k/maxRPCsPerRequest] = true
-					}
 					if isBlockErr(err) || rctx.Err() != nil {
 						out[i].Err = err
 						if stop == nil {
@@ -244,11 +248,6 @@ func (c *Client) recoverEmpty(ctx context.Context, out []AppResult, opts AppOpti
 					out[i].App, out[i].Err = app, nil
 				}
 			})
-		for _, u := range unsent {
-			if u {
-				c.refundRetry()
-			}
-		}
 	}
 	recovered := 0
 	for _, i := range empty {
@@ -270,23 +269,21 @@ func (c *Client) recoverEmpty(ctx context.Context, out []AppResult, opts AppOpti
 		if !c.takeRetry() {
 			break
 		}
+		charged++
 		app, err := c.App(rctx, out[i].AppID, opts)
 		var se *StatusError
 		switch {
+		case err != nil && (isBlockErr(err) || rctx.Err() != nil):
+			// Checked first: an error that wraps both a cancellation and a
+			// 404 is a cancellation.
+			out[i].Err = err
+			stop = err
 		case err == nil:
 			out[i].App, out[i].Err = app, nil
 			settled++
 		case errors.As(err, &se) && se.Code == http.StatusNotFound:
 			out[i].Err = fmt.Errorf("%w: %s", ErrNotFound, shortenID(out[i].AppID))
 			notFound++
-		default:
-			if notSent(rctx, err) {
-				c.refundRetry()
-			}
-			if isBlockErr(err) || rctx.Err() != nil {
-				out[i].Err = err
-				stop = err
-			}
 		}
 	}
 	c.log().LogAttrs(ctx, slog.LevelDebug, "apps-many: empty items",
@@ -294,12 +291,6 @@ func (c *Client) recoverEmpty(ctx context.Context, out []AppResult, opts AppOpti
 		slog.Int("recovered_by_page", settled), slog.Int("not_found", notFound),
 		slog.Int("unresolved", len(empty)-recovered-settled-notFound),
 		slog.Any("stopped_by", stop))
-}
-
-// notSent reports whether a request ended before reaching the server: the
-// breaker refused to admit it, or the context ended while it waited.
-func notSent(ctx context.Context, err error) bool {
-	return errors.Is(err, ErrBlocked) || (ctx.Err() != nil && errors.Is(err, ctx.Err()))
 }
 
 // appPageURL is the canonical page address for an app. The batched path never

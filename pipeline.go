@@ -11,6 +11,7 @@ import (
 	"net/http/httptrace"
 	"runtime/trace"
 	"strconv"
+	"sync/atomic"
 	"time"
 )
 
@@ -181,11 +182,15 @@ func (c *Client) do(ctx context.Context, method, url string, newReq func() (*htt
 		}
 		// A recovery request (AppsMany asking again for dropped items) was
 		// paid for as a retry, so it earns nothing back as a first attempt.
-		if attempt == 1 && !isRecovery(ctx) {
+		rec := recoveryOf(ctx)
+		if attempt == 1 && rec == nil {
 			c.noteFirstAttempt()
 		}
 
 		body, status, sent, err := c.attempt(ctx, t, method, url, newReq, validate, attempt, waited)
+		if sent && attempt == 1 && rec != nil {
+			rec.sent.Add(1)
+		}
 		// A retry that never reached the server -- the request could not be
 		// built, or the context ended before it went out -- gives its token
 		// back. One that went out keeps it spent, whatever happened after.
@@ -524,13 +529,18 @@ func transportErr(err error) error {
 
 type recoveryKey struct{}
 
-// withRecovery marks requests made on ctx as recovery: already paid from the
-// retry budget, so not credited to it as first attempts.
-func withRecovery(ctx context.Context) context.Context {
-	return context.WithValue(ctx, recoveryKey{}, true)
+// recovery marks requests that were paid for up front from the retry budget
+// (AppsMany asking again for dropped items). They earn nothing back as first
+// attempts, and sent counts the ones that actually reached the server, so the
+// payer can refund exactly the ones that did not.
+type recovery struct{ sent atomic.Int64 }
+
+func withRecovery(ctx context.Context) (context.Context, *recovery) {
+	r := &recovery{}
+	return context.WithValue(ctx, recoveryKey{}, r), r
 }
 
-func isRecovery(ctx context.Context) bool {
-	v, _ := ctx.Value(recoveryKey{}).(bool)
-	return v
+func recoveryOf(ctx context.Context) *recovery {
+	r, _ := ctx.Value(recoveryKey{}).(*recovery)
+	return r
 }
