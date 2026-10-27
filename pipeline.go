@@ -186,8 +186,8 @@ func (c *Client) do(ctx context.Context, method, url string, newReq func() (*htt
 		body, status, sent, err := c.attempt(ctx, t, method, url, newReq, validate, attempt, waited)
 		// A retry that never reached the server -- the request could not be
 		// built, or the context ended before it went out -- gives its token
-		// back.
-		if charged && (!sent || ctx.Err() != nil) {
+		// back. One that went out keeps it spent, whatever happened after.
+		if charged && !sent {
 			c.refundRetry()
 		}
 		charged = false
@@ -299,6 +299,12 @@ func (c *Client) attempt(
 	logTrace(ctx, "http.url", url)
 	started := time.Now()
 
+	// Checked here, after OnRequest, so that a request whose caller has
+	// already left is reported as never sent.
+	if cerr := ctx.Err(); cerr != nil {
+		region.End()
+		return nil, 0, false, cerr
+	}
 	sent = true
 	resp, err := c.httpClient.Do(req)
 	took := time.Since(started)
