@@ -74,6 +74,12 @@ func main() {
 	// 3. List via vyAe2 batchexecute (GAME / TOP_FREE), matching listViaBatch.
 	save(outDir, "list_vyae2.bin", listBatch(c))
 
+	// 3b. Search results via lGYRle (Search with Num > 20), in two storefronts
+	// whose section layouts differ: the grid is a [22] card in the US and a
+	// [21] card in Germany.
+	save(outDir, "search_rpc_us.bin", searchRPC(c, "en", "us"))
+	save(outDir, "search_rpc_de.bin", searchRPC(c, "de", "de"))
+
 	// 4. Category page (parseClusterURLs source).
 	save(outDir, "category_page.html",
 		get(c, fmt.Sprintf("%s/store/apps/category/GAME_ACTION?hl=en&gl=us", baseURL)))
@@ -146,6 +152,20 @@ func listBatch(c *http.Client) []byte {
 	}
 	reqURL := fmt.Sprintf("%s/_/PlayStoreUi/data/batchexecute?%s", baseURL, query.Encode())
 	return post(c, reqURL, "application/x-www-form-urlencoded;charset=UTF-8", body)
+}
+
+func searchRPC(c *http.Client, hl, gl string) []byte {
+	tmpl, err := os.ReadFile("search_payload.txt")
+	if err != nil {
+		fail(err)
+	}
+	payload := strings.NewReplacer("__QUERY__", `"minecraft"`, "__SIZE__", "50").Replace(string(tmpl))
+	freq, err := json.Marshal([][][]any{{{"lGYRle", payload, nil, "0"}}})
+	if err != nil {
+		fail(err)
+	}
+	reqURL := fmt.Sprintf("%s/_/PlayStoreUi/data/batchexecute?rpcids=lGYRle&hl=%s&gl=%s", baseURL, hl, gl)
+	return post(c, reqURL, "application/x-www-form-urlencoded;charset=UTF-8", "f.req="+url.QueryEscape(string(freq)))
 }
 
 func reviewsBatch(c *http.Client) []byte {

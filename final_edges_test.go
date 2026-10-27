@@ -127,6 +127,7 @@ func TestCategoryAppsExpandSuggest(t *testing.T) {
 			return mockResponse{}, false
 		},
 		routePath("/store/search", readFixture(t, "search_page.html")),
+		routeEmptySearchRPC(),
 	}
 	c := newMockClient(t, routes...)
 

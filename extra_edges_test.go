@@ -3,7 +3,10 @@ package googleplayscraper
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
+	"net/url"
+	"strings"
 	"sync"
 	"testing"
 )
@@ -91,48 +94,53 @@ func TestParseListPageFallbackToOtherSection(t *testing.T) {
 // TestSearchPaginates drives Search across the page-1 HTML plus a qnKhOb
 // continuation page, exercising the pagination loop in Search.
 func TestSearchPaginates(t *testing.T) {
-	page1 := searchHTMLPage(t, []string{"com.s1", "com.s2"}, "more-token")
+	// The page shows two apps; asking for more than a page fetches the whole
+	// list with one lGYRle call, whose payload has the page's ds:4 shape.
+	page1 := searchHTMLPage(t, []string{"com.s1", "com.s2"}, "")
 
 	var mu sync.Mutex
 	var calls int
 	c := newMockClient(t,
 		routePath("/store/search", page1),
 		func(req *http.Request) (mockResponse, bool) {
-			if req.URL.Path != pathBatch {
+			if req.URL.Path != pathBatch || req.URL.Query().Get("rpcids") != "lGYRle" {
 				return mockResponse{}, false
 			}
 			mu.Lock()
 			defer mu.Unlock()
 			calls++
-			// Page 2 returns two more apps and no further token.
-			row := func(id string) any {
-				r := make([]any, 13)
-				r[12] = []any{id}
-				return r
-			}
-			data := []any{[]any{[]any{
-				[]any{row("com.s3"), row("com.s4")}, nil, nil, nil, nil, nil, nil,
-			}}}
-			raw, _ := json.Marshal(data)
-			return mockResponse{Body: batchEnvelope("qnKhOb", string(raw))}, true
+			return mockResponse{Body: batchEnvelope("lGYRle",
+				searchDS4(t, []string{"com.s1", "com.s2", "com.s3", "com.s4"}))}, true
 		},
 	)
 
-	results, err := c.Search(context.Background(), SearchOptions{Term: "x", Num: 4})
+	results, err := c.Search(context.Background(), SearchOptions{Term: "x", Num: 30})
 	if err != nil {
 		t.Fatalf("Search: %v", err)
 	}
 	if len(results) != 4 {
-		t.Fatalf("got %d results across pages, want 4", len(results))
+		t.Fatalf("got %d results, want the 4 the RPC returned", len(results))
 	}
 	if calls != 1 {
-		t.Errorf("pagination calls = %d, want 1", calls)
+		t.Errorf("lGYRle calls = %d, want 1", calls)
 	}
 }
 
 // searchHTMLPage builds a search page (ds:4) with apps at [0][1][0][0][0] and a
 // pagination token at [0][1][0][0][3][0], matching extractSearchResults.
 func searchHTMLPage(t *testing.T, appIDs []string, token string) []byte {
+	t.Helper()
+	return htmlWithDataBlocks(map[string]string{"ds:4": searchDS4WithToken(t, appIDs, token)})
+}
+
+// searchDS4 is the ds:4 block of a search page, which is also the payload
+// shape of the lGYRle RPC.
+func searchDS4(t *testing.T, appIDs []string) string {
+	t.Helper()
+	return searchDS4WithToken(t, appIDs, "")
+}
+
+func searchDS4WithToken(t *testing.T, appIDs []string, token string) string {
 	t.Helper()
 	apps := make([]any, 0, len(appIDs))
 	for _, id := range appIDs {
@@ -147,14 +155,23 @@ func searchHTMLPage(t *testing.T, appIDs []string, token string) []byte {
 	if err != nil {
 		t.Fatalf("marshal search page: %v", err)
 	}
-	return htmlWithDataBlocks(map[string]string{"ds:4": string(raw)})
+	return string(raw)
 }
 
 func TestSearchNumClampedToMax(t *testing.T) {
-	// A Num above searchMaxNum must be clamped; the page yields fewer apps and no
-	// token, so the loop ends without overshooting.
+	// A Num above searchMaxNum is clamped to it: the RPC is asked for 50, and
+	// when it has nothing more the page's results stand.
 	page := searchHTMLPage(t, []string{"com.only"}, "")
-	c := newMockClient(t, routePath("/store/search", page))
+	var asked string
+	c := newMockClient(t, routePath("/store/search", page),
+		func(req *http.Request) (mockResponse, bool) {
+			if req.URL.Path != pathBatch {
+				return mockResponse{}, false
+			}
+			body, _ := io.ReadAll(req.Body)
+			asked, _ = url.QueryUnescape(string(body))
+			return mockResponse{Body: emptySearchRPC}, true
+		})
 
 	results, err := c.Search(context.Background(), SearchOptions{Term: "x", Num: 99999})
 	if err != nil {
@@ -162,6 +179,9 @@ func TestSearchNumClampedToMax(t *testing.T) {
 	}
 	if len(results) != 1 {
 		t.Errorf("got %d results, want 1", len(results))
+	}
+	if !strings.Contains(asked, "[[8,[50,50]]") {
+		t.Errorf("the RPC was not asked for searchMaxNum results: %.120s", asked)
 	}
 }
 

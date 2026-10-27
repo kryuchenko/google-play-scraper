@@ -120,6 +120,15 @@ func routeQuery(path string, query map[string]string, body []byte) routeFunc {
 // decodeBatchEnvelope expects, including the ")]}'" anti-hijacking prefix. The
 // inner string is embedded verbatim, so callers pass already-escaped JSON (the
 // same shape Google returns).
+// emptySearchRPC is an lGYRle answer with a null payload: no results beyond the
+// page. Tests whose subject is not search depth route the RPC to it.
+var emptySearchRPC = []byte(")]}'\n\n[[\"wrb.fr\",\"lGYRle\",null,null,null,null,\"generic\"]]")
+
+// routeEmptySearchRPC answers Search's lGYRle call with emptySearchRPC.
+func routeEmptySearchRPC() routeFunc {
+	return routeQuery(pathBatch, map[string]string{"rpcids": "lGYRle"}, emptySearchRPC)
+}
+
 func batchEnvelope(rpcID, innerJSON string) []byte {
 	escaped := strings.ReplaceAll(innerJSON, `\`, `\\`)
 	escaped = strings.ReplaceAll(escaped, `"`, `\"`)

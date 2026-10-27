@@ -37,6 +37,16 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- `Search` returns more than one page again. Pagination had stopped working:
+  the continuation token was read from a stale path, and the legacy qnKhOb
+  payload it was sent to returns nothing. The web store no longer pages a
+  query at all; the lGYRle RPC behind the search page takes a page size and
+  returns up to about 50 results. `Search` with `Num > 20` now makes one
+  lGYRle call, and `Num` is clamped to 50 instead of 250. A `Price` filter
+  keeps the search page (about 20 results), since only the page applies it.
+  The featured card is found in any section, not just the first: in Germany
+  it follows a small cluster. (#16)
+
 - `Search` returns the featured card Google shows above the result grid when
   one app matches the query outright. The card lives outside the grid, in an
   app-details block of its own, so the parser never saw it, and the best match

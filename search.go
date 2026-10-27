@@ -2,22 +2,43 @@ package googleplayscraper
 
 import (
 	"context"
+	_ "embed"
+	"encoding/json"
 	"fmt"
 	"net/url"
+	"strconv"
 	"strings"
 )
 
 // searchMaxNum is the largest number of results Search will return. Higher
 // requested values are clamped to it rather than rejected.
-const searchMaxNum = 250
+//
+// It was 250, from an older API. The web store no longer pages a query: the
+// search page shows about 20 results, and scrolling loads related queries, not
+// more of this one. The lGYRle RPC behind the page takes a page size, and
+// returns up to about 50; at 60 it returns nothing (issue #16).
+const searchMaxNum = 50
+
+// searchPageSize is how many results the search page itself carries.
+const searchPageSize = 20
+
+// searchPayloadTemplate is the lGYRle request body a browser sends for a search
+// result block, captured from play.google.com on 2026-10-27, with the query
+// and the page size replaced by __QUERY__ (a JSON string) and __SIZE__. It
+// needs no session parameters: rpcids, hl and gl are enough.
+//
+//go:embed search_payload.txt
+var searchPayloadTemplate string
 
 // SearchOptions configures the search request
 type SearchOptions struct {
 	Term    string
 	Lang    string
 	Country string
-	// Num caps the number of results returned. Default 20. Values above 250
-	// are clamped to 250 (searchMaxNum).
+	// Num caps the number of results returned. Default 20. Values above 50
+	// are clamped to 50 (searchMaxNum): that is as many as Google returns for
+	// one query. Above 20, results come from one lGYRle RPC rather than the
+	// search page, except with a Price filter, which only the page applies.
 	Num        int
 	Price      string // "free", "paid", "all"
 	FullDetail bool
@@ -91,19 +112,22 @@ func (c *Client) Search(ctx context.Context, opts SearchOptions) ([]SearchResult
 		return nil, fmt.Errorf("request failed: %w", err)
 	}
 
-	// Fetch more results if needed. A failed page ends the listing with what
-	// it has -- unless Google is refusing the client, which the caller has to
-	// hear about rather than mistake for a short result list.
-	for len(results) < opts.Num && token != "" {
-		moreResults, nextToken, err := c.fetchMoreApps(ctx, token, opts.Lang, opts.Country)
+	_ = token // the page's continuation token; nothing pages a query any more
+
+	// More than a page: ask the RPC for the whole list at once. Its results
+	// start with the same ones the page showed, so it replaces them. A failed
+	// call keeps the page's results -- unless Google is refusing the client,
+	// which the caller has to hear about rather than mistake for a short list.
+	if opts.Num > len(results) && opts.Num > searchPageSize && price == 0 && len(results) > 0 {
+		more, err := c.searchRPC(ctx, opts)
 		if isBlockErr(err) {
-			return nil, fmt.Errorf("next page: %w", err)
+			return nil, fmt.Errorf("more results: %w", err)
 		}
-		if err != nil || len(moreResults) == 0 {
-			break
+		// At equal length the RPC still wins: it is the same list, and its
+		// featured card carries fields the page's grid rows do not.
+		if err == nil && len(more) >= len(results) {
+			results = more
 		}
-		results = append(results, moreResults...)
-		token = nextToken
 	}
 
 	// Trim to requested number
@@ -147,39 +171,36 @@ func getPriceValue(price string) int {
 	}
 }
 
-// fetchMoreApps requests the next page of search results via the qnKhOb RPC,
-// using the legacy compact payload. It is Search's pagination primitive only:
-// Cluster moved to fetchQnKhOb (qnkhob.go) with the current browser payload,
-// since Google now rejects this older flag set on the category feed. It returns
-// no results once Google reports the token exhausted.
-func (c *Client) fetchMoreApps(ctx context.Context, token, lang, country string) ([]SearchResult, string, error) {
-	payload := fmt.Sprintf(
-		`[[["qnKhOb","[[null,[[10,[10,50]],true,null,[96,27,4,8,57,30,110,79,11,16,49,1,3,9,12,104,55,56,51,10,34,77]],[null,\"%s\"]]",null,"generic"]]]`,
-		token,
-	)
-
-	reqURL := fmt.Sprintf("%s/_/PlayStoreUi/data/batchexecute?rpcids=qnKhOb&hl=%s&gl=%s", BaseURL, lang, country)
-	body, err := c.post(ctx, reqURL, "application/x-www-form-urlencoded;charset=UTF-8", "f.req="+url.QueryEscape(payload))
+// searchRPC fetches up to opts.Num results for a query with one lGYRle call.
+//
+// The response carries the same section layout as the search page's ds:4
+// block, so extractSearchResults parses it unchanged. The layout varies by
+// storefront: in the US the grid is a [22] card after the featured app, in
+// Germany a [21] card after a small cluster; extractSearchResults keeps the
+// largest app list, which is the grid in both.
+func (c *Client) searchRPC(ctx context.Context, opts SearchOptions) ([]SearchResult, error) {
+	q, err := json.Marshal(opts.Term)
 	if err != nil {
-		return nil, "", err
+		return nil, err
 	}
+	payload := strings.NewReplacer(
+		"__QUERY__", string(q),
+		"__SIZE__", strconv.Itoa(opts.Num),
+	).Replace(searchPayloadTemplate)
 
-	data, err := decodeBatchEnvelope(body)
-	if err != nil || data == nil {
-		return nil, "", err
+	frames, err := c.batchCallFrames(ctx, opts.Lang, opts.Country, []rpcCall{{id: "lGYRle", payload: payload}})
+	if err != nil {
+		return nil, err
 	}
-
-	var results []SearchResult
-	if apps, ok := getPath(data, 0, 0, 0).([]any); ok {
-		for _, app := range apps {
-			if r := parseSearchResult(app); r.AppID != "" {
-				results = append(results, r)
-			}
-		}
+	if len(frames) == 0 || frames[0].Payload == "" {
+		return nil, nil
 	}
-
-	nextToken := toString(getPath(data, 0, 0, 7, 1))
-	return results, nextToken, nil
+	var data any
+	if err := json.Unmarshal([]byte(frames[0].Payload), &data); err != nil {
+		return nil, fmt.Errorf("parse lGYRle: %w", err)
+	}
+	results, _, err := extractSearchResults(map[string]any{"ds:4": data})
+	return results, err
 }
 
 func parseSearchPage(body []byte, num int) ([]SearchResult, string, error) {
@@ -265,9 +286,18 @@ var featuredRowPaths = rowPaths{
 }
 
 // parseFeaturedResult returns the featured card of a search page, or false
-// when the page has none.
+// when the page has none. The card is the first section in the US but not
+// everywhere (in Germany it follows a small cluster), so every section is
+// looked at.
 func parseFeaturedResult(appsData any) (SearchResult, bool) {
-	block := getPath(appsData, 0, 1, 0, 23, 16, 2)
+	sections, _ := getPath(appsData, 0, 1).([]any)
+	var block any
+	for _, s := range sections {
+		if b := getPath(s, 23, 16, 2); b != nil {
+			block = b
+			break
+		}
+	}
 	if block == nil {
 		return SearchResult{}, false
 	}
@@ -409,7 +439,7 @@ func parseSearchResultNew(item any) SearchResult {
 	return decodeResultRow(item, searchGridPaths)
 }
 
-// qnKhObRowPaths is the legacy qnKhOb feed-pagination row layout — a distinct
+// qnKhObRowPaths is the qnKhOb feed row layout — a distinct
 // shape from the grid: it carries a ready-made URL path, a developer link (the
 // only layout that surfaces DeveloperID), a deep price tuple and summary.
 var qnKhObRowPaths = rowPaths{

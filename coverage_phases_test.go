@@ -30,6 +30,7 @@ func TestCategoryAppsClusterURLsErrorContinues(t *testing.T) {
 		},
 		routePathStatus(pathTop, http.StatusInternalServerError),
 		routePath("/store/search", readFixture(t, "search_page.html")),
+		routeEmptySearchRPC(),
 	}
 	c := newMockClient(t, routes...)
 
@@ -48,32 +49,32 @@ func TestCategoryAppsClusterURLsErrorContinues(t *testing.T) {
 // TestCategoryAppsGraphDeveloperWalk forces the graph phase's developer walk to
 // fire. The list and cluster phases return nothing, so the only collected app is
 // the search seed — which carries a high Score and a DeveloperID (populated via
-// the qnKhOb continuation row). That makes it the top graph seed, and because it
-// has a DeveloperID the developer walk runs alongside the similar walk.
+// the featured card of Search's lGYRle answer). That makes it the top graph
+// seed, and because it has a DeveloperID the developer walk runs alongside the
+// similar walk.
 func TestCategoryAppsGraphDeveloperWalk(t *testing.T) {
 	emptyHTML := htmlWithDataBlocks(map[string]string{"ds:4": `[]`})
 
-	// Page-1 search returns one app + a token; the qnKhOb page returns the same
-	// app enriched with a Score and a DeveloperID. Merging fills both fields.
-	page1 := searchHTMLPage(t, []string{"com.seed"}, "more")
-	richRow := make([]any, 13)
-	richRow[2] = "Seed App"
-	richRow[12] = []any{"com.seed"}
-	richRow[6] = []any{[]any{nil, nil, []any{nil, []any{"5.0", float64(5.0)}}}}
-	richRow[4] = []any{[]any{[]any{
-		"Seed Dev",
-		[]any{nil, nil, nil, nil, []any{nil, nil, "https://play.google.com/store/apps/dev?id=DEV9"}},
-	}}}
-	data := []any{[]any{[]any{
-		[]any{richRow}, nil, nil, nil, nil, nil, nil,
-	}}}
-	rawMore, _ := json.Marshal(data)
-	morePayload := batchEnvelope("qnKhOb", string(rawMore))
+	// The search page returns one app; the lGYRle answer returns the same app
+	// as a featured card with a Score and a DeveloperID, and replaces it.
+	page1 := searchHTMLPage(t, []string{"com.seed"}, "")
+	// The seed comes from Search's lGYRle answer: its featured card is the one
+	// search layout that carries a developer link, which is what the developer
+	// walk needs. (It used to come from a qnKhOb pagination row.)
+	block := make([]any, 69)
+	block[0] = []any{"Seed App"}
+	block[41] = []any{[]any{nil, nil, "https://play.google.com/store/apps/details?id=com.seed"}}
+	block[51] = []any{[]any{"5.0", float64(5.0)}}
+	block[68] = []any{"Seed Dev", []any{nil, nil, nil, nil, []any{nil, nil, "https://play.google.com/store/apps/dev?id=DEV9"}}}
+	card := make([]any, 24)
+	card[23] = func() []any { c := make([]any, 17); c[16] = []any{nil, nil, block}; return c }()
+	rawMore, _ := json.Marshal([]any{[]any{nil, []any{card}}})
+	morePayload := batchEnvelope("lGYRle", string(rawMore))
 
 	var developerHit, similarHit bool
 	routes := []routeFunc{
 		func(req *http.Request) (mockResponse, bool) {
-			if req.URL.Path == pathBatch && req.URL.Query().Get("rpcids") == "qnKhOb" {
+			if req.URL.Path == pathBatch && req.URL.Query().Get("rpcids") == "lGYRle" {
 				return mockResponse{Body: morePayload}, true
 			}
 			return mockResponse{}, false
@@ -161,6 +162,7 @@ func TestBrowserFeedPhaseUnionsNewApps(t *testing.T) {
 		},
 		routePathStatus(pathTop, http.StatusInternalServerError),
 		routePath("/store/search", readFixture(t, "search_page.html")),
+		routeEmptySearchRPC(),
 	}
 	c := newMockClient(t, routes...)
 

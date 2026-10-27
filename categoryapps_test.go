@@ -28,6 +28,7 @@ func coverageRoutes(t *testing.T) []routeFunc {
 		routePath(pathTop, readFixture(t, "category_page.html")),
 		routePath(pathCluster, readFixture(t, "cluster_page.html")),
 		routePath("/store/search", readFixture(t, "search_page.html")),
+		routeEmptySearchRPC(),
 		routePath(pathDetails, readFixture(t, "app_page.html")),
 	}
 }
