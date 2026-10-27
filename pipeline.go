@@ -61,6 +61,21 @@ type RetryPolicy struct {
 	// defaultRetryable: transport errors, 429, and 5xx. A 404 is an answer,
 	// not a failure, and repeating it wastes the caller's rate budget.
 	Retryable func(status int, err error) bool
+
+	// Budget caps retries across the whole client: each first attempt earns
+	// Budget retries, so 0.1 allows one retry per ten requests over time.
+	// Zero leaves retries bounded by MaxAttempts alone. A retry that follows a
+	// refusal while the breaker is on (AdaptivePolicy.Cooldown) is free: it
+	// waits out a pause, which already is the rate control.
+	//
+	// MaxAttempts bounds one request; without a budget, concurrency N under a
+	// block turns into N × MaxAttempts requests. The Google SRE book's
+	// client-side retry budget is about 10%.
+	Budget float64
+
+	// Burst is how many retries the budget holds at start and at most. Zero
+	// means 10 when Budget is set.
+	Burst int
 }
 
 // WithRetry enables retrying with backoff and jitter.
@@ -80,12 +95,21 @@ func WithRetry(p RetryPolicy) ClientOption {
 		if p.Retryable == nil {
 			p.Retryable = defaultRetryable
 		}
+		if p.Budget > 0 && p.Burst <= 0 {
+			p.Burst = 10
+		}
 		c.retry = p
+		c.budgetTokens = float64(p.Burst)
 	}
 }
 
 // defaultRetryable repeats what is plausibly transient and nothing else.
 func defaultRetryable(status int, err error) bool {
+	var sb *SoftBlockError
+	if errors.As(err, &sb) {
+		// A consent or sign-in page will be the same page next time.
+		return sb.Verdict != VerdictInterstitial
+	}
 	if err != nil {
 		// Transport failures: connection reset, TLS handshake, DNS. Context
 		// cancellation is excluded by the caller, which checks it first.
@@ -107,12 +131,20 @@ type Hooks struct {
 	OnRequest func(method, url string, attempt int)
 
 	// OnResponse fires after each attempt that produced a status, successful
-	// or not. err is set for transport failures, where status is 0.
+	// or not, once the body has been read and classified. err is set for
+	// transport failures, where status is 0, for a body that could not be
+	// read, and for a *SoftBlockError -- so a 200 that redirected to
+	// google.com/sorry never reaches a hook as a clean response. A non-200
+	// status comes with a nil err, as before.
 	OnResponse func(method, url string, attempt, status int, took time.Duration, err error)
 
 	// OnRetry fires before sleeping between attempts, with the delay that was
 	// chosen. It is the hook that makes a slow run explicable.
 	OnRetry func(method, url string, attempt, status int, delay time.Duration, err error)
+
+	// OnBreaker fires on every breaker state change (AdaptivePolicy.Cooldown).
+	// It is the event an unattended run wants on stderr.
+	OnBreaker func(BreakerEvent)
 }
 
 // WithHooks installs observability callbacks.
@@ -125,22 +157,44 @@ func WithHooks(h Hooks) ClientOption {
 // newReq builds a fresh *http.Request per attempt rather than taking one:
 // a request whose body has been read cannot be replayed, and reusing one
 // across attempts is the classic way a retry silently sends an empty body.
-func (c *Client) do(ctx context.Context, method, url string, newReq func() (*http.Request, error)) ([]byte, error) {
+//
+// validate classifies a 200 body; nil accepts any body (sitemaps, robots.txt).
+func (c *Client) do(ctx context.Context, method, url string, newReq func() (*http.Request, error),
+	validate validator) ([]byte, error) {
 	attempts := c.retry.MaxAttempts
 	if attempts < 1 {
 		attempts = 1
 	}
 
+	charged := false // this attempt is a retry that took a budget token
 	for attempt := 1; ; attempt++ {
 		// The throttle is inside the retry loop on purpose: every attempt
 		// reserves its own slot, so a run of failures spreads out instead of
 		// bypassing the rate limit exactly when the server is asking for less.
-		waited, err := c.waitThrottle(ctx)
+		// With the breaker on, admission also waits out any pause.
+		t, waited, err := c.admit(ctx)
 		if err != nil {
+			if charged {
+				c.refundRetry() // never sent
+			}
 			return nil, err
 		}
+		if attempt == 1 {
+			c.noteFirstAttempt()
+		}
 
-		body, status, err := c.attempt(ctx, method, url, newReq, attempt, waited)
+		body, status, sent, err := c.attempt(ctx, t, method, url, newReq, validate, attempt, waited)
+		// A retry that never reached the server -- the request could not be
+		// built, or the context ended before it went out -- gives its token
+		// back. One that went out keeps it spent, whatever happened after.
+		if charged && !sent {
+			c.refundRetry()
+		}
+		charged = false
+		// An attempt that never produced an outcome -- the request could not
+		// be built, the context ended -- must still hand on a probe ticket,
+		// or every request waiting on the half-open breaker waits forever.
+		c.release(t)
 		if err == nil {
 			return body, nil
 		}
@@ -159,11 +213,23 @@ func (c *Client) do(ctx context.Context, method, url string, newReq func() (*htt
 			}
 			return nil, fmt.Errorf("%w: %w", ctxErr, err)
 		}
-		c.retryAfterHint(ctx, err)
+		if !c.breakerOn() {
+			c.retryAfterHint(ctx, err)
+		}
 		if attempt >= attempts || !c.retry.Retryable(status, transportErr(err)) {
 			return nil, err
 		}
 
+		// With the breaker on, a refusal has already paused the client: the
+		// next admission waits out the pause, Retry-After included, so there
+		// is no backoff to add and MaxDelay does not apply. Such a retry is
+		// also free of the budget -- the pause is the rate control.
+		if c.breakerOn() && isRefusal(status, err) {
+			if c.hooks.OnRetry != nil {
+				c.hooks.OnRetry(method, url, attempt, status, 0, err)
+			}
+			continue
+		}
 		delay, ok := c.retryDelay(attempt, err)
 		if !ok {
 			return nil, err // the server asked for longer than the policy allows
@@ -180,6 +246,12 @@ func (c *Client) do(ctx context.Context, method, url string, newReq func() (*htt
 		if werr := sleepCtx(ctx, delay); werr != nil {
 			return nil, werr
 		}
+		// The token is spent only once the retry is about to go out: a
+		// request cancelled during its backoff took nothing from the others.
+		if !c.takeRetry() {
+			return nil, err
+		}
+		charged = true
 	}
 }
 
@@ -193,14 +265,16 @@ const maxErrorBodyDrain = 32 << 10
 // the client's pacing or as Google's latency, which are different problems.
 func (c *Client) attempt(
 	ctx context.Context,
+	t *ticket,
 	method, url string,
 	newReq func() (*http.Request, error),
+	validate validator,
 	attempt int,
 	waited time.Duration,
-) (body []byte, status int, err error) {
+) (body []byte, status int, sent bool, err error) {
 	req, err := newReq()
 	if err != nil {
-		return nil, 0, fmt.Errorf("create request: %w", err)
+		return nil, 0, false, fmt.Errorf("create request: %w", err)
 	}
 
 	if c.hooks.OnRequest != nil {
@@ -225,6 +299,13 @@ func (c *Client) attempt(
 	logTrace(ctx, "http.url", url)
 	started := time.Now()
 
+	// Checked here, after OnRequest, so that a request whose caller has
+	// already left is reported as never sent.
+	if cerr := ctx.Err(); cerr != nil {
+		region.End()
+		return nil, 0, false, cerr
+	}
+	sent = true
 	resp, err := c.httpClient.Do(req)
 	took := time.Since(started)
 	if timings != nil {
@@ -235,68 +316,112 @@ func (c *Client) attempt(
 	}
 	if err != nil {
 		region.End()
-		c.observe(ctx, 0, took, err)
+		c.record(ctx, t, outcome{rtt: took, err: err})
 		if c.hooks.OnResponse != nil {
 			c.hooks.OnResponse(method, url, attempt, 0, took, err)
 		}
 		if debug {
-			c.logResponse(ctx, method, url, attempt, 0, took, 0, err)
+			c.logResponse(ctx, method, url, attempt, 0, took, 0, err, nil)
 		}
-		return nil, 0, fmt.Errorf("do request: %w", err)
+		return nil, 0, sent, fmt.Errorf("do request: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	logTrace(ctx, "http.status", resp.Status)
-	c.observe(ctx, resp.StatusCode, took, nil)
-	if c.hooks.OnResponse != nil {
-		c.hooks.OnResponse(method, url, attempt, resp.StatusCode, took, nil)
+	status = resp.StatusCode
+	after := retryAfter(resp)
+
+	// The controller and the hooks hear about this attempt once, after it
+	// has been classified. They used to hear as soon as the status line
+	// arrived, which credited a 200 that redirected to google.com/sorry as a
+	// clean response before anyone had looked at it.
+	finish := func(o outcome, retErr error) {
+		region.End()
+		o.status, o.rtt, o.retryAfter, o.cause = status, took, after, retErr
+		c.record(ctx, t, o)
+		if c.hooks.OnResponse != nil {
+			hookErr := retErr
+			var se *StatusError
+			if errors.As(retErr, &se) {
+				hookErr = nil // a status is reported as a status
+			}
+			c.hooks.OnResponse(method, url, attempt, status, took, hookErr)
+		}
+		if debug {
+			c.logResponse(ctx, method, url, attempt, status, took, len(body), retErr, &o)
+		}
 	}
 
-	if resp.StatusCode != http.StatusOK {
-		region.End()
-		// Returning without reading the body makes net/http close the
-		// connection instead of returning it to the pool, so a burst of 429s
-		// costs a TCP and TLS handshake per retry -- new work for a server that
-		// has just asked for less. Draining it lets the connection be reused.
-		//
-		// The cap is why this is safe to do at all: an error page has no bound
-		// anyone here controls, and reading an unbounded one at the moment the
-		// store is rate-limiting is the opposite of the intent. 32KB covers the
-		// error bodies Google actually sends; past that the connection is not
-		// worth the bandwidth and is dropped.
-		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, maxErrorBodyDrain))
-		if debug {
-			c.logResponse(ctx, method, url, attempt, resp.StatusCode, took, 0, nil)
-		}
-		return nil, resp.StatusCode, &StatusError{Code: resp.StatusCode, RetryAfter: retryAfter(resp)}
+	// Where the redirect chain ended decides first, whatever the status:
+	// google.com/sorry answers 429 as often as 200. A transport that does not
+	// report the final request (some test doubles) is taken to have ended
+	// where it started.
+	final := req.URL
+	if resp.Request != nil && resp.Request.URL != nil {
+		final = resp.Request.URL
+	}
+	if v, reason := classifyFinalURL(req.URL, final); v != VerdictOK {
+		drainBody(resp.Body)
+		sb := &SoftBlockError{Verdict: v, Reason: reason, URL: final.String(), Code: status}
+		finish(outcome{err: sb, verdict: v}, sb)
+		return nil, status, sent, sb
+	}
+
+	if status != http.StatusOK {
+		drainBody(resp.Body)
+		se := &StatusError{Code: status, RetryAfter: after}
+		finish(outcome{}, se)
+		return nil, status, sent, se
 	}
 
 	body, err = io.ReadAll(resp.Body)
-	region.End()
 	if err != nil {
-		if debug {
-			c.logResponse(ctx, method, url, attempt, resp.StatusCode, took, len(body), err)
+		err = fmt.Errorf("read body: %w", err)
+		finish(outcome{err: err}, err)
+		return nil, status, sent, err
+	}
+
+	verdict := VerdictOK
+	if validate != nil {
+		var reason string
+		if verdict, reason = validate(body); verdict != VerdictOK && verdict != VerdictEmpty {
+			sb := &SoftBlockError{Verdict: verdict, Reason: reason, URL: final.String(), Code: status}
+			finish(outcome{err: sb, verdict: verdict}, sb)
+			return nil, status, sent, sb
 		}
-		return nil, resp.StatusCode, fmt.Errorf("read body: %w", err)
 	}
-	if debug {
-		c.logResponse(ctx, method, url, attempt, resp.StatusCode, took, len(body), nil)
-	}
-	return body, resp.StatusCode, nil
+	finish(outcome{verdict: verdict}, nil)
+	return body, status, sent, nil
+}
+
+// drainBody reads what is left of a response the caller will not use, so the
+// connection goes back to the pool. Returning without reading it makes
+// net/http close the connection, so a burst of 429s would cost a TCP and TLS
+// handshake per retry -- new work for a server that has just asked for less.
+//
+// The cap is why this is safe at all: an error page has no bound anyone here
+// controls, and reading an unbounded one while the store is rate-limiting is
+// the opposite of the intent. 32KB covers the error bodies Google actually
+// sends; past that the connection is not worth the bandwidth and is dropped.
+func drainBody(r io.Reader) {
+	_, _ = io.Copy(io.Discard, io.LimitReader(r, maxErrorBodyDrain))
 }
 
 // logResponse writes the one Debug record an attempt produces on the way
 // out. bytes is the body length when one was read; err is set for a transport
 // failure or a truncated body, never for a status, which is its own field.
 func (c *Client) logResponse(ctx context.Context, method, url string, attempt, status int,
-	took time.Duration, bytes int, err error) {
-	attrs := make([]slog.Attr, 0, 7)
+	took time.Duration, bytes int, err error, o *outcome) {
+	attrs := make([]slog.Attr, 0, 8)
 	attrs = append(attrs,
 		slog.String("method", method), slog.String("url", url),
 		slog.Int("attempt", attempt), slog.Int("status", status),
 		slog.Duration("took", took))
 	if bytes > 0 {
 		attrs = append(attrs, slog.Int("bytes", bytes))
+	}
+	if o != nil && status == http.StatusOK {
+		attrs = append(attrs, slog.String("verdict", o.verdict.String()))
 	}
 	if err != nil {
 		attrs = append(attrs, slog.Any("err", err))

@@ -5,6 +5,36 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+
+- Soft-block detection. Every response is classified before the adaptive
+  controller or a hook sees it: a redirect to `google.com/sorry`, a page with
+  no data blocks, or an HTML page served where a `batchexecute` envelope
+  belongs is a refusal and returns a `*SoftBlockError`; a consent or sign-in
+  page is `VerdictInterstitial` and is not retried; a store page without the
+  block its parser reads is `VerdictMalformed`. A search that matched nothing
+  is recognised by Google's own zero-results section and stays an empty
+  result. See `docs/adr/0001-soft-blocks-and-cooldown.md`.
+- A breaker on the adaptive throttle: `AdaptivePolicy.Cooldown`,
+  `MaxCooldown` and `MaxProbes`. After a refusal the whole client pauses,
+  then one probe goes out; refused probes escalate the pause and finally
+  stop the client with `ErrBlocked` until `MaxCooldown` has passed. Requests
+  that were in flight when the block landed never count as failed probes.
+  `Client.Breaker` reports the state and `Hooks.OnBreaker` every change.
+- A client-wide retry budget: `RetryPolicy.Budget` and `Burst`.
+- `gpscrape -adaptive` turns both on (30s cooldown, one retry per ten
+  requests) and prints breaker changes on stderr; a stopped breaker ends the
+  run.
+
+### Changed
+
+- A response that used to come back as an empty result with a nil error,
+  because Google served a block page with status 200, now returns a
+  `*SoftBlockError`. `Hooks.OnResponse` fires after the body is read and
+  classified, and gets that error.
+- `Search` returns an error instead of un-enriched results when
+  `FullDetail` lookups are refused.
+
 ### Fixed
 
 - `Search` returns the featured card Google shows above the result grid when

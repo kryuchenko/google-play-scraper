@@ -34,7 +34,7 @@ func (c *Client) App(ctx context.Context, appID string, opts AppOptions) (*App, 
 
 	url := fmt.Sprintf("%s/store/apps/details?id=%s&hl=%s&gl=%s", BaseURL, appID, opts.Lang, opts.Country)
 
-	body, err := c.get(ctx, url)
+	body, err := c.getPage(ctx, url, requireBlock("ds:5"))
 	if err != nil {
 		return nil, fmt.Errorf("request failed: %w", err)
 	}

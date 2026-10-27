@@ -66,6 +66,11 @@ func main() {
 	save(outDir, "search_page.html",
 		get(c, fmt.Sprintf("%s/store/search?q=%s&hl=en&gl=us&price=0&c=apps", baseURL, url.QueryEscape("minecraft"))))
 
+	// 2b. Search that matches nothing. Backs the soft-block classifier: a
+	// genuine empty search must stay an empty result, not become an error.
+	save(outDir, "search_zero_results.html",
+		get(c, fmt.Sprintf("%s/store/search?q=%s&hl=en&gl=us&c=apps", baseURL, "zqxjvkwplmqzzx9183")))
+
 	// 3. List via vyAe2 batchexecute (GAME / TOP_FREE), matching listViaBatch.
 	save(outDir, "list_vyae2.bin", listBatch(c))
 

@@ -52,7 +52,10 @@ type Client struct {
 	rttNext      int
 	cleanRun     int
 	slowRun      int
+	brk          breaker // guarded by throttleLock; see breaker.go
 	retry        RetryPolicy
+	budgetLock   sync.Mutex
+	budgetTokens float64
 	hooks        Hooks
 	logger       *slog.Logger
 	reqIDSeq     int64 // monotonic counter for batchexecute _reqid (see nextReqID)
@@ -109,12 +112,12 @@ func WithConcurrency(n int) ClientOption {
 
 // WithHTTPClient replaces the underlying *http.Client used for all requests.
 //
-// The supplied client must follow redirects and persist cookies the way the
-// default one does (the default uses a zero-value http.Client, which follows
-// up to 10 redirects). Google Play relies on both: detail and listing pages
-// redirect across locales, and several endpoints set cookies that later
-// requests echo back. A client with redirects disabled or a nil Jar where one
-// is expected will silently return empty or malformed results.
+// The supplied client must follow redirects the way the default one does (a
+// zero-value http.Client follows up to 10). Detail and listing pages redirect
+// across locales, and soft-block detection reads where the redirect chain
+// ended: a client that stops at a 3xx gets a StatusError instead. The default
+// client keeps no cookies; supplying a Jar is allowed and changes what Google
+// sends back, consent pages included.
 //
 // Use it to inject a transport with proxy support, custom TLS, or request
 // tracing. Combine with WithTimeout to override the client's timeout without
@@ -226,8 +229,15 @@ func (c *Client) waitThrottle(ctx context.Context) (time.Duration, error) {
 	}
 }
 
-// get performs a GET request through the pipeline.
+// get performs a GET request through the pipeline with no body check: for
+// sitemaps and robots.txt, which are not store pages. Store pages use getPage.
 func (c *Client) get(ctx context.Context, url string) ([]byte, error) {
+	return c.getPage(ctx, url, nil)
+}
+
+// getPage performs a GET request whose 200 body is classified by validate
+// before the controller sees it (softblock.go).
+func (c *Client) getPage(ctx context.Context, url string, validate validator) ([]byte, error) {
 	return c.do(ctx, http.MethodGet, url, func() (*http.Request, error) {
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 		if err != nil {
@@ -237,10 +247,12 @@ func (c *Client) get(ctx context.Context, url string) ([]byte, error) {
 		req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
 		req.Header.Set("Accept-Language", "en-US,en;q=0.9")
 		return req, nil
-	})
+	}, validate)
 }
 
-// post performs a POST request through the pipeline.
+// post performs a POST request through the pipeline. Every POST here is a
+// batchexecute RPC, so every one gets the RPC check: an HTML page served where
+// an envelope belongs is a block, not an empty answer.
 func (c *Client) post(ctx context.Context, url string, contentType string, body string) ([]byte, error) {
 	return c.do(ctx, http.MethodPost, url, func() (*http.Request, error) {
 		// Rebuilt per attempt: a reader that has been drained cannot be
@@ -253,5 +265,5 @@ func (c *Client) post(ctx context.Context, url string, contentType string, body 
 		req.Header.Set("Content-Type", contentType)
 		req.Header.Set("Accept", "*/*")
 		return req, nil
-	})
+	}, validateRPC)
 }

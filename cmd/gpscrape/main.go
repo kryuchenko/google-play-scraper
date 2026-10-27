@@ -193,6 +193,10 @@ type common struct {
 	logFile     string
 	traceFile   string
 	logger      *slog.Logger // nil unless -debug or GPSCRAPE_DEBUG asked for one
+	// stopRun cancels the run's context. The breaker hook calls it when
+	// Google keeps refusing, so a sweep ends with one clear line instead of
+	// thousands of per-item ErrBlocked failures.
+	stopRun context.CancelFunc
 }
 
 // newLocalCommon registers the flags a verb that makes no requests can
@@ -257,19 +261,25 @@ func (c *common) client() *googleplayscraper.Client {
 		c.cached = newClientHook(c)
 		return c.cached
 	}
+	// Retry is on by default here, unlike in the library, because a
+	// command-line run is unattended: a catalog sweep is 83k requests over
+	// hours, and without this every transient 503 is a shard of ~44 app ids
+	// lost from the result with nothing but a line on stderr to show for it.
+	// Retry-After is honoured because Google sends it on 429 and coming back
+	// early is how a temporary limit becomes a longer one.
+	retry := googleplayscraper.RetryPolicy{
+		MaxAttempts:       3,
+		RespectRetryAfter: true,
+	}
+	if c.adaptive {
+		// Budgeted at one retry per ten requests, so a block cannot multiply
+		// the traffic.
+		retry.Budget = 0.1
+	}
 	opts := []googleplayscraper.ClientOption{
 		googleplayscraper.WithThrottle(c.throttle),
 		googleplayscraper.WithConcurrency(c.concurrency),
-		// Retry is on by default here, unlike in the library, because a
-		// command-line run is unattended: a catalog sweep is 83k requests over
-		// hours, and without this every transient 503 is a shard of ~44 app
-		// ids lost from the result with nothing but a line on stderr to show
-		// for it. Retry-After is honoured because Google sends it on 429 and
-		// coming back early is how a temporary limit becomes a longer one.
-		googleplayscraper.WithRetry(googleplayscraper.RetryPolicy{
-			MaxAttempts:       3,
-			RespectRetryAfter: true,
-		}),
+		googleplayscraper.WithRetry(retry),
 	}
 	if c.logger != nil {
 		opts = append(opts, googleplayscraper.WithLogger(c.logger))
@@ -277,13 +287,41 @@ func (c *common) client() *googleplayscraper.Client {
 	if c.adaptive {
 		// -throttle becomes the floor rather than the interval: the caller
 		// still says how fast is too fast, the controller finds where under
-		// that the server is comfortable. It starts at two seconds, so a run
-		// that is going to be refused is refused gently.
-		opts = append(opts, googleplayscraper.WithAdaptiveThrottle(
-			googleplayscraper.AdaptivePolicy{Min: c.throttle, Max: 2 * time.Second}))
+		// that the server is comfortable. It starts at -throttle too, as
+		// AdaptivePolicy.Start documents, and backs off from there.
+		//
+		// A refusal pauses the whole run for 15 to 30 seconds, then one
+		// request probes; three refused probes in a row end the run (see
+		// docs/adr/0001-soft-blocks-and-cooldown.md).
+		opts = append(opts,
+			googleplayscraper.WithAdaptiveThrottle(googleplayscraper.AdaptivePolicy{
+				Min: c.throttle, Max: 2 * time.Second, Cooldown: 30 * time.Second,
+			}),
+			googleplayscraper.WithHooks(googleplayscraper.Hooks{OnBreaker: c.onBreaker}),
+		)
 	}
 	c.cached = googleplayscraper.NewClient(opts...)
 	return c.cached
+}
+
+// onBreaker reports a breaker transition on stderr. Not behind progressTo: an
+// unattended run that has been told to stop is exactly the reader this line is
+// for. When the breaker stops, the run is cancelled.
+func (c *common) onBreaker(ev googleplayscraper.BreakerEvent) {
+	w := os.Stderr
+	switch ev.To {
+	case googleplayscraper.BreakerOpen:
+		_, _ = fmt.Fprintf(w, "gpscrape: Google Play refused a request; pausing until %s\n",
+			ev.Until.Format(time.TimeOnly))
+	case googleplayscraper.BreakerClosed:
+		_, _ = fmt.Fprintf(w, "gpscrape: probe answered; resuming\n")
+	case googleplayscraper.BreakerStopped:
+		_, _ = fmt.Fprintf(w, "gpscrape: Google Play keeps refusing (%s); stopping. Try again after %s\n",
+			ev.Reason, ev.Until.Format(time.DateTime))
+		if c.stopRun != nil {
+			c.stopRun()
+		}
+	}
 }
 
 // exit ends the process. It is a variable so that the second-signal path below
@@ -315,6 +353,7 @@ func (c *common) context() (context.Context, context.CancelFunc) {
 		})
 		cancel()
 	}
+	c.stopRun = cancel
 	if c.timeout <= 0 {
 		return ctx, stop
 	}

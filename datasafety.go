@@ -67,7 +67,7 @@ func (c *Client) DataSafety(ctx context.Context, opts DataSafetyOptions) (*DataS
 	reqURL := fmt.Sprintf("%s/store/apps/datasafety?id=%s&hl=%s&gl=%s",
 		BaseURL, opts.AppID, opts.Lang, opts.Country)
 
-	body, err := c.get(ctx, reqURL)
+	body, err := c.getPage(ctx, reqURL, requireBlock("ds:3"))
 	if err != nil {
 		return nil, fmt.Errorf("request failed: %w", err)
 	}

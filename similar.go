@@ -34,7 +34,7 @@ func (c *Client) Similar(ctx context.Context, opts SimilarOptions) ([]SearchResu
 	appURL := fmt.Sprintf("%s/store/apps/details?id=%s&hl=%s&gl=%s",
 		BaseURL, opts.AppID, opts.Lang, opts.Country)
 
-	body, err := c.get(ctx, appURL)
+	body, err := c.getPage(ctx, appURL, validateHTMLPage)
 	if err != nil {
 		return nil, fmt.Errorf("request failed: %w", err)
 	}
@@ -52,7 +52,7 @@ func (c *Client) Similar(ctx context.Context, opts SimilarOptions) ([]SearchResu
 	// Step 2: Fetch the cluster page
 	fullClusterURL := BaseURL + clusterURL + "&gl=" + opts.Country + "&hl=" + opts.Lang
 
-	clusterBody, err := c.get(ctx, fullClusterURL)
+	clusterBody, err := c.getPage(ctx, fullClusterURL, validateHTMLPage)
 	if err != nil {
 		return nil, fmt.Errorf("cluster request failed: %w", err)
 	}
