@@ -5,6 +5,15 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Fixed
+
+- `Search` returns the featured card Google shows above the result grid when
+  one app matches the query outright. The card lives outside the grid, in an
+  app-details block of its own, so the parser never saw it, and the best match
+  for an exact title was missing: "Identity V" returned Call of Duty first, and
+  "minecraft" lost Minecraft itself. The card now comes first and is not
+  repeated in the grid that follows. (#13)
+
 ## [1.4.0] - 2026-09-05
 
 ### Added

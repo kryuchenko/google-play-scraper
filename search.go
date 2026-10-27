@@ -203,9 +203,14 @@ func extractSearchResults(data map[string]any) ([]SearchResult, string, error) {
 		apps = findAppsInData(appsData)
 	}
 
+	// The featured card sits outside the grid, above it, so it goes first.
+	if featured, ok := parseFeaturedResult(appsData); ok {
+		results = append(results, featured)
+	}
+
 	for _, app := range apps {
 		result := parseSearchResultNew(app)
-		if result.AppID != "" {
+		if result.AppID != "" && !containsAppID(results, result.AppID) {
 			results = append(results, result)
 		}
 	}
@@ -216,6 +221,57 @@ func extractSearchResults(data map[string]any) ([]SearchResult, string, error) {
 	}
 
 	return results, token, nil
+}
+
+// featuredRowPaths is the featured card Google shows above the search grid when
+// one app matches the query outright. The card is a full app-details block, not
+// a grid row, so its fields sit where the details page keeps them. It carries
+// no bare app id; parseFeaturedResult takes it from the listing URL.
+var featuredRowPaths = rowPaths{
+	title:           [][]int{{0, 0}},
+	icon:            [][]int{{95, 0, 3, 2}},
+	developer:       [][]int{{68, 0}},
+	developerIDLink: [][]int{{68, 1, 4, 2}},
+	summary:         [][]int{{73, 0, 1}},
+	score:           [][]int{{51, 0, 1}},
+	scoreText:       [][]int{{51, 0, 0}},
+	currency:        [][]int{{57, 0, 0, 0, 0, 1, 0, 1}},
+	price:           [][]int{{57, 0, 0, 0, 0, 1, 0, 0}},
+}
+
+// parseFeaturedResult returns the featured card of a search page, or false
+// when the page has none.
+func parseFeaturedResult(appsData any) (SearchResult, bool) {
+	block := getPath(appsData, 0, 1, 0, 23, 16, 2)
+	if block == nil {
+		return SearchResult{}, false
+	}
+	r := decodeResultRow(block, featuredRowPaths)
+	r.AppID = appIDFromDetailsURL(toString(getPath(block, 41, 0, 2)))
+	if r.AppID == "" {
+		return SearchResult{}, false
+	}
+	r.URL = resultURL("", r.AppID, false)
+	return r, true
+}
+
+// appIDFromDetailsURL extracts the id from a ".../store/apps/details?id=APP"
+// URL, returning "" when there is none.
+func appIDFromDetailsURL(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil || !strings.HasSuffix(u.Path, "/store/apps/details") {
+		return ""
+	}
+	return u.Query().Get("id")
+}
+
+func containsAppID(results []SearchResult, appID string) bool {
+	for _, r := range results {
+		if r.AppID == appID {
+			return true
+		}
+	}
+	return false
 }
 
 // findAppsInData recursively searches for the apps array in data, returning the

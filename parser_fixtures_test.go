@@ -123,6 +123,60 @@ func TestParseSearchPageFixture(t *testing.T) {
 	}
 }
 
+// The search fixture ("minecraft") shows Minecraft as a featured card above the
+// grid. It must come first and appear once.
+func TestParseSearchPageFixtureFeatured(t *testing.T) {
+	results, _, err := parseSearchPage(readFixture(t, "search_page.html"), 20)
+	if err != nil {
+		t.Fatalf("parseSearchPage: %v", err)
+	}
+	if len(results) == 0 {
+		t.Fatal("no results")
+	}
+	got := results[0]
+	want := SearchResult{
+		AppID:     "com.mojang.minecraftpe",
+		Title:     "Minecraft: Dream it, Build it!",
+		Developer: "Mojang",
+		Currency:  "USD",
+		Price:     6.99,
+		URL:       "https://play.google.com/store/apps/details?id=com.mojang.minecraftpe",
+	}
+	if got.AppID != want.AppID || got.Title != want.Title || got.Developer != want.Developer ||
+		got.Currency != want.Currency || got.Price != want.Price || got.Free || got.URL != want.URL {
+		t.Errorf("featured result = %+v, want %+v", got, want)
+	}
+	if got.Icon == "" || got.ScoreText == "" || got.Score == 0 {
+		t.Errorf("featured result missing icon or score: %+v", got)
+	}
+	for i, r := range results[1:] {
+		if r.AppID == want.AppID {
+			t.Errorf("featured app repeated at %d", i+1)
+		}
+	}
+}
+
+func TestParseFeaturedResultAbsent(t *testing.T) {
+	if r, ok := parseFeaturedResult([]any{nil, []any{nil, []any{}}}); ok {
+		t.Errorf("parseFeaturedResult on a page without a card = %+v, want none", r)
+	}
+}
+
+func TestAppIDFromDetailsURL(t *testing.T) {
+	tests := map[string]string{
+		"https://play.google.com/store/apps/details?id=com.netease.idv.googleplay":   "com.netease.idv.googleplay",
+		"https://play.google.com/store/apps/details?id=sinet.startup.inDriver&hl=en": "sinet.startup.inDriver",
+		"/store/apps/details?id=com.example":                                         "com.example",
+		"https://play.google.com/store/apps/developer?id=NetEase+Games":              "",
+		"": "",
+	}
+	for in, want := range tests {
+		if got := appIDFromDetailsURL(in); got != want {
+			t.Errorf("appIDFromDetailsURL(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
 func TestParseListBatchFixture(t *testing.T) {
 	data, err := decodeBatchEnvelope(readFixture(t, "list_vyae2.bin"))
 	if err != nil {
