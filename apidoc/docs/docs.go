@@ -957,6 +957,84 @@ const docTemplate = `{
                 ]
             }
         },
+        "/_/PlayStoreUi/data/batchexecute(lGYRle)": {
+            "post": {
+                "description": "POST /_/PlayStoreUi/data/batchexecute?rpcids=lGYRle. The RPC the\nsearch page itself calls for a result block. Its payload carries\nthe query and a page size ([[8,[size,50]], ...]); Google\nanswers up to ~50 results and a NULL payload above ~55. The\ninner payload has the same section layout as the search page's\nds:4 block (featured card at [23][16][2], result grid at [22] or\n[21] depending on storefront), so it is parsed the same way.\nNo session parameters (f.sid, bl, source-path) are needed.\nCaptured 2026-10-27 into search_payload.txt.",
+                "operationId": "batchSearchLGYRle",
+                "parameters": [
+                    {
+                        "description": "Fixed rpcid for this operation",
+                        "in": "query",
+                        "name": "rpcids",
+                        "required": true,
+                        "schema": {
+                            "enum": [
+                                "lGYRle"
+                            ],
+                            "type": "string"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/x-www-form-urlencoded": {
+                            "schema": {
+                                "oneOf": [
+                                    {
+                                        "type": "string"
+                                    },
+                                    {
+                                        "title": "f.req",
+                                        "type": "string"
+                                    }
+                                ]
+                            }
+                        }
+                    },
+                    "description": "URL-encoded JSON carrying the query and page size",
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "content": {
+                            "text/plain": {
+                                "schema": {
+                                    "items": {
+                                        "$ref": "#/components/schemas/apidoc.SearchResult"
+                                    },
+                                    "type": "array"
+                                }
+                            }
+                        },
+                        "description": "Decoded from the batchexecute envelope. A NULL inner payload means no results for that size; the scraper then keeps the search page's results."
+                    },
+                    "429": {
+                        "content": {
+                            "text/plain": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/apidoc.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Rate-limited / anti-bot challenge. Google may return 429, or 200 redirecting to google.com/sorry (CAPTCHA). Sustained scraping from one IP triggers this."
+                    },
+                    "500": {
+                        "content": {
+                            "text/plain": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/apidoc.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Upstream Google error (any 5xx). Surfaced as StatusError with the observed code."
+                    }
+                },
+                "summary": "Search results RPC (lGYRle)",
+                "tags": [
+                    "batchexecute-rpc"
+                ]
+            }
+        },
         "/_/PlayStoreUi/data/batchexecute(oCPfdb)": {
             "post": {
                 "description": "POST /_/PlayStoreUi/data/batchexecute. Unlike the other RPCs the\nscraper does NOT put rpcids in the query string; the rpcid lives\nonly inside the f.req body. Handles both the initial fetch and\npagination. Returns the batchexecute envelope; ReviewsResult\n(reviews + nextToken) is decoded from the inner payload.",
@@ -1119,7 +1197,7 @@ const docTemplate = `{
                         "description": "Upstream Google error (any 5xx). Surfaced as StatusError with the observed code."
                     }
                 },
-                "summary": "Paginate list/cluster/search RPC (qnKhOb)",
+                "summary": "Paginate list/cluster RPC (qnKhOb)",
                 "tags": [
                     "batchexecute-rpc"
                 ]
@@ -2160,7 +2238,7 @@ const docTemplate = `{
         },
         "/store/search": {
             "get": {
-                "description": "Returns text/html; []SearchResult and an optional pagination\ntoken are parsed from the embedded AF_initDataCallback blocks.\nEmpirical limit: this initial page yields only ~20-30 results.\nSearch.Num is validated up to searchMaxNum=250, but Google\ncurrently rejects the qnKhOb continuation token, so deeper\npages are unreachable and the real return is one page.",
+                "description": "Returns text/html; []SearchResult and an optional pagination\ntoken are parsed from the embedded AF_initDataCallback blocks.\nEmpirical limit: this page yields only ~20 results, and the web\nstore does not page a query. For Search.Num > 20 the scraper\nmakes one lGYRle RPC instead (see batchSearchLGYRle), which\nreturns up to ~50; searchMaxNum is 50. A price filter is only\napplied by this page, so a filtered search stays here.",
                 "operationId": "searchApps",
                 "parameters": [
                     {
