@@ -68,10 +68,11 @@ func getAppAvailability() {}
 // @Summary      Search apps (HTML)
 // @Description  Returns text/html; []SearchResult and an optional pagination
 // @Description  token are parsed from the embedded AF_initDataCallback blocks.
-// @Description  Empirical limit: this initial page yields only ~20-30 results.
-// @Description  Search.Num is validated up to searchMaxNum=250, but Google
-// @Description  currently rejects the qnKhOb continuation token, so deeper
-// @Description  pages are unreachable and the real return is one page.
+// @Description  Empirical limit: this page yields only ~20 results, and the web
+// @Description  store does not page a query. For Search.Num > 20 the scraper
+// @Description  makes one lGYRle RPC instead (see batchSearchLGYRle), which
+// @Description  returns up to ~50; searchMaxNum is 50. A price filter is only
+// @Description  applied by this page, so a filtered search stays here.
 // @Id           searchApps
 // @Tags         html-endpoints
 // @Produce      html
@@ -219,7 +220,7 @@ func batchListVyAe2() {}
 
 // batchPaginateQnKhOb documents the qnKhOb pagination RPC.
 //
-// @Summary      Paginate list/cluster/search RPC (qnKhOb)
+// @Summary      Paginate list/cluster RPC (qnKhOb)
 // @Description  POST /_/PlayStoreUi/data/batchexecute?rpcids=qnKhOb. Fetches a
 // @Description  recommendation topic by continuation token. Returns the
 // @Description  batchexecute envelope; []SearchResult plus an echo token are
@@ -249,6 +250,30 @@ func batchListVyAe2() {}
 // @Failure      500     {object}  ErrorResponse  "Upstream Google error (any 5xx). Surfaced as StatusError with the observed code."
 // @Router       /_/PlayStoreUi/data/batchexecute(qnKhOb) [post]
 func batchPaginateQnKhOb() {}
+
+// batchSearchLGYRle documents the lGYRle search RPC.
+//
+// @Summary      Search results RPC (lGYRle)
+// @Description  POST /_/PlayStoreUi/data/batchexecute?rpcids=lGYRle. The RPC the
+// @Description  search page itself calls for a result block. Its payload carries
+// @Description  the query and a page size ([[8,[size,50]], ...]); Google
+// @Description  answers up to ~50 results and a NULL payload above ~55. The
+// @Description  inner payload has the same section layout as the search page's
+// @Description  ds:4 block (featured card at [23][16][2], result grid at [22] or
+// @Description  [21] depending on storefront), so it is parsed the same way.
+// @Description  No session parameters (f.sid, bl, source-path) are needed.
+// @Description  Captured 2026-10-27 into search_payload.txt.
+// @Id           batchSearchLGYRle
+// @Tags         batchexecute-rpc
+// @Accept       x-www-form-urlencoded
+// @Produce      plain
+// @Param        rpcids  query     string  true   "Fixed rpcid for this operation"  enums(lGYRle)
+// @Param        f.req   formData  string  true   "URL-encoded JSON carrying the query and page size"
+// @Success      200     {array}   SearchResult  "Decoded from the batchexecute envelope. A NULL inner payload means no results for that size; the scraper then keeps the search page's results."
+// @Failure      429     {object}  ErrorResponse  "Rate-limited / anti-bot challenge. Google may return 429, or 200 redirecting to google.com/sorry (CAPTCHA). Sustained scraping from one IP triggers this."
+// @Failure      500     {object}  ErrorResponse  "Upstream Google error (any 5xx). Surfaced as StatusError with the observed code."
+// @Router       /_/PlayStoreUi/data/batchexecute(lGYRle) [post]
+func batchSearchLGYRle() {}
 
 // batchReviewsOCPfdb documents the oCPfdb reviews RPC.
 //

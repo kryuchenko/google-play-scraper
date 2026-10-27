@@ -20,7 +20,7 @@ import (
 // knownRPCIDs is the set of batchexecute rpcid literals the scraper is expected
 // to use. It mirrors the @x-rpcid extensions in google_endpoints.go and is the
 // contract the drift test enforces against the real source.
-var knownRPCIDs = []string{"IJ4APc", "Ws7gDc", "oCPfdb", "qnKhOb", "vyAe2", "xdSrCf"}
+var knownRPCIDs = []string{"IJ4APc", "Ws7gDc", "lGYRle", "oCPfdb", "qnKhOb", "vyAe2", "xdSrCf"}
 
 // rpcidUsage finds batchexecute rpcids at their real call sites — generically,
 // so a NEWLY added rpcid is detected too (that is the whole point of drift test

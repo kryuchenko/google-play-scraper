@@ -37,6 +37,15 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- `Search` returns more than one page again. Pagination had stopped working:
+  the continuation token was read from a stale path, and the legacy qnKhOb
+  payload it was sent to returns nothing. The web store no longer pages a
+  query at all; the lGYRle RPC behind the search page takes a page size and
+  returns up to about 50 results. `Search` with `Num > 20` now makes one
+  lGYRle call, and `Num` is clamped to 50 instead of 250. A `Price` filter
+  keeps the search page (about 20 results), since only the page applies it.
+  The featured card is found in any section, not just the first: in Germany
+  it follows a small cluster. (#16)
 - `AppsMany` no longer reports an app as missing because Google dropped it from
   one pack. Empty items are asked for again in a pack of their own, and any
   still empty are settled with the details page: 404 is the new `ErrNotFound`

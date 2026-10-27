@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"testing"
 )
@@ -37,38 +38,6 @@ func TestGetPriceValue(t *testing.T) {
 		}
 	}
 }
-
-func TestParseSearchResult(t *testing.T) {
-	// Mock search result data structure
-	data := []any{
-		nil,        // [0]
-		nil,        // [1]
-		"Test App", // [2] Title
-		nil,        // [3]
-		[]any{[]any{[]any{ // [4] Developer info
-			"Test Developer", // [0][0][0]
-		}}},
-		nil,                   // [5]
-		nil,                   // [6]
-		nil,                   // [7]
-		nil,                   // [8]
-		nil,                   // [9]
-		nil,                   // [10]
-		nil,                   // [11]
-		[]any{"com.test.app"}, // [12] AppID
-	}
-
-	result := parseSearchResult(data)
-
-	if result.Title != "Test App" {
-		t.Errorf("Title: got %q, want %q", result.Title, "Test App")
-	}
-	if result.AppID != "com.test.app" {
-		t.Errorf("AppID: got %q, want %q", result.AppID, "com.test.app")
-	}
-}
-
-// TestSearchIntegration is a real integration test
 func TestSearchIntegration(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test in short mode")
@@ -145,8 +114,12 @@ func TestSearchPagination(t *testing.T) {
 		t.Fatalf("Search failed: %v", err)
 	}
 
-	// Should have fetched multiple pages
+	// One page is about 20; more than that proves the RPC path works. Google
+	// returns at most about 50 for a query, so 60 is clamped.
 	t.Logf("Got %d results (requested 60)", len(results))
+	if len(results) <= 20 {
+		t.Errorf("got %d results; more than one page should come back", len(results))
+	}
 
 	// Validate all results
 	for _, r := range results {
@@ -468,46 +441,129 @@ func (m *MockTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	return m.RoundTripFunc(req)
 }
 
-func TestFetchMoreApps(t *testing.T) {
-	// Mock response for batchexecute
-	mockResponseBody := `)]}'
-[["wrb.fr","[[null,[[10,[10,50]],true,null,[96,27,4,8,57,30,110,79,11,16,49,1,3,9,12,104,55,56,51,10,34,77]],[null,\"token\"]]",null,"generic"]]`
-
-	// Create client with mock transport
-	mockTransport := &MockTransport{
-		RoundTripFunc: func(req *http.Request) (*http.Response, error) {
-			return &http.Response{
-				StatusCode: 200,
-				Body:       io.NopCloser(strings.NewReader(mockResponseBody)),
-				Header:     make(http.Header),
-			}, nil
-		},
-	}
-
-	// Create a new client and inject the transport
-	// Note: Client struct in request.go uses *http.Client.
-	// We need to ensure we can modify it. NewClient() creates a standard http.Client.
-	// Since we are in the same package, and if Client.client is unexported, we can access it.
-	c := NewClient()
-
-	// Overwrite the transport of the internal http client
-	if c.httpClient == nil {
-		c.httpClient = &http.Client{}
-	}
-	c.httpClient.Transport = mockTransport
-
-	results, token, err := c.fetchMoreApps(context.Background(), "token", "en", "us")
-
-	// We expect NO error: a null payload is gracefully handled as "no more data".
+// searchRPCResults decodes a captured lGYRle response the way searchRPC does.
+func searchRPCResults(t *testing.T, fixture string) []SearchResult {
+	t.Helper()
+	data, err := decodeBatchEnvelope(readFixture(t, fixture))
 	if err != nil {
-		t.Fatalf("fetchMoreApps failed: %v", err)
+		t.Fatalf("decode %s: %v", fixture, err)
+	}
+	results, _, err := extractSearchResults(map[string]any{"ds:4": data})
+	if err != nil {
+		t.Fatalf("parse %s: %v", fixture, err)
+	}
+	return results
+}
+
+// Issue #16: one lGYRle call returns the whole list, up to about 50. The two
+// fixtures are the two section layouts seen so far: the grid is a [22] card
+// after the featured app in the US, and a [21] card after a small cluster in
+// Germany, where the featured card is the second section.
+func TestSearchRPCFixtures(t *testing.T) {
+	for _, fixture := range []string{"search_rpc_us.bin", "search_rpc_de.bin"} {
+		results := searchRPCResults(t, fixture)
+		if len(results) < 40 {
+			t.Errorf("%s: %d results, want the 40-odd the RPC returns", fixture, len(results))
+		}
+		if results[0].AppID != "com.mojang.minecraftpe" {
+			t.Errorf("%s: first result %s, want the featured Minecraft", fixture, results[0].AppID)
+		}
+		seen := map[string]bool{}
+		for _, r := range results {
+			if seen[r.AppID] {
+				t.Errorf("%s: %s appears twice", fixture, r.AppID)
+			}
+			seen[r.AppID] = true
+		}
+	}
+}
+
+func TestSearchAboveOnePageUsesTheRPC(t *testing.T) {
+	var rpcBodies []string
+	c := newMockClient(t,
+		routePath("/store/search", readFixture(t, "search_page.html")),
+		func(req *http.Request) (mockResponse, bool) {
+			if req.URL.Path != pathBatch || req.URL.Query().Get("rpcids") != "lGYRle" {
+				return mockResponse{}, false
+			}
+			body, _ := io.ReadAll(req.Body)
+			decoded, _ := url.QueryUnescape(strings.TrimPrefix(string(body), "f.req="))
+			rpcBodies = append(rpcBodies, decoded)
+			return mockResponse{Body: readFixture(t, "search_rpc_us.bin")}, true
+		},
+	)
+
+	results, err := c.Search(context.Background(), SearchOptions{Term: "minecraft", Num: 45})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(results) != 45 {
+		t.Errorf("%d results, want 45", len(results))
+	}
+	if len(rpcBodies) != 1 {
+		t.Fatalf("%d lGYRle calls, want 1", len(rpcBodies))
+	}
+	if !strings.Contains(rpcBodies[0], `\"minecraft\"`) || !strings.Contains(rpcBodies[0], "[[8,[45,50]]") {
+		t.Errorf("request does not carry the query and size: %.200s", rpcBodies[0])
 	}
 
-	// In this mock, we don't have real app data, so results should be empty
-	if len(results) != 0 {
-		t.Errorf("expected 0 results from mock garbage, got %d", len(results))
+	// A page's worth needs no RPC.
+	rpcBodies = nil
+	if _, err := c.Search(context.Background(), SearchOptions{Term: "minecraft", Num: 20}); err != nil {
+		t.Fatal(err)
+	}
+	if len(rpcBodies) != 0 {
+		t.Error("Num 20 should be served by the search page alone")
 	}
 
-	// Token might be empty or not depending on parser internals on garbage
-	_ = token
+	// Only the page applies a price filter, so a filtered search stays on it.
+	if _, err := c.Search(context.Background(), SearchOptions{Term: "minecraft", Num: 45, Price: "paid"}); err != nil {
+		t.Fatal(err)
+	}
+	if len(rpcBodies) != 0 {
+		t.Error("a price-filtered search should not call the RPC")
+	}
+
+	// Asking for more than Google returns is clamped, not rejected.
+	if _, err := c.Search(context.Background(), SearchOptions{Term: "minecraft", Num: 500}); err != nil {
+		t.Fatal(err)
+	}
+	if n := len(rpcBodies); n != 1 || !strings.Contains(rpcBodies[0], "[[8,[50,50]]") {
+		t.Errorf("Num 500 should ask for 50 in one call; calls %d", n)
+	}
+}
+
+// Review of #20: the RPC list is merged into the page's, not swapped for it.
+func TestMergeSearchResults(t *testing.T) {
+	ids := func(rs []SearchResult) string {
+		var s []string
+		for _, r := range rs {
+			s = append(s, r.AppID)
+		}
+		return strings.Join(s, ",")
+	}
+	r := func(id string) SearchResult { return SearchResult{AppID: id} }
+
+	cases := []struct {
+		name       string
+		page, more []SearchResult
+		want       string
+	}{
+		{"equal length, disjoint", []SearchResult{r("a"), r("b")}, []SearchResult{r("c"), r("d")}, "a,b,c,d"},
+		{"shorter, overlapping, with a new app", []SearchResult{r("a"), r("b"), r("c")}, []SearchResult{r("b"), r("x")}, "a,b,c,x"},
+		{"reordered", []SearchResult{r("a"), r("b"), r("c")}, []SearchResult{r("c"), r("a"), r("b"), r("d")}, "a,b,c,d"},
+		{"repeats in the RPC list", []SearchResult{r("a")}, []SearchResult{r("b"), r("b"), r("a")}, "a,b"},
+	}
+	for _, tc := range cases {
+		if got := ids(mergeSearchResults(tc.page, tc.more)); got != tc.want {
+			t.Errorf("%s: got %s, want %s", tc.name, got, tc.want)
+		}
+	}
+
+	page := []SearchResult{{AppID: "a", Title: "Page title"}}
+	more := []SearchResult{{AppID: "a", Title: "RPC title", DeveloperID: "DEV", Score: 4.5}}
+	got := mergeSearchResults(page, more)[0]
+	if got.Title != "Page title" || got.DeveloperID != "DEV" || got.Score != 4.5 {
+		t.Errorf("merged = %+v; want the page's title with the RPC's developer and score", got)
+	}
 }

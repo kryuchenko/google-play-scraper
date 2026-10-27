@@ -29,7 +29,7 @@ const (
 	defaultSaturationThreshold = 0.01
 
 	// coverageSearchNum is the per-term Search depth. Search caps at
-	// searchMaxNum (250); we ask for the maximum because Search is the main
+	// searchMaxNum (50, all Google returns for a query); we ask for the maximum because Search is the main
 	// multiplier in a coverage run.
 	coverageSearchNum = searchMaxNum
 
