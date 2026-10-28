@@ -129,6 +129,13 @@ const docTemplate = `{
                         "description": "DeveloperLegalPhoneNumber is the trader's contact phone number (EU DSA only).",
                         "type": "string"
                     },
+                    "developerNumericId": {
+                        "description": "DeveloperNumericID is Google's numeric developer id. Unlike DeveloperID it\nis a number for every developer, including those whose listing link uses\na name, and it does not change when the developer is renamed, so it is\nthe one to key on. Developer does not accept it for name-based listings.",
+                        "examples": [
+                            "5700313618786177705"
+                        ],
+                        "type": "string"
+                    },
                     "developerWebsite": {
                         "description": "DeveloperWebsite is the developer's website URL; may be empty.",
                         "examples": [

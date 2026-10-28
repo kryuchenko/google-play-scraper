@@ -7,6 +7,10 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- `App.DeveloperNumericID`: Google's numeric developer id (`[68][2]`). It is a
+  number for every developer, also when the listing link uses a name, and it
+  survives a rename, so it is the field to key on. `DeveloperID` stays the
+  value `Developer` takes.
 - Soft-block detection. Every response is classified before the adaptive
   controller or a hook sees it: a redirect to `google.com/sorry`, a page with
   no data blocks, or an HTML page served where a `batchexecute` envelope

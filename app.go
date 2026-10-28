@@ -211,6 +211,10 @@ func extractAppData(data map[string]any, appID, url string) (*App, error) {
 	if v := getPath(appData, 68, 1, 4, 2); v != nil {
 		app.DeveloperID = developerIDFromPath(toString(v))
 	}
+	// DeveloperNumericID: [68][2], numeric for every developer.
+	if v := getPath(appData, 68, 2); v != nil {
+		app.DeveloperNumericID = toString(v)
+	}
 
 	// DeveloperEmail: [69][1][0]
 	if v := getPath(appData, 69, 1, 0); v != nil {
