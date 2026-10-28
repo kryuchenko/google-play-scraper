@@ -63,6 +63,34 @@ func getAppDetails() {}
 // @Router       /store/apps/details(availability) [get]
 func getAppAvailability() {}
 
+// getPCAppDetails documents the Google Play Games on PC listing.
+//
+// The response schema is described in prose rather than as a model: PCApp is
+// newer than the root release this module builds against outside the
+// workspace, so an alias for it here would not compile there yet.
+//
+// @Summary      Google Play Games on PC listing (HTML, ds:4 and ds:3)
+// @Description  Returns text/html for an app with a PC build. The page's
+// @Description  `ds:4` block is the Ws7gDc app record, the same layout as
+// @Description  `ds:5` on /store/apps/details, requested with a PC device
+// @Description  context: [1][2][78][0] holds the PC screenshots, [100] the
+// @Description  trailer, [51] the rating from PC players. `ds:3` is the A6yuRe
+// @Description  response with the system requirements at [2][0], a list of
+// @Description  [value, label] pairs. PCApp is parsed from both.
+// @Id           getPCAppDetails
+// @Tags         html-endpoints
+// @Produce      html
+// @Param        id  query  string  true   "App package id, reverse-domain form (pattern ^[a-zA-Z][a-zA-Z0-9_]*(\.[a-zA-Z][a-zA-Z0-9_]*)+$, descriptive only), e.g. com.whatsapp"  minlength(3)  maxlength(255)  example(com.mytona.cookingdiary.android)
+// @Param        hl  query  string  false  "UI language, ISO 639-1, e.g. en. The trailer and requirement text are localized."  minlength(2)  maxlength(5)  example(en)
+// @Param        gl  query  string  false  "Country, ISO 3166-1 alpha-2 lowercase (pattern ^[a-z]{2}$, descriptive only). It does not follow the regions where the PC client is offered: ru, cu and ir render, cn redirects every app, kp and sy answer 404."  minlength(2)  maxlength(2)  example(us)
+// @Success      200  {string}  string  "HTML page; PCApp is parsed from ds:4[1][2] and ds:3[2][0]"
+// @Failure      302  {string}  string  "The app has no PC build: an empty body and a Location pointing at /store/apps/details. PCApp returns OnPC=false with a nil error instead of following it."
+// @Failure      404  {object}  ErrorResponse  "Google does not know the package (or the storefront is kp or sy). Surfaced as StatusError{Code:404}."
+// @Failure      429  {object}  ErrorResponse  "Rate-limited / anti-bot challenge. Google may return 429, or redirect to google.com/sorry (CAPTCHA); that redirect is still followed and reported as a SoftBlockError."
+// @Failure      500  {object}  ErrorResponse  "Upstream Google error (any 5xx). Surfaced as StatusError with the observed code."
+// @Router       /pc-store/games/details [get]
+func getPCAppDetails() {}
+
 // searchApps documents the search-results page.
 //
 // @Summary      Search apps (HTML)

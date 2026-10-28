@@ -11,6 +11,23 @@ All notable changes to this project are documented here. The format is based on
   a number on all 138 listings checked, also when the listing link uses a
   name, so it is the field to key on. `DeveloperID` stays the value
   `Developer` takes.
+- `Client.PCApp` and `gpscrape pcapp`, which read an app's Google Play Games
+  on PC listing (`/pc-store/games/details`). The page carries the same Ws7gDc
+  app record as the details page, in `ds:4` rather than `ds:5`, requested with
+  a PC device context, so the existing record parser reads it: the result has
+  the PC listing's screenshots, trailer (`Video`, `YouTubeID`,
+  `PreviewVideo`), icon, header image, the rating from PC players, and the
+  system requirements from `ds:3`. An app without a PC build is answered with
+  a 302 to the phone listing of the same package and no body. `PCApp` stops at
+  exactly that redirect, after the client's own redirect policy and limit have
+  allowed it, and returns `OnPC: false` with a nil error. Any other 3xx stays a
+  `StatusError`, and other redirects, `google.com/sorry` included, are
+  followed as before.
+- `PCRegions()`: the 141 regions where Google Play Games on PC is offered, a
+  snapshot of Google's help page taken 2026-10-28. The PC store cannot answer
+  this itself: it serves its listings for `gl=ru`, `cu` and `ir`, which are not
+  on the list, redirects every app for `cn`, and answers 404 for `kp` and `sy`.
+  A canary test compares the regions on the live page with the snapshot.
 - Soft-block detection. Every response is classified before the adaptive
   controller or a hook sees it: a redirect to `google.com/sorry`, a page with
   no data blocks, or an HTML page served where a `batchexecute` envelope

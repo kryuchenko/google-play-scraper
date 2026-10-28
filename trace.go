@@ -78,6 +78,7 @@ const (
 	traceTaskCatalogGeneration = "CatalogGeneration"
 	traceTaskDigests           = "Digests"
 	traceTaskReviewsSeq        = "ReviewsSeq"
+	traceTaskPCApp             = "PCApp"
 
 	traceTaskSitemapIndexURLs     = "SitemapIndexURLs"
 	traceTaskSitemapShards        = "SitemapShards"

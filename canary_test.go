@@ -86,6 +86,8 @@ func TestCanary(t *testing.T) {
 	t.Run("Batched", func(t *testing.T) { canaryBatched(t, client) })
 	t.Run("AvailabilityClasses", func(t *testing.T) { canaryAvailabilityClasses(t, client) })
 	t.Run("Collections", func(t *testing.T) { canaryCollections(t, client) })
+	t.Run("PCApp", func(t *testing.T) { canaryPCApp(t, client) })
+	t.Run("PCRegions", canaryPCRegions)
 }
 
 // ---------------------------------------------------------------------------

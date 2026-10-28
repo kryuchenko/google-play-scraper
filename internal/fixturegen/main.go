@@ -34,6 +34,11 @@ const (
 	// classifies as StatusNotInRegion. Captured for the offline classifier test.
 	regionLockedAppID = "com.vzw.hss.myverizon"
 	regionLockedGL    = "de"
+	// pcGameAppID has a Google Play Games on PC build whose PC screenshots
+	// appear nowhere on its mobile listing, so the fixture cannot pass for a
+	// mobile page. nonPCAppID has no PC build.
+	pcGameAppID = "com.mytona.cookingdiary.android"
+	nonPCAppID  = "com.whatsapp"
 )
 
 // scriptDataRegex mirrors the library's block matcher; used here only to pull a
@@ -122,7 +127,49 @@ func main() {
 	save(outDir, "top_charts_page.html",
 		get(c, fmt.Sprintf("%s/store/apps/top?hl=en&gl=us", baseURL)))
 
+	// 11. Google Play Games on PC listing of a game with a PC build.
+	save(outDir, "pc_page_game.html", get(c, pcListingURL(pcGameAppID)))
+
+	// 11b. The same URL for an app without one: a redirect to the mobile
+	// listing with no body, which PCApp reads as "not on PC". Saved as status
+	// and Location only; the response also sets a cookie, which has no place
+	// in a fixture.
+	save(outDir, "pc_page_not_on_pc.json", redirectOf(c, pcListingURL(nonPCAppID)))
+
 	fmt.Println("fixtures written to", outDir)
+}
+
+func pcListingURL(id string) string {
+	return fmt.Sprintf("%s/pc-store/games/details?id=%s&hl=en&gl=us", baseURL, id)
+}
+
+// redirectOf fetches rawURL without following a redirect and returns the
+// redirect as {"status","location"}. Anything but a 3xx is a failure: the
+// fixture exists to pin that answer.
+func redirectOf(c *http.Client, rawURL string) []byte {
+	noFollow := *c
+	noFollow.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	req, err := http.NewRequest(http.MethodGet, rawURL, nil)
+	if err != nil {
+		fail(err)
+	}
+	req.Header.Set("User-Agent", userAgent)
+	resp, err := noFollow.Do(req)
+	if err != nil {
+		fail(err)
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode/100 != 3 {
+		fail(fmt.Errorf("GET %s: status %d, want a redirect", rawURL, resp.StatusCode))
+	}
+	out, err := json.MarshalIndent(struct {
+		Status   int    `json:"status"`
+		Location string `json:"location"`
+	}{resp.StatusCode, resp.Header.Get("Location")}, "", "  ")
+	if err != nil {
+		fail(err)
+	}
+	return append(out, '\n')
 }
 
 func listBatch(c *http.Client) []byte {

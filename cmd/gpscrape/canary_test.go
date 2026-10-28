@@ -117,6 +117,21 @@ func TestCanaryCLI(t *testing.T) {
 		}
 	})
 
+	// One record per id, and an app without a PC build is a record too.
+	t.Run("pcapp", func(t *testing.T) {
+		recs := ndjson(t, run(t, bin, "pcapp", "com.mytona.cookingdiary.android", "com.whatsapp"))
+		if len(recs) != 2 {
+			t.Fatalf("got %d records for 2 apps", len(recs))
+		}
+		if recs[0]["onPC"] != true {
+			t.Errorf("a PC game gave onPC = %v", recs[0]["onPC"])
+		}
+		nonEmptyString(t, recs[0], "title")
+		if recs[1]["appId"] != "com.whatsapp" || recs[1]["onPC"] != false {
+			t.Errorf("an app without a PC build gave %v", recs[1])
+		}
+	})
+
 	t.Run("search", func(t *testing.T) {
 		recs := ndjson(t, run(t, bin, "search", "-num", "5", "maps"))
 		if len(recs) > 5 {

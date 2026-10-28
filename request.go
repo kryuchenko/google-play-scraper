@@ -117,7 +117,10 @@ func WithConcurrency(n int) ClientOption {
 // across locales, and soft-block detection reads where the redirect chain
 // ended: a client that stops at a 3xx gets a StatusError instead. The default
 // client keeps no cookies; supplying a Jar is allowed and changes what Google
-// sends back, consent pages included.
+// sends back, consent pages included. PCApp sends through a copy whose
+// CheckRedirect runs the supplied client's own policy first, then stops at the
+// one redirect that means "no PC build": from the PC listing to the phone
+// listing of the same package.
 //
 // Use it to inject a transport with proxy support, custom TLS, or request
 // tracing. Combine with WithTimeout to override the client's timeout without
@@ -238,23 +241,28 @@ func (c *Client) get(ctx context.Context, url string) ([]byte, error) {
 // getPage performs a GET request whose 200 body is classified by validate
 // before the controller sees it (softblock.go).
 func (c *Client) getPage(ctx context.Context, url string, validate validator) ([]byte, error) {
-	return c.do(ctx, http.MethodGet, url, func() (*http.Request, error) {
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-		if err != nil {
-			return nil, err
-		}
-		req.Header.Set("User-Agent", c.userAgent)
-		req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
-		req.Header.Set("Accept-Language", "en-US,en;q=0.9")
-		return req, nil
+	return c.do(ctx, c.httpClient, http.MethodGet, url, func() (*http.Request, error) {
+		return c.newPageRequest(ctx, url)
 	}, validate)
+}
+
+// newPageRequest builds the GET a store page is fetched with.
+func (c *Client) newPageRequest(ctx context.Context, url string) (*http.Request, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("User-Agent", c.userAgent)
+	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+	req.Header.Set("Accept-Language", "en-US,en;q=0.9")
+	return req, nil
 }
 
 // post performs a POST request through the pipeline. Every POST here is a
 // batchexecute RPC, so every one gets the RPC check: an HTML page served where
 // an envelope belongs is a block, not an empty answer.
 func (c *Client) post(ctx context.Context, url string, contentType string, body string) ([]byte, error) {
-	return c.do(ctx, http.MethodPost, url, func() (*http.Request, error) {
+	return c.do(ctx, c.httpClient, http.MethodPost, url, func() (*http.Request, error) {
 		// Rebuilt per attempt: a reader that has been drained cannot be
 		// replayed, so sharing one across retries sends an empty body.
 		req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, strings.NewReader(body))

@@ -1366,6 +1366,104 @@ const docTemplate = `{
                 ]
             }
         },
+        "/pc-store/games/details": {
+            "get": {
+                "description": "Returns text/html for an app with a PC build. The page's\n` + "`" + `ds:4` + "`" + ` block is the Ws7gDc app record, the same layout as\n` + "`" + `ds:5` + "`" + ` on /store/apps/details, requested with a PC device\ncontext: [1][2][78][0] holds the PC screenshots, [100] the\ntrailer, [51] the rating from PC players. ` + "`" + `ds:3` + "`" + ` is the A6yuRe\nresponse with the system requirements at [2][0], a list of\n[value, label] pairs. PCApp is parsed from both.",
+                "operationId": "getPCAppDetails",
+                "parameters": [
+                    {
+                        "description": "App package id, reverse-domain form (pattern ^[a-zA-Z][a-zA-Z0-9_]*(\\.[a-zA-Z][a-zA-Z0-9_]*)+$, descriptive only), e.g. com.whatsapp",
+                        "example": "com.mytona.cookingdiary.android",
+                        "in": "query",
+                        "name": "id",
+                        "required": true,
+                        "schema": {
+                            "maxLength": 255,
+                            "minLength": 3,
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "description": "UI language, ISO 639-1, e.g. en. The trailer and requirement text are localized.",
+                        "example": "en",
+                        "in": "query",
+                        "name": "hl",
+                        "schema": {
+                            "maxLength": 5,
+                            "minLength": 2,
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "description": "Country, ISO 3166-1 alpha-2 lowercase (pattern ^[a-z]{2}$, descriptive only). It does not follow the regions where the PC client is offered: ru, cu and ir render, cn redirects every app, kp and sy answer 404.",
+                        "example": "us",
+                        "in": "query",
+                        "name": "gl",
+                        "schema": {
+                            "maxLength": 2,
+                            "minLength": 2,
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "text/html": {
+                                "schema": {
+                                    "type": "string"
+                                }
+                            }
+                        },
+                        "description": "HTML page; PCApp is parsed from ds:4[1][2] and ds:3[2][0]"
+                    },
+                    "302": {
+                        "content": {
+                            "text/html": {
+                                "schema": {
+                                    "type": "string"
+                                }
+                            }
+                        },
+                        "description": "The app has no PC build: an empty body and a Location pointing at /store/apps/details. PCApp returns OnPC=false with a nil error instead of following it."
+                    },
+                    "404": {
+                        "content": {
+                            "text/html": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/apidoc.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Google does not know the package (or the storefront is kp or sy). Surfaced as StatusError{Code:404}."
+                    },
+                    "429": {
+                        "content": {
+                            "text/html": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/apidoc.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Rate-limited / anti-bot challenge. Google may return 429, or redirect to google.com/sorry (CAPTCHA); that redirect is still followed and reported as a SoftBlockError."
+                    },
+                    "500": {
+                        "content": {
+                            "text/html": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/apidoc.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Upstream Google error (any 5xx). Surfaced as StatusError with the observed code."
+                    }
+                },
+                "summary": "Google Play Games on PC listing (HTML, ds:4 and ds:3)",
+                "tags": [
+                    "html-endpoints"
+                ]
+            }
+        },
         "/robots.txt": {
             "get": {
                 "description": "GET /robots.txt. Returns text/plain. The catalog enumerator\n(SitemapIndexURLs) parses the ` + "`" + `Sitemap:` + "`" + ` directives, currently\ntwo indexes under /sitemaps/, which together list all ~83k\nshards. Read live so it tracks Google's own advertisement.",
