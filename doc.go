@@ -54,7 +54,9 @@
 // public sitemaps instead, which yields on the order of three million package
 // ids — a batch job measured in tens of gigabytes, not an interactive call.
 // [Client.Availability] probes a package across the 177 countries in
-// [AllCountries] to map where it is published.
+// [AllCountries] to map where it is published. [Client.PCApp] reads a game's
+// Google Play Games on PC listing: whether it has a Windows build, and the
+// screenshots and trailer it shows there.
 //
 // # Zero dependencies
 //

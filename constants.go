@@ -1,5 +1,7 @@
 package googleplayscraper
 
+import "slices"
+
 // BaseURL is the origin every request in this package is built from. It is a
 // const so that a caller cannot repoint the library at another host by
 // assignment; tests intercept requests with a transport instead
@@ -177,6 +179,38 @@ var AllCountries = []string{
 	"sz", "tc", "td", "tg", "th", "tj", "tm", "tn", "to", "tr",
 	"tt", "tw", "tz", "ua", "ug", "us", "uy", "uz", "vc", "ve",
 	"vg", "vn", "vu", "ye", "za", "zm", "zw",
+}
+
+// PCRegions returns the countries and regions where Google Play Games on PC is
+// offered, as sorted lowercase ISO 3166-1 alpha-2 codes. Each call returns a
+// fresh copy.
+//
+// It is a snapshot of Google's help page, taken 2026-10-28 with 141 entries:
+// https://support.google.com/googleplay/answer/11358071. Google publishes the
+// list nowhere else, and the PC store cannot stand in for it: its listings
+// render for storefronts the PC client does not serve (see Client.PCApp). The
+// page's "Netherlands + Netherlands Antilles" is "nl" here, since the Antilles
+// were dissolved in 2010 and the page does not say which successor it means.
+// Three codes (gi, mc, sm) are not in AllCountries. The canary suite counts the
+// live page against this list, so a stale snapshot fails there.
+func PCRegions() []string { return slices.Clone(pcRegions) }
+
+var pcRegions = []string{
+	"ae", "ag", "al", "am", "ao", "ar", "at", "au", "aw", "az",
+	"ba", "bd", "be", "bf", "bg", "bh", "bj", "bo", "br", "bs",
+	"bw", "bz", "ca", "ch", "ci", "cl", "cm", "co", "cr", "cv",
+	"cy", "cz", "de", "dk", "do", "dz", "ec", "ee", "eg", "es",
+	"fi", "fj", "fr", "ga", "gb", "ge", "gh", "gi", "gr", "gt",
+	"gw", "hk", "hn", "hr", "ht", "hu", "id", "ie", "il", "in",
+	"iq", "is", "it", "jm", "jo", "jp", "ke", "kg", "kh", "kr",
+	"kw", "kz", "la", "lb", "li", "lk", "lt", "lu", "lv", "ma",
+	"mc", "md", "mk", "ml", "mm", "mo", "mt", "mu", "mx", "my",
+	"mz", "na", "ne", "ng", "ni", "nl", "no", "np", "nz", "om",
+	"pa", "pe", "pg", "ph", "pk", "pl", "pt", "py", "qa", "ro",
+	"rs", "rw", "sa", "se", "sg", "si", "sk", "sl", "sm", "sn",
+	"sv", "tg", "th", "tj", "tm", "tn", "tr", "tt", "tw", "tz",
+	"ua", "ug", "us", "uy", "uz", "ve", "vn", "ye", "za", "zm",
+	"zw",
 }
 
 // AllCategories returns all known category IDs

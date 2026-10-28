@@ -61,6 +61,7 @@ Usage:
 
 Commands:
   app <appID>..         app details (several apps ride in one request)
+  pcapp <appID>..       the Google Play Games on PC listing: on PC or not, and its PC media
   search <term>         search results
   list [category]       a store collection: top charts, or what is new
   reviews <appID>       reviews, newest first unless -sort says otherwise
@@ -163,6 +164,7 @@ type commandFunc func(args []string) error
 
 var commands = map[string]commandFunc{
 	"app":          cmdApp,
+	"pcapp":        cmdPCApp,
 	"search":       cmdSearch,
 	"list":         cmdList,
 	"reviews":      cmdReviews,
@@ -577,6 +579,55 @@ func cmdApp(args []string) error {
 			continue
 		}
 		if err := e.emit(r.App); err != nil {
+			return err
+		}
+	}
+	if failed == len(c.args) {
+		return fmt.Errorf("all %d apps failed", failed)
+	}
+	return e.flush()
+}
+
+// cmdPCApp reads the Google Play Games on PC listing of each id, one page per
+// app, in the order given. An app without a PC build is a record with onPC
+// false, not a failure.
+//
+// There is no batched form. The RPC the PC page is built from answers with a
+// full record for any app, PC build or not; only the page's redirect says
+// which apps have none.
+func cmdPCApp(args []string) error {
+	c := newCommon("pcapp")
+	if err := c.parse(args); err != nil {
+		return err
+	}
+	if _, err := c.arg(0, "appID"); err != nil {
+		return err
+	}
+
+	ctx, stop := c.context()
+	defer stop()
+
+	opts := googleplayscraper.AppOptions{Lang: c.lang, Country: c.country}
+	e := newEmitter(os.Stdout)
+	defer func() { _ = e.flush() }()
+
+	var failed int
+	for _, id := range c.args {
+		pc, err := c.client().PCApp(ctx, id, opts)
+		if err != nil {
+			// One id fails the way `app` does, with the error and no record;
+			// an interrupt ends the run with what is already written.
+			if len(c.args) == 1 || ctx.Err() != nil {
+				return err
+			}
+			failed++
+			_, _ = fmt.Fprintf(os.Stderr, "%s: %v\n", id, err)
+			if err := e.emit(appErrorRecord{AppID: id, Error: err.Error()}); err != nil {
+				return err
+			}
+			continue
+		}
+		if err := e.emit(pc); err != nil {
 			return err
 		}
 	}

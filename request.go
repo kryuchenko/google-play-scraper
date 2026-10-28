@@ -117,7 +117,9 @@ func WithConcurrency(n int) ClientOption {
 // across locales, and soft-block detection reads where the redirect chain
 // ended: a client that stops at a 3xx gets a StatusError instead. The default
 // client keeps no cookies; supplying a Jar is allowed and changes what Google
-// sends back, consent pages included.
+// sends back, consent pages included. PCApp sends through a copy whose
+// CheckRedirect stops at a redirect out of the PC store and hands every other
+// redirect to the supplied client's own policy.
 //
 // Use it to inject a transport with proxy support, custom TLS, or request
 // tracing. Combine with WithTimeout to override the client's timeout without

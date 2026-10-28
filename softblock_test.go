@@ -106,6 +106,7 @@ func TestEndpointChecksAcceptFixtures(t *testing.T) {
 		{"app_unavailable_region.html", requireBlock("ds:5")},
 		{"developer_page.html", requireBlock("ds:3")},
 		{"datasafety_page.html", requireBlock("ds:3")},
+		{"pc_page_game.html", requireBlock("ds:4")},
 		{"similar_page.html", validateHTMLPage},
 		{"cluster_page.html", validateHTMLPage},
 		{"category_page.html", validateHTMLPage},
