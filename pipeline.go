@@ -160,8 +160,12 @@ func WithHooks(h Hooks) ClientOption {
 // across attempts is the classic way a retry silently sends an empty body.
 //
 // validate classifies a 200 body; nil accepts any body (sitemaps, robots.txt).
-func (c *Client) do(ctx context.Context, method, url string, newReq func() (*http.Request, error),
-	validate validator) ([]byte, error) {
+//
+// hc sends the request. It is c.httpClient everywhere but the PC listing,
+// whose redirect policy differs (pcstore.go); passing it in keeps that one
+// difference out of the client every other request shares.
+func (c *Client) do(ctx context.Context, hc *http.Client, method, url string,
+	newReq func() (*http.Request, error), validate validator) ([]byte, error) {
 	attempts := c.retry.MaxAttempts
 	if attempts < 1 {
 		attempts = 1
@@ -187,7 +191,7 @@ func (c *Client) do(ctx context.Context, method, url string, newReq func() (*htt
 			c.noteFirstAttempt()
 		}
 
-		body, status, sent, err := c.attempt(ctx, t, method, url, newReq, validate, attempt, waited)
+		body, status, sent, err := c.attempt(ctx, t, hc, method, url, newReq, validate, attempt, waited)
 		if sent && attempt == 1 && rec != nil {
 			rec.sent.Add(1)
 		}
@@ -273,6 +277,7 @@ const maxErrorBodyDrain = 32 << 10
 func (c *Client) attempt(
 	ctx context.Context,
 	t *ticket,
+	hc *http.Client,
 	method, url string,
 	newReq func() (*http.Request, error),
 	validate validator,
@@ -313,7 +318,7 @@ func (c *Client) attempt(
 		return nil, 0, false, cerr
 	}
 	sent = true
-	resp, err := c.httpClient.Do(req)
+	resp, err := hc.Do(req)
 	took := time.Since(started)
 	if timings != nil {
 		if attrs := timings.attrs(); attrs != nil {

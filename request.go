@@ -238,7 +238,12 @@ func (c *Client) get(ctx context.Context, url string) ([]byte, error) {
 // getPage performs a GET request whose 200 body is classified by validate
 // before the controller sees it (softblock.go).
 func (c *Client) getPage(ctx context.Context, url string, validate validator) ([]byte, error) {
-	return c.do(ctx, http.MethodGet, url, func() (*http.Request, error) {
+	return c.getPageVia(ctx, c.httpClient, url, validate)
+}
+
+// getPageVia is getPage sent through hc rather than the client's own.
+func (c *Client) getPageVia(ctx context.Context, hc *http.Client, url string, validate validator) ([]byte, error) {
+	return c.do(ctx, hc, http.MethodGet, url, func() (*http.Request, error) {
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 		if err != nil {
 			return nil, err
@@ -254,7 +259,7 @@ func (c *Client) getPage(ctx context.Context, url string, validate validator) ([
 // batchexecute RPC, so every one gets the RPC check: an HTML page served where
 // an envelope belongs is a block, not an empty answer.
 func (c *Client) post(ctx context.Context, url string, contentType string, body string) ([]byte, error) {
-	return c.do(ctx, http.MethodPost, url, func() (*http.Request, error) {
+	return c.do(ctx, c.httpClient, http.MethodPost, url, func() (*http.Request, error) {
 		// Rebuilt per attempt: a reader that has been drained cannot be
 		// replayed, so sharing one across retries sends an empty body.
 		req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, strings.NewReader(body))

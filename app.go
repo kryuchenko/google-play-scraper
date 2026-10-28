@@ -101,19 +101,25 @@ func classifyAvailability(appData any) Status {
 }
 
 func extractAppData(data map[string]any, appID, url string) (*App, error) {
-	app := &App{
-		AppID: appID,
-		URL:   url,
-	}
-
 	// Main data is in ds:5
 	ds5, ok := data["ds:5"]
 	if !ok {
 		return nil, fmt.Errorf("main data block not found")
 	}
+	return parseAppRecord(ds5, appID, url)
+}
+
+// parseAppRecord reads the app record a Ws7gDc block carries at [1][2]. The
+// details page renders it as ds:5 and the PC listing as ds:4, with the same
+// layout, so both go through here.
+func parseAppRecord(block any, appID, url string) (*App, error) {
+	app := &App{
+		AppID: appID,
+		URL:   url,
+	}
 
 	// Navigate: [1][2] contains app info
-	appData := getPath(ds5, 1, 2)
+	appData := getPath(block, 1, 2)
 	if appData == nil {
 		return nil, fmt.Errorf("app data not found")
 	}
