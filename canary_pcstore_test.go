@@ -3,6 +3,7 @@
 package googleplayscraper_test
 
 import (
+	"html"
 	"io"
 	"net/http"
 	"slices"
@@ -83,8 +84,163 @@ func canaryPCApp(t *testing.T, client *googleplayscraper.Client) {
 // pcRegionsHelp is where PCRegions was copied from.
 const pcRegionsHelp = "https://support.google.com/googleplay/answer/11358071?hl=en"
 
-// canaryPCRegions counts the regions Google's help page lists against the
-// snapshot. It does not reach Play, so it does not use the shared client.
+// pcRegionNames maps each name the help page lists to the code PCRegions
+// holds for it. Most are plain ISO 3166-1 names; the ones that are not are
+// marked. A name missing here fails the canary, so a new region cannot pass
+// unnoticed.
+var pcRegionNames = map[string]string{
+	"Albania":                "al",
+	"Algeria":                "dz",
+	"Angola":                 "ao",
+	"Antigua and Barbuda":    "ag",
+	"Argentina":              "ar",
+	"Armenia":                "am",
+	"Aruba":                  "aw",
+	"Australia":              "au",
+	"Austria":                "at",
+	"Azerbaijan":             "az",
+	"Bahamas":                "bs",
+	"Bahrain":                "bh",
+	"Bangladesh":             "bd",
+	"Belgium":                "be",
+	"Belize":                 "bz",
+	"Benin":                  "bj",
+	"Bolivia":                "bo",
+	"Bosnia and Herzegovina": "ba",
+	"Botswana":               "bw",
+	"Brazil":                 "br",
+	"Bulgaria":               "bg",
+	"Burkina Faso":           "bf",
+	"Cambodia":               "kh",
+	"Cameroon":               "cm",
+	"Canada":                 "ca",
+	"Cape Verde":             "cv",
+	"Chile":                  "cl",
+	"Colombia":               "co",
+	"Costa Rica":             "cr",
+	// sic: Côte d'Ivoire
+	"Côte d'Ivore":       "ci",
+	"Croatia":            "hr",
+	"Cyprus":             "cy",
+	"Czech Republic":     "cz",
+	"Denmark":            "dk",
+	"Dominican Republic": "do",
+	"Ecuador":            "ec",
+	"Egypt":              "eg",
+	"El Salvador":        "sv",
+	"Estonia":            "ee",
+	"Fiji":               "fj",
+	"Finland":            "fi",
+	"France":             "fr",
+	"Gabon":              "ga",
+	"Georgia":            "ge",
+	"Germany":            "de",
+	"Ghana":              "gh",
+	"Gibraltar":          "gi",
+	"Greece":             "gr",
+	"Guatemala":          "gt",
+	"Guinea-Bissau":      "gw",
+	"Haiti":              "ht",
+	"Honduras":           "hn",
+	"Hong Kong":          "hk",
+	"Hungary":            "hu",
+	"Iceland":            "is",
+	"India":              "in",
+	"Indonesia":          "id",
+	"Iraq":               "iq",
+	"Ireland":            "ie",
+	"Israel":             "il",
+	"Italy":              "it",
+	"Jamaica":            "jm",
+	"Japan":              "jp",
+	"Jordan":             "jo",
+	"Kazakhstan":         "kz",
+	"Kenya":              "ke",
+	// South Korea
+	"Korea":         "kr",
+	"Kuwait":        "kw",
+	"Kyrgyzstan":    "kg",
+	"Laos":          "la",
+	"Latvia":        "lv",
+	"Lebanon":       "lb",
+	"Liechtenstein": "li",
+	"Lithuania":     "lt",
+	"Luxembourg":    "lu",
+	"Macau":         "mo",
+	// North Macedonia
+	"Macedonia":       "mk",
+	"Malaysia":        "my",
+	"Mali":            "ml",
+	"Malta":           "mt",
+	"Mauritius":       "mu",
+	"Mexico":          "mx",
+	"Moldova":         "md",
+	"Monaco":          "mc",
+	"Morocco":         "ma",
+	"Mozambique":      "mz",
+	"Myanmar (Burma)": "mm",
+	"Namibia":         "na",
+	"Nepal":           "np",
+	// The Antilles were dissolved in 2010 and the page does not say which
+	// successor (bq, cw, sx) it means, so the entry stands for nl alone.
+	"Netherlands + Netherlands Antilles": "nl",
+	"New Zealand":                        "nz",
+	"Nicaragua":                          "ni",
+	"Niger":                              "ne",
+	"Nigeria":                            "ng",
+	"Norway":                             "no",
+	"Oman":                               "om",
+	"Pakistan":                           "pk",
+	"Panama":                             "pa",
+	"Papua New Guinea":                   "pg",
+	"Paraguay":                           "py",
+	"Peru":                               "pe",
+	"Philippines":                        "ph",
+	"Poland":                             "pl",
+	"Portugal":                           "pt",
+	"Qatar":                              "qa",
+	"Romania":                            "ro",
+	"Rwanda":                             "rw",
+	"San Marino":                         "sm",
+	"Saudi Arabia":                       "sa",
+	"Senegal":                            "sn",
+	"Serbia":                             "rs",
+	"Sierra Leone":                       "sl",
+	"Singapore":                          "sg",
+	"Slovakia":                           "sk",
+	"Slovenia":                           "si",
+	"South Africa":                       "za",
+	"Spain":                              "es",
+	"Sri Lanka":                          "lk",
+	"Sweden":                             "se",
+	"Switzerland":                        "ch",
+	"Taiwan":                             "tw",
+	"Tajikistan":                         "tj",
+	"Tanzania":                           "tz",
+	"Thailand":                           "th",
+	"Togo":                               "tg",
+	"Trinidad and Tobago":                "tt",
+	"Tunisia":                            "tn",
+	"Turkey":                             "tr",
+	"Turkmenistan":                       "tm",
+	"Uganda":                             "ug",
+	"Ukraine":                            "ua",
+	"United Arab Emirates":               "ae",
+	"United Kingdom":                     "gb",
+	"United States":                      "us",
+	"Uruguay":                            "uy",
+	"Uzbekistan":                         "uz",
+	"Venezuela":                          "ve",
+	"Vietnam":                            "vn",
+	"Yemen":                              "ye",
+	"Zambia":                             "zm",
+	"Zimbabwe":                           "zw",
+}
+
+// canaryPCRegions compares the regions Google's help page lists with the
+// snapshot, by code rather than by count: a region dropped and another added
+// leaves the count where it was. It does not reach Play, so it does not use
+// the shared client.
 func canaryPCRegions(t *testing.T) {
 	ctx, cancel := canaryCtx(t)
 	defer cancel()
@@ -115,7 +271,27 @@ func canaryPCRegions(t *testing.T) {
 	if !ok {
 		t.Fatal("no list follows the introduction")
 	}
-	if got, want := strings.Count(list, "<li>"), len(googleplayscraper.PCRegions()); got != want {
-		t.Errorf("the help page lists %d regions and PCRegions has %d — refresh the snapshot", got, want)
+	live := map[string]bool{}
+	for _, item := range strings.Split(list, "<li>")[1:] {
+		name, _, _ := strings.Cut(item, "</li>")
+		name = strings.Join(strings.Fields(html.UnescapeString(name)), " ")
+		code, ok := pcRegionNames[name]
+		if !ok {
+			t.Errorf("the help page lists %q, which pcRegionNames does not map — a new region, or a renamed one", name)
+			continue
+		}
+		live[code] = true
+	}
+
+	snapshot := googleplayscraper.PCRegions()
+	for _, code := range snapshot {
+		if !live[code] {
+			t.Errorf("%q is in PCRegions but no longer on the help page — remove it from the snapshot", code)
+		}
+	}
+	for code := range live {
+		if !slices.Contains(snapshot, code) {
+			t.Errorf("the help page lists %q and PCRegions does not — add it to the snapshot", code)
+		}
 	}
 }
