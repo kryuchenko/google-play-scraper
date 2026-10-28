@@ -82,8 +82,14 @@ func TestParseAppPageGameFixture(t *testing.T) {
 	if app.Video == "" {
 		t.Error("Video is empty")
 	}
-	if app.VideoImage == "" {
-		t.Error("VideoImage is empty")
+	if !strings.HasPrefix(app.VideoImage, "https://i.ytimg.com/") {
+		t.Errorf("VideoImage = %q, want the i.ytimg.com trailer thumbnail", app.VideoImage)
+	}
+	if app.VideoImage == app.HeaderImage {
+		t.Error("VideoImage repeats HeaderImage")
+	}
+	if app.DeveloperID != "6577204690045492686" {
+		t.Errorf("DeveloperID = %q, want the bare numeric id 6577204690045492686", app.DeveloperID)
 	}
 	if app.PreviewVideo == "" {
 		t.Error("PreviewVideo is empty")

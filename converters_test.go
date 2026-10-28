@@ -27,6 +27,25 @@ func TestDevIDFromURL(t *testing.T) {
 	}
 }
 
+func TestDeveloperIDFromPath(t *testing.T) {
+	tests := []struct {
+		in   string
+		want string
+	}{
+		{"/store/apps/dev?id=6577204690045492686", "6577204690045492686"},
+		{"/store/apps/developer?id=Verizon+Consumer+Group", "Verizon Consumer Group"},
+		{"/store/apps/developer?id=Caf%C3%A9+Games&hl=en", "Café Games"},
+		{"/store/apps/developer?id=bad%zz", "bad%zz"},
+		{"no-query-here", "no-query-here"},
+		{"", ""},
+	}
+	for _, tt := range tests {
+		if got := developerIDFromPath(tt.in); got != tt.want {
+			t.Errorf("developerIDFromPath(%q) = %q, want %q", tt.in, got, tt.want)
+		}
+	}
+}
+
 func TestToInt64TypedBranches(t *testing.T) {
 	// app_test covers float64/int/string/nil; pin the int64 branch here.
 	if got := toInt64(int64(9000000000)); got != 9000000000 {

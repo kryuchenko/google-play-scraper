@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"html"
+	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
@@ -203,9 +204,12 @@ func extractAppData(data map[string]any, appID, url string) (*App, error) {
 		app.Developer = toString(v)
 	}
 
-	// DeveloperID: [68][1][4][2]
+	// DeveloperID: the id= of the developer listing link at [68][1][4][2]
+	// (/store/apps/dev?id=<number> or /store/apps/developer?id=<name>), decoded
+	// so it can be passed straight to Developer. [68][2] is always numeric, even
+	// for developers that only have a name-based listing, so it is not used.
 	if v := getPath(appData, 68, 1, 4, 2); v != nil {
-		app.DeveloperID = toString(v)
+		app.DeveloperID = developerIDFromPath(toString(v))
 	}
 
 	// DeveloperEmail: [69][1][0]
@@ -294,8 +298,9 @@ func extractMedia(app *App, appData any) {
 	if v := getPath(appData, 100, 0, 0, 3, 2); v != nil {
 		app.Video = toString(v)
 	}
-	// VideoImage (trailer poster): [100][1][0][3][2]
-	if v := getPath(appData, 100, 1, 0, 3, 2); v != nil {
+	// VideoImage (trailer poster, an i.ytimg.com thumbnail): [100][0][1][3][2].
+	// [100][1][0][3][2] repeats the feature graphic at [96], so it is not used.
+	if v := getPath(appData, 100, 0, 1, 3, 2); v != nil {
 		app.VideoImage = toString(v)
 	}
 	// PreviewVideo (autoplay mp4 clip): [100][1][2][0][2]
@@ -395,6 +400,22 @@ func devIDFromURL(devURL string) string {
 		return after
 	}
 	return devURL
+}
+
+// developerIDFromPath returns the decoded id= query parameter of a developer
+// listing path, e.g. "6577204690045492686" from /store/apps/dev?id=6577204690045492686
+// or "Verizon Consumer Group" from /store/apps/developer?id=Verizon+Consumer+Group.
+// A value without a query is returned unchanged.
+func developerIDFromPath(devPath string) string {
+	_, rawQuery, ok := strings.Cut(devPath, "?")
+	if !ok {
+		return devPath
+	}
+	q, err := url.ParseQuery(rawQuery)
+	if err != nil || q.Get("id") == "" {
+		return devIDFromURL(devPath)
+	}
+	return q.Get("id")
 }
 
 func getPath(data any, indices ...int) any {

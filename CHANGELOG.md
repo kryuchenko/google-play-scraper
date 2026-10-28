@@ -37,6 +37,13 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- `App.VideoImage` is the trailer thumbnail (`i.ytimg.com`) again. It was read
+  from `[100][1][0]`, which now repeats the feature graphic, so it always
+  equalled `HeaderImage`.
+- `App.DeveloperID` is the developer id, not the listing path. It held
+  `/store/apps/dev?id=…` or `/store/apps/developer?id=…`; it now holds the
+  decoded `id`, a number or a name such as `Verizon Consumer Group`, which
+  `Developer` accepts as is.
 - `Search` returns more than one page again. Pagination had stopped working:
   the continuation token was read from a stale path, and the legacy qnKhOb
   payload it was sent to returns nothing. The web store no longer pages a
