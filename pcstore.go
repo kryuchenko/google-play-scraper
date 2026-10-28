@@ -115,8 +115,11 @@ func (c *Client) PCApp(ctx context.Context, appID string, opts AppOptions) (*PCA
 		exit.stopped.Store(false) // each attempt is judged by its own redirects
 		return c.newPageRequest(ctx, pageURL)
 	}, requireBlock("ds:4"))
+	// The pipeline wraps a cancellation together with the status the last
+	// attempt saw, so a cancel that lands after the exit must not be read as
+	// "not on PC": the caller left, and the error has to say so.
 	var status *StatusError
-	if exit.stopped.Load() && errors.As(err, &status) && status.Code/100 == 3 {
+	if exit.stopped.Load() && ctx.Err() == nil && errors.As(err, &status) && status.Code/100 == 3 {
 		return &PCApp{AppID: appID, URL: pageURL}, nil
 	}
 	if err != nil {

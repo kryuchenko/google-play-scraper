@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 )
 
 const (
@@ -329,6 +330,24 @@ func TestPCAppExitWithinTheRedirectLimit(t *testing.T) {
 			t.Errorf("%d locale hops then the exit: PCApp = %+v, %v; want the not-on-PC answer %v",
 				tc.localeHops, pc, err, tc.onPCAnswer)
 		}
+	}
+}
+
+// A cancel that lands after the exit was recognised is the caller leaving: the
+// pipeline wraps it together with the 302, and PCApp must not unwrap that into
+// a successful not-on-PC answer.
+func TestPCAppCancelAfterExitIsAnError(t *testing.T) {
+	const mobile = "https://play.google.com/store/apps/details?id=" + pcFixtureAppID
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	rt := &routingTransport{t: t, routes: []routeFunc{pcRedirects(t, func(int) string { return mobile })}}
+	c := NewClient(
+		WithHTTPClient(&http.Client{Transport: rt}),
+		WithHooks(Hooks{OnResponse: func(string, string, int, int, time.Duration, error) { cancel() }}),
+	)
+	pc, err := c.PCApp(ctx, pcFixtureAppID, AppOptions{})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("PCApp = %+v, %v; want an error wrapping context.Canceled", pc, err)
 	}
 }
 
