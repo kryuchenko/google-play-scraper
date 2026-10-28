@@ -107,6 +107,17 @@ components:
         developerLegalPhoneNumber:
           description: DeveloperLegalPhoneNumber is the trader's contact phone number (EU DSA only).
           type: string
+        developerNumericId:
+          description: |-
+            DeveloperNumericID is Google's numeric developer id ([68][2]). Unlike
+            DeveloperID it does not depend on which kind of listing link the
+            developer has: it was a number on every one of 138 listings checked on
+            2026-10-28, 26 of them with a name-based link. That makes it the field to
+            key on. It is empty when the record lacks it; Developer does not accept
+            it for name-based listings.
+          examples:
+            - "5700313618786177705"
+          type: string
         developerWebsite:
           description: DeveloperWebsite is the developer's website URL; may be empty.
           examples:

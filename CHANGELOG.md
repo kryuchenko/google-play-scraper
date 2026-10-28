@@ -7,6 +7,10 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- `App.DeveloperNumericID`: Google's numeric developer id (`[68][2]`). It was
+  a number on all 138 listings checked, also when the listing link uses a
+  name, so it is the field to key on. `DeveloperID` stays the value
+  `Developer` takes.
 - Soft-block detection. Every response is classified before the adaptive
   controller or a hook sees it: a redirect to `google.com/sorry`, a page with
   no data blocks, or an HTML page served where a `batchexecute` envelope
@@ -37,6 +41,18 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- `App.VideoImage` is the trailer thumbnail (`i.ytimg.com`) again. It was read
+  from `[100][1][0]`, which now repeats the feature graphic, so it always
+  equalled `HeaderImage`.
+- `App.DeveloperID` is the developer id, not the listing path. It held
+  `/store/apps/dev?id=…` or `/store/apps/developer?id=…`; it now holds the
+  decoded `id`, a number or a name such as `Verizon Consumer Group`, which
+  `Developer` accepts as is. Search and feed results decode it the same way;
+  they used to return `Verizon+Consumer+Group`, which `Developer` escaped into
+  a different name.
+- `Developer` sends a numeric id to the numeric listing whatever its size. It
+  used `strconv.Atoi` to tell ids from names, and Google's 19-digit ids above
+  the int64 range were sent to the by-name listing instead.
 - `Search` returns more than one page again. Pagination had stopped working:
   the continuation token was read from a stale path, and the legacy qnKhOb
   payload it was sent to returns nothing. The web store no longer pages a

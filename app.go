@@ -203,9 +203,16 @@ func extractAppData(data map[string]any, appID, url string) (*App, error) {
 		app.Developer = toString(v)
 	}
 
-	// DeveloperID: [68][1][4][2]
+	// DeveloperID: the id= of the developer listing link at [68][1][4][2]
+	// (/store/apps/dev?id=<number> or /store/apps/developer?id=<name>), decoded
+	// so it can be passed straight to Developer. [68][2] is numeric even for
+	// developers that only have a name-based listing, so it is not used here.
 	if v := getPath(appData, 68, 1, 4, 2); v != nil {
-		app.DeveloperID = toString(v)
+		app.DeveloperID = developerIDFromLink(toString(v))
+	}
+	// DeveloperNumericID: [68][2], numeric on every listing checked so far.
+	if v := getPath(appData, 68, 2); v != nil {
+		app.DeveloperNumericID = toString(v)
 	}
 
 	// DeveloperEmail: [69][1][0]
@@ -294,8 +301,9 @@ func extractMedia(app *App, appData any) {
 	if v := getPath(appData, 100, 0, 0, 3, 2); v != nil {
 		app.Video = toString(v)
 	}
-	// VideoImage (trailer poster): [100][1][0][3][2]
-	if v := getPath(appData, 100, 1, 0, 3, 2); v != nil {
+	// VideoImage (trailer poster, an i.ytimg.com thumbnail): [100][0][1][3][2].
+	// [100][1][0][3][2] repeats the feature graphic at [96], so it is not used.
+	if v := getPath(appData, 100, 0, 1, 3, 2); v != nil {
 		app.VideoImage = toString(v)
 	}
 	// PreviewVideo (autoplay mp4 clip): [100][1][2][0][2]

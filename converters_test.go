@@ -27,6 +27,32 @@ func TestDevIDFromURL(t *testing.T) {
 	}
 }
 
+func TestDeveloperIDFromLink(t *testing.T) {
+	tests := []struct {
+		in   string
+		want string
+	}{
+		{"/store/apps/dev?id=6577204690045492686", "6577204690045492686"},
+		{"https://play.google.com/store/apps/dev?id=5700313618786177705", "5700313618786177705"},
+		{"/store/apps/developer?id=Verizon+Consumer+Group", "Verizon Consumer Group"},
+		{"/store/apps/developer?id=A%2BB", "A+B"},                 // a literal plus
+		{"/store/apps/developer?id=Tom+%26+Jerry", "Tom & Jerry"}, // a literal ampersand
+		{"/store/apps/developer?id=Caf%C3%A9+Games&hl=en", "Café Games"},
+		{"/store/apps/developer?hl=en&id=Late+Id", "Late Id"}, // id not first
+		{"/store/apps/developer?id=A%2BB&hl=%zz", "A+B"},      // a malformed other parameter
+		{"/store/apps/developer?id=bad%zz", "bad%zz"},         // an id that does not decode
+		{"/store/apps/developer?hl=en", ""},                   // no id at all
+		{"/store/apps/developer?uid=1", ""},                   // a lookalike key
+		{"no-query-here", ""},
+		{"", ""},
+	}
+	for _, tt := range tests {
+		if got := developerIDFromLink(tt.in); got != tt.want {
+			t.Errorf("developerIDFromLink(%q) = %q, want %q", tt.in, got, tt.want)
+		}
+	}
+}
+
 func TestToInt64TypedBranches(t *testing.T) {
 	// app_test covers float64/int/string/nil; pin the int64 branch here.
 	if got := toInt64(int64(9000000000)); got != 9000000000 {
@@ -74,4 +100,23 @@ func makeAppDataWith18(marker int) []any {
 	data := make([]any, 19)
 	data[18] = []any{float64(marker)}
 	return data
+}
+
+func TestIsAllDigits(t *testing.T) {
+	tests := map[string]bool{
+		"5700313618786177705":    true,
+		"9999999999999999999":    true, // above int64; Atoi rejects it
+		"18446744073709551616":   true, // above uint64 as well
+		"":                       false,
+		"-5":                     false,
+		"+5":                     false,
+		"12a":                    false,
+		"Verizon Consumer Group": false,
+		"١٢٣":                    false, // non-ASCII digits
+	}
+	for in, want := range tests {
+		if got := isAllDigits(in); got != want {
+			t.Errorf("isAllDigits(%q) = %v, want %v", in, got, want)
+		}
+	}
 }

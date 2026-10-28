@@ -58,6 +58,22 @@ func TestParseAppPageUnavailableFixture(t *testing.T) {
 // game listing: trailer media, in-app-purchase range, ad support, recent changes
 // and the EU DSA trader contact details. These are absent from the Maps fixture,
 // so this fixture is the one that keeps their parse paths verifiably alive.
+// The region-locked fixture is a developer with a name-based listing link
+// (/store/apps/developer?id=Verizon+Consumer+Group): DeveloperID is the name
+// Developer takes, DeveloperNumericID the numeric id Google keeps for them.
+func TestParseAppPageNamedDeveloper(t *testing.T) {
+	app, err := parseAppPage(readFixture(t, "app_unavailable_region.html"), "fixture", "https://play.google.com/store/apps/details?id=fixture")
+	if err != nil {
+		t.Fatalf("parseAppPage: %v", err)
+	}
+	if app.DeveloperID != "Verizon Consumer Group" {
+		t.Errorf("DeveloperID = %q, want the decoded name Verizon Consumer Group", app.DeveloperID)
+	}
+	if app.DeveloperNumericID != "8204699366240019704" {
+		t.Errorf("DeveloperNumericID = %q, want 8204699366240019704", app.DeveloperNumericID)
+	}
+}
+
 func TestParseAppPageGameFixture(t *testing.T) {
 	app, err := parseAppPage(readFixture(t, "app_page_game.html"), "com.king.candycrushsaga", "https://play.google.com/store/apps/details?id=com.king.candycrushsaga")
 	if err != nil {
@@ -82,8 +98,17 @@ func TestParseAppPageGameFixture(t *testing.T) {
 	if app.Video == "" {
 		t.Error("Video is empty")
 	}
-	if app.VideoImage == "" {
-		t.Error("VideoImage is empty")
+	if !strings.HasPrefix(app.VideoImage, "https://i.ytimg.com/") {
+		t.Errorf("VideoImage = %q, want the i.ytimg.com trailer thumbnail", app.VideoImage)
+	}
+	if app.VideoImage == app.HeaderImage {
+		t.Error("VideoImage repeats HeaderImage")
+	}
+	if app.DeveloperID != "6577204690045492686" {
+		t.Errorf("DeveloperID = %q, want the bare numeric id 6577204690045492686", app.DeveloperID)
+	}
+	if app.DeveloperNumericID != "6577204690045492686" {
+		t.Errorf("DeveloperNumericID = %q, want 6577204690045492686", app.DeveloperNumericID)
 	}
 	if app.PreviewVideo == "" {
 		t.Error("PreviewVideo is empty")
