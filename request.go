@@ -118,8 +118,9 @@ func WithConcurrency(n int) ClientOption {
 // ended: a client that stops at a 3xx gets a StatusError instead. The default
 // client keeps no cookies; supplying a Jar is allowed and changes what Google
 // sends back, consent pages included. PCApp sends through a copy whose
-// CheckRedirect stops at a redirect out of the PC store and hands every other
-// redirect to the supplied client's own policy.
+// CheckRedirect runs the supplied client's own policy first, then stops at the
+// one redirect that means "no PC build": from the PC listing to the phone
+// listing of the same package.
 //
 // Use it to inject a transport with proxy support, custom TLS, or request
 // tracing. Combine with WithTimeout to override the client's timeout without
@@ -240,21 +241,21 @@ func (c *Client) get(ctx context.Context, url string) ([]byte, error) {
 // getPage performs a GET request whose 200 body is classified by validate
 // before the controller sees it (softblock.go).
 func (c *Client) getPage(ctx context.Context, url string, validate validator) ([]byte, error) {
-	return c.getPageVia(ctx, c.httpClient, url, validate)
+	return c.do(ctx, c.httpClient, http.MethodGet, url, func() (*http.Request, error) {
+		return c.newPageRequest(ctx, url)
+	}, validate)
 }
 
-// getPageVia is getPage sent through hc rather than the client's own.
-func (c *Client) getPageVia(ctx context.Context, hc *http.Client, url string, validate validator) ([]byte, error) {
-	return c.do(ctx, hc, http.MethodGet, url, func() (*http.Request, error) {
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-		if err != nil {
-			return nil, err
-		}
-		req.Header.Set("User-Agent", c.userAgent)
-		req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
-		req.Header.Set("Accept-Language", "en-US,en;q=0.9")
-		return req, nil
-	}, validate)
+// newPageRequest builds the GET a store page is fetched with.
+func (c *Client) newPageRequest(ctx context.Context, url string) (*http.Request, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("User-Agent", c.userAgent)
+	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+	req.Header.Set("Accept-Language", "en-US,en;q=0.9")
+	return req, nil
 }
 
 // post performs a POST request through the pipeline. Every POST here is a

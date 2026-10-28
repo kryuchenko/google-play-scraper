@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync/atomic"
 )
 
 // Google Play Games on PC.
@@ -23,8 +24,12 @@ import (
 // costs a megabyte of a page nobody asked for, and the page at the end of it
 // says nothing about PC.
 
-// pcStorePath prefixes every page of the PC store.
-const pcStorePath = "/pc-store/"
+// pcDetailsPath is the PC listing; mobileDetailsPath is the phone listing it
+// redirects to for an app without a PC build.
+const (
+	pcDetailsPath     = "/pc-store/games/details"
+	mobileDetailsPath = "/store/apps/details"
+)
 
 // PCApp is an app's Google Play Games on PC listing.
 type PCApp struct {
@@ -102,14 +107,16 @@ func (c *Client) PCApp(ctx context.Context, appID string, opts AppOptions) (*PCA
 		opts.Country = "us"
 	}
 
-	pageURL := fmt.Sprintf("%s%sgames/details?id=%s&hl=%s&gl=%s",
-		BaseURL, pcStorePath, appID, opts.Lang, opts.Country)
+	pageURL := fmt.Sprintf("%s%s?id=%s&hl=%s&gl=%s",
+		BaseURL, pcDetailsPath, appID, opts.Lang, opts.Country)
 
-	body, err := c.getPageVia(ctx, c.pcStoreClient(), pageURL, requireBlock("ds:4"))
-	var redirect *StatusError
-	if errors.As(err, &redirect) && redirect.Code/100 == 3 {
-		// Only a redirect off the PC store arrives as a status; see
-		// pcStoreClient.
+	hc, exit := c.pcStoreClient()
+	body, err := c.do(ctx, hc, http.MethodGet, pageURL, func() (*http.Request, error) {
+		exit.stopped.Store(false) // each attempt is judged by its own redirects
+		return c.newPageRequest(ctx, pageURL)
+	}, requireBlock("ds:4"))
+	var status *StatusError
+	if exit.stopped.Load() && errors.As(err, &status) && status.Code/100 == 3 {
 		return &PCApp{AppID: appID, URL: pageURL}, nil
 	}
 	if err != nil {
@@ -118,37 +125,66 @@ func (c *Client) PCApp(ctx context.Context, appID string, opts AppOptions) (*PCA
 	return parsePCAppPage(body, appID, pageURL)
 }
 
-// pcStoreClient returns c.httpClient with one change: a redirect from the PC
-// store to another page of the same host is returned instead of followed, and
-// arrives as a 3xx StatusError.
-//
-// Every other redirect is followed as before -- google.com/sorry and consent
-// pages included -- so soft-block detection sees them where it always has,
-// and a caller's own CheckRedirect still decides them. The copy shares the
+// pcStoreClient returns a copy of c.httpClient whose redirect policy is a
+// pcExitPolicy wrapped around the client's own. The copy shares the
 // transport, so it shares the connection pool too.
-func (c *Client) pcStoreClient() *http.Client {
+func (c *Client) pcStoreClient() (*http.Client, *pcExitPolicy) {
 	hc := *c.httpClient
-	next := hc.CheckRedirect
-	hc.CheckRedirect = func(req *http.Request, via []*http.Request) error {
-		if leavesPCStore(via[0].URL, req.URL) {
-			return http.ErrUseLastResponse
-		}
-		if next != nil {
-			return next(req, via)
-		}
-		// net/http's own policy, which a nil CheckRedirect would have applied.
-		if len(via) >= 10 {
-			return errors.New("stopped after 10 redirects")
-		}
-		return nil
-	}
-	return &hc
+	policy := &pcExitPolicy{next: hc.CheckRedirect}
+	hc.CheckRedirect = policy.checkRedirect
+	return &hc, policy
 }
 
-// leavesPCStore reports whether a redirect from a PC store page goes to a page
-// of the same host outside the PC store.
-func leavesPCStore(from, to *url.URL) bool {
-	return strings.EqualFold(from.Hostname(), to.Hostname()) && !strings.HasPrefix(to.Path, pcStorePath)
+// pcExitPolicy stops a PC listing request at one redirect only, the one
+// isPCExit describes, and records that it did. The record is what tells the
+// "not on PC" answer from every other 3xx a request can end on -- a redirect
+// the caller's own policy stopped, a 302 without a Location, a 304 -- and
+// those reach the caller as the StatusError they are.
+//
+// Every other redirect is followed as before, google.com/sorry and consent
+// pages included, so soft-block detection sees them where it always has.
+type pcExitPolicy struct {
+	next    func(req *http.Request, via []*http.Request) error
+	stopped atomic.Bool
+}
+
+func (p *pcExitPolicy) checkRedirect(req *http.Request, via []*http.Request) error {
+	// The caller's policy, or net/http's limit, has the first word: a chain it
+	// would refuse is refused here too, whatever the last hop is, and a hop it
+	// stops itself is its answer rather than ours.
+	if err := p.allowed(req, via); err != nil {
+		return err
+	}
+	if isPCExit(via[len(via)-1].URL, req.URL) {
+		p.stopped.Store(true)
+		return http.ErrUseLastResponse
+	}
+	return nil
+}
+
+// allowed applies the caller's CheckRedirect, or the limit net/http applies
+// when there is none.
+func (p *pcExitPolicy) allowed(req *http.Request, via []*http.Request) error {
+	if p.next != nil {
+		return p.next(req, via)
+	}
+	if len(via) >= 10 {
+		return errors.New("stopped after 10 redirects")
+	}
+	return nil
+}
+
+// isPCExit reports whether a redirect is the PC store's answer for an app
+// without a PC build: from the PC listing of a package to the phone listing
+// of the same package, on the same host. That is the only shape observed.
+// from is the request being redirected, not the first one in the chain.
+func isPCExit(from, to *url.URL) bool {
+	id := from.Query().Get("id")
+	return id != "" &&
+		strings.EqualFold(from.Hostname(), to.Hostname()) &&
+		from.Path == pcDetailsPath &&
+		to.Path == mobileDetailsPath &&
+		to.Query().Get("id") == id
 }
 
 // parsePCAppPage reads a PC listing. The app record is ds:4; the system
