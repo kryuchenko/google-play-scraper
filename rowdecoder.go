@@ -2,6 +2,7 @@ package googleplayscraper
 
 import (
 	"fmt"
+	"net/url"
 	"strings"
 )
 
@@ -146,17 +147,29 @@ func firstAppID(arr []any, candidates [][]int, requirePrefix bool) string {
 	return ""
 }
 
-// developerIDFromLink extracts the id from a "…?id=DEV" developer URL, returning
-// "" when the link is absent or carries no id.
+// developerIDFromLink returns the decoded id= parameter of a developer listing
+// link, "6577204690045492686" for /store/apps/dev?id=6577204690045492686 and
+// "Verizon Consumer Group" for /store/apps/developer?id=Verizon+Consumer+Group,
+// in the form Developer takes. Other parameters are ignored, even malformed
+// ones; an id that does not decode is returned as written. It returns "" when
+// the link is absent or carries no id. App, search and feed results all read
+// developer ids through here, so they agree.
 func developerIDFromLink(link string) string {
-	if !strings.Contains(link, "?id=") {
+	_, query, ok := strings.Cut(link, "?")
+	if !ok {
 		return ""
 	}
-	parts := strings.Split(link, "?id=")
-	if len(parts) < 2 {
-		return ""
+	for param := range strings.SplitSeq(query, "&") {
+		raw, found := strings.CutPrefix(param, "id=")
+		if !found {
+			continue
+		}
+		if id, err := url.QueryUnescape(raw); err == nil {
+			return id
+		}
+		return raw
 	}
-	return parts[1]
+	return ""
 }
 
 // resultURL prefers an explicit "/store/apps/…" path (resolved against BaseURL).

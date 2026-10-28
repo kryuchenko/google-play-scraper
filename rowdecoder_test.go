@@ -166,6 +166,24 @@ func TestDecodeResultRowGolden(t *testing.T) {
 	}
 }
 
+// A name-based developer link decodes to the same DeveloperID App reports for
+// that developer, so a search or feed result can be passed to Developer as is.
+func TestDecodeResultRowNamedDeveloperMatchesApp(t *testing.T) {
+	const link = "/store/apps/developer?id=Verizon+Consumer+Group"
+	var row []any
+	row = rowSet(row, "com.example.feed", 12, 0)
+	row = rowSet(row, link, 4, 0, 0, 1, 4, 2)
+	got := decodeResultRow(row, qnKhObRowPaths)
+
+	app, err := parseAppPage(readFixture(t, "app_unavailable_region.html"), "fixture", "https://play.google.com/store/apps/details?id=fixture")
+	if err != nil {
+		t.Fatalf("parseAppPage: %v", err)
+	}
+	if got.DeveloperID != "Verizon Consumer Group" || got.DeveloperID != app.DeveloperID {
+		t.Errorf("row DeveloperID = %q, App DeveloperID = %q; want both Verizon Consumer Group", got.DeveloperID, app.DeveloperID)
+	}
+}
+
 // TestDecodeResultRowEdges locks the two behaviours most at risk of silent
 // drift: requireAppID must reject a non-package value in the appID slot, and an
 // absent price tuple must yield Free=true (not Free=false).

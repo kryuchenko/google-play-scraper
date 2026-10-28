@@ -27,21 +27,28 @@ func TestDevIDFromURL(t *testing.T) {
 	}
 }
 
-func TestDeveloperIDFromPath(t *testing.T) {
+func TestDeveloperIDFromLink(t *testing.T) {
 	tests := []struct {
 		in   string
 		want string
 	}{
 		{"/store/apps/dev?id=6577204690045492686", "6577204690045492686"},
+		{"https://play.google.com/store/apps/dev?id=5700313618786177705", "5700313618786177705"},
 		{"/store/apps/developer?id=Verizon+Consumer+Group", "Verizon Consumer Group"},
+		{"/store/apps/developer?id=A%2BB", "A+B"},                 // a literal plus
+		{"/store/apps/developer?id=Tom+%26+Jerry", "Tom & Jerry"}, // a literal ampersand
 		{"/store/apps/developer?id=Caf%C3%A9+Games&hl=en", "Café Games"},
-		{"/store/apps/developer?id=bad%zz", "bad%zz"},
-		{"no-query-here", "no-query-here"},
+		{"/store/apps/developer?hl=en&id=Late+Id", "Late Id"}, // id not first
+		{"/store/apps/developer?id=A%2BB&hl=%zz", "A+B"},      // a malformed other parameter
+		{"/store/apps/developer?id=bad%zz", "bad%zz"},         // an id that does not decode
+		{"/store/apps/developer?hl=en", ""},                   // no id at all
+		{"/store/apps/developer?uid=1", ""},                   // a lookalike key
+		{"no-query-here", ""},
 		{"", ""},
 	}
 	for _, tt := range tests {
-		if got := developerIDFromPath(tt.in); got != tt.want {
-			t.Errorf("developerIDFromPath(%q) = %q, want %q", tt.in, got, tt.want)
+		if got := developerIDFromLink(tt.in); got != tt.want {
+			t.Errorf("developerIDFromLink(%q) = %q, want %q", tt.in, got, tt.want)
 		}
 	}
 }

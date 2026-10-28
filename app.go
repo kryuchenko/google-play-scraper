@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"html"
-	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
@@ -209,7 +208,7 @@ func extractAppData(data map[string]any, appID, url string) (*App, error) {
 	// so it can be passed straight to Developer. [68][2] is always numeric, even
 	// for developers that only have a name-based listing, so it is not used.
 	if v := getPath(appData, 68, 1, 4, 2); v != nil {
-		app.DeveloperID = developerIDFromPath(toString(v))
+		app.DeveloperID = developerIDFromLink(toString(v))
 	}
 	// DeveloperNumericID: [68][2], numeric for every developer.
 	if v := getPath(appData, 68, 2); v != nil {
@@ -404,22 +403,6 @@ func devIDFromURL(devURL string) string {
 		return after
 	}
 	return devURL
-}
-
-// developerIDFromPath returns the decoded id= query parameter of a developer
-// listing path, e.g. "6577204690045492686" from /store/apps/dev?id=6577204690045492686
-// or "Verizon Consumer Group" from /store/apps/developer?id=Verizon+Consumer+Group.
-// A value without a query is returned unchanged.
-func developerIDFromPath(devPath string) string {
-	_, rawQuery, ok := strings.Cut(devPath, "?")
-	if !ok {
-		return devPath
-	}
-	q, err := url.ParseQuery(rawQuery)
-	if err != nil || q.Get("id") == "" {
-		return devIDFromURL(devPath)
-	}
-	return q.Get("id")
 }
 
 func getPath(data any, indices ...int) any {
