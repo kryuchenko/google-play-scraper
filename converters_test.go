@@ -101,3 +101,22 @@ func makeAppDataWith18(marker int) []any {
 	data[18] = []any{float64(marker)}
 	return data
 }
+
+func TestIsAllDigits(t *testing.T) {
+	tests := map[string]bool{
+		"5700313618786177705":    true,
+		"9999999999999999999":    true, // above int64; Atoi rejects it
+		"18446744073709551616":   true, // above uint64 as well
+		"":                       false,
+		"-5":                     false,
+		"+5":                     false,
+		"12a":                    false,
+		"Verizon Consumer Group": false,
+		"١٢٣":                    false, // non-ASCII digits
+	}
+	for in, want := range tests {
+		if got := isAllDigits(in); got != want {
+			t.Errorf("isAllDigits(%q) = %v, want %v", in, got, want)
+		}
+	}
+}

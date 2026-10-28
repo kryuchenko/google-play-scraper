@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net/url"
-	"strconv"
 )
 
 // DeveloperOptions configures the developer apps request
@@ -35,11 +34,13 @@ func (c *Client) Developer(ctx context.Context, opts DeveloperOptions) ([]Search
 		opts.Num = 60
 	}
 
-	// Check if devId is numeric (dev ID) or string (developer name)
-	_, isNumeric := strconv.Atoi(opts.DevID)
+	// A numeric id is all digits; anything else is a developer name. Atoi was
+	// used here, but Google's ids are 19 digits and the larger ones do not fit
+	// an int64, so they were sent to the by-name listing.
+	isNumeric := isAllDigits(opts.DevID)
 
 	var path string
-	if isNumeric == nil {
+	if isNumeric {
 		path = "/store/apps/dev"
 	} else {
 		path = "/store/apps/developer"
@@ -53,7 +54,7 @@ func (c *Client) Developer(ctx context.Context, opts DeveloperOptions) ([]Search
 		return nil, fmt.Errorf("request failed: %w", err)
 	}
 
-	results, err := parseDeveloperPage(body, isNumeric == nil, opts.Num)
+	results, err := parseDeveloperPage(body, isNumeric, opts.Num)
 	if err != nil {
 		return nil, err
 	}
@@ -175,4 +176,17 @@ func parseDeveloperApp(item any, isNumericID bool) SearchResult {
 	}
 
 	return result
+}
+
+// isAllDigits reports whether s is a non-empty run of ASCII digits.
+func isAllDigits(s string) bool {
+	if s == "" {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		if s[i] < '0' || s[i] > '9' {
+			return false
+		}
+	}
+	return true
 }

@@ -205,12 +205,12 @@ func extractAppData(data map[string]any, appID, url string) (*App, error) {
 
 	// DeveloperID: the id= of the developer listing link at [68][1][4][2]
 	// (/store/apps/dev?id=<number> or /store/apps/developer?id=<name>), decoded
-	// so it can be passed straight to Developer. [68][2] is always numeric, even
-	// for developers that only have a name-based listing, so it is not used.
+	// so it can be passed straight to Developer. [68][2] is numeric even for
+	// developers that only have a name-based listing, so it is not used here.
 	if v := getPath(appData, 68, 1, 4, 2); v != nil {
 		app.DeveloperID = developerIDFromLink(toString(v))
 	}
-	// DeveloperNumericID: [68][2], numeric for every developer.
+	// DeveloperNumericID: [68][2], numeric on every listing checked so far.
 	if v := getPath(appData, 68, 2); v != nil {
 		app.DeveloperNumericID = toString(v)
 	}

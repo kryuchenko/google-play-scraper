@@ -50,6 +50,9 @@ All notable changes to this project are documented here. The format is based on
   `Developer` accepts as is. Search and feed results decode it the same way;
   they used to return `Verizon+Consumer+Group`, which `Developer` escaped into
   a different name.
+- `Developer` sends a numeric id to the numeric listing whatever its size. It
+  used `strconv.Atoi` to tell ids from names, and Google's 19-digit ids above
+  the int64 range were sent to the by-name listing instead.
 - `Search` returns more than one page again. Pagination had stopped working:
   the continuation token was read from a stale path, and the legacy qnKhOb
   payload it was sent to returns nothing. The web store no longer pages a
