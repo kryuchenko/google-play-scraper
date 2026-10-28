@@ -99,6 +99,8 @@ per-method caveats are on
 - **Charts**: top free, top paid, grossing, new and movers, per category.
 - **Permissions** and the **data-safety** declaration.
 - **Availability** across the 177 storefront country codes.
+- **Google Play Games on PC**: whether a game has a Windows build, and the
+  screenshots, trailer and rating of its PC listing.
 - **The catalog**: every package id the store lists, counted in ninety seconds
   or swept in full, kept current as a snapshot, and indexed by genre.
 
@@ -129,6 +131,27 @@ reconcile stdout with stderr.
 `available`, `not_in_region`, `not_found` or `error`, with the reason for an
 `error` under `errors`. `globallyRemoved` is true only when every country
 answered and none of them lists the app.
+
+### Google Play Games on PC
+
+```bash
+gpscrape pcapp com.mytona.cookingdiary.android | jq '{onPC, title, youTubeId, screenshots}'
+gpscrape pcapp com.mytona.cookingdiary.android com.whatsapp -lang de
+```
+
+`pcapp` reads the PC store's listing, one page per app. A game with a PC build
+comes back with `onPC: true` and the PC listing's own media: screenshots
+(sometimes a set made for PC, sometimes a subset of the phone ones), the
+trailer for that language as `video` and `youTubeId`, the rating PC players
+gave, and the system requirements. An app without one is a record too, with
+`onPC: false` and nothing else, because Google answers it with a redirect to
+the phone listing and that redirect is the answer.
+
+`-country` does not tell you where the PC client runs. The PC store serves its
+listing to storefronts the client does not support, Russia and Iran among
+them, so the official region list is a static snapshot instead:
+`PCRegions()` in Go, copied from
+[Google's help page](https://support.google.com/googleplay/answer/11358071).
 
 ### Reviews, including all of them
 
@@ -278,6 +301,8 @@ and `GODEBUG=http2debug=1` prints the HTTP/2 frames.
 | `ClusterURLs` / `Cluster` | the clusters on a category page, and one cluster's apps |
 | `Categories` | the 54 store categories (a static list; no request) |
 | `Availability` / `AvailableCountries` | per-country status across the 177 codes in `AllCountries` |
+| `PCApp` | the Google Play Games on PC listing: whether there is one, its media, rating and requirements |
+| `PCRegions` | the 141 regions where Google Play Games on PC is offered (a static snapshot; no request) |
 | `CategoryApps` | many slices of one category, unioned and deduplicated |
 | `CatalogSeq` / `CatalogSize` | every app id in the store via the sitemaps / the estimated count |
 | `CatalogShardSeq` | the same sweep with the shard as its unit, so a run can resume from the URLs it did not reach |

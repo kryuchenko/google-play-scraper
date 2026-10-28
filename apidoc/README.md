@@ -32,7 +32,8 @@ this directory depends on [swaggo/swag](https://github.com/swaggo/swag) (the
 - **GET** HTML pages returning `AF_initDataCallback` `ds:N` blocks:
   `/store/apps/details` (app + availability probe), `/store/search`,
   `/store/apps/top`, `/store/apps/category/{category}`, `/store/apps/dev`,
-  `/store/apps/developer`, `/store/apps/datasafety`, and absolute cluster URLs.
+  `/store/apps/developer`, `/store/apps/datasafety`, absolute cluster URLs,
+  and the Google Play Games on PC listing `/pc-store/games/details`.
 - **POST** `/_/PlayStoreUi/data/batchexecute` RPCs (one operation each):
   `vyAe2` (lists), `qnKhOb` (pagination), `oCPfdb` (reviews), `xdSrCf`
   (permissions), `IJ4APc` (suggestions).

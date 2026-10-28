@@ -95,6 +95,7 @@ func TestPathCoverage(t *testing.T) {
 		"/store/apps/dev",
 		"/store/apps/developer",
 		"/store/apps/datasafety",
+		"/pc-store/games/details",
 		"/_/PlayStoreUi/data/batchexecute",
 		"/robots.txt",
 		"/sitemaps/sitemaps-index-{n}.xml",
