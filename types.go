@@ -91,6 +91,13 @@ type App struct {
 	// DeveloperID is the developer listing id used by GET /store/apps/developer
 	// (a numeric id or a quoted name).
 	DeveloperID string `json:"developerId" example:"Google LLC"`
+	// DeveloperNumericID is Google's numeric developer id ([68][2]). Unlike
+	// DeveloperID it does not depend on which kind of listing link the
+	// developer has: it was a number on every one of 138 listings checked on
+	// 2026-10-28, 26 of them with a name-based link. That makes it the field to
+	// key on. It is empty when the record lacks it; Developer does not accept
+	// it for name-based listings.
+	DeveloperNumericID string `json:"developerNumericId,omitempty" example:"5700313618786177705"`
 	// DeveloperEmail is the developer's contact email; may be empty.
 	DeveloperEmail string `json:"developerEmail" format:"email" example:"apps-help@google.com"`
 	// DeveloperWebsite is the developer's website URL; may be empty.
