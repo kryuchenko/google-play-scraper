@@ -1,0 +1,47 @@
+# Scenarios of the official MCP conformance suite that gpscrape-mcp is
+# expected to fail. Run by CI (.github/workflows/test.yml) with
+#   npx @modelcontextprotocol/conformance server --url ... --expected-failures mcp/conformance-baseline.yml
+#
+# The suite is written against the reference "everything" test server: these
+# scenarios call its fixture tools (test_simple_text, test_sampling, ...),
+# prompts (test_simple_prompt, ...) and resources by name, or use features a
+# read-only store scraper has no use for (completion, resource
+# subscriptions). Adding the fixtures to this server would show agents
+# fake tools. The server answers every one of them correctly at the
+# protocol level: -32602 for an unknown tool, prompt or resource, -32601 for an
+# unsupported method.
+#
+# Everything else -- initialize, ping, logging, tools/list, resources/list,
+# prompts/list, DNS-rebinding protection -- must pass. The runner also fails if
+# an entry here starts passing, so the list cannot go stale.
+server:
+  # fixture tools of the reference server
+  - tools-call-simple-text
+  - tools-call-image
+  - tools-call-audio
+  - tools-call-embedded-resource
+  - tools-call-mixed-content
+  - tools-call-with-logging
+  - tools-call-error
+  - tools-call-with-progress
+  - tools-call-sampling
+  - tools-call-elicitation
+  - elicitation-sep1034-defaults
+  - elicitation-sep1330-enums
+  # fixture resources
+  - resources-read-text
+  - resources-read-binary
+  - resources-templates-read
+  # fixture prompts
+  - prompts-get-simple
+  - prompts-get-with-args
+  - prompts-get-embedded-resource
+  - prompts-get-with-image
+  # The HTTP transport is stateless by design (no Mcp-Session-Id: every
+  # tool is a one-shot read, and it is the sessionless direction of the spec,
+  # SEP-2567), so the multi-stream session check only warns.
+  - server-sse-multiple-streams
+  # optional features not offered
+  - completion-complete
+  - resources-subscribe
+  - resources-unsubscribe

@@ -142,7 +142,9 @@ type App struct {
 	// GenreID is the stable, uppercased category id (a Play category enum value).
 	// See the categories list for the full set; "GAME_*" prefixes a game genre.
 	GenreID string `json:"genreId" example:"TRAVEL_AND_LOCAL"`
-	// Categories is the list of category names the app is filed under.
+	// Categories lists the names the store files the app under: the genre
+	// first, then its tags (for a game: "Puzzle", "Match 3", "Single
+	// player"...). Localized like Genre. Empty when the page has neither.
 	Categories []string `json:"categories"`
 	// Version is the current version string; may be empty when Google reports
 	// "Varies with device".

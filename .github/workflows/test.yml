@@ -91,6 +91,41 @@ jobs:
           go build ./...
           go test ./...
 
+      # The MCP server is its own module so the root stays zero-dependency.
+      # It is built against this branch only: it uses errors (ErrNotFound,
+      # ErrBlocked) that the last release, v1.4.0, does not have yet. Add a
+      # proxy-resolved step like lightfeed's once the next release is out.
+      - name: Build and test mcp submodule against this branch
+        if: matrix.go-version == 'stable'
+        env:
+          GOWORK: ''
+        working-directory: mcp
+        run: |
+          test -z "$(gofmt -l .)" || { gofmt -l .; exit 1; }
+          go build ./...
+          go vet ./...
+          go test -race ./...
+
+      # The official MCP conformance suite against the real HTTP server. Most
+      # of its server scenarios call fixtures of the reference test server
+      # (test_* tools, prompts, resources); those are listed, with the reason,
+      # in mcp/conformance-baseline.yml. The run fails on any other failure,
+      # and on a baseline entry that starts passing. Pinned like the linters
+      # above, so a new suite release cannot turn a green branch red on its
+      # own. No request reaches Google: the scenarios only list and call
+      # names this server does not have.
+      - name: MCP conformance
+        if: matrix.go-version == 'stable'
+        env:
+          GOWORK: ''
+        run: |
+          go build -o "$RUNNER_TEMP/gpscrape-mcp" ./mcp/cmd/gpscrape-mcp
+          "$RUNNER_TEMP/gpscrape-mcp" -http 127.0.0.1:3001 &
+          timeout 15 bash -c 'until curl -sf http://127.0.0.1:3001/healthz; do sleep 0.5; done'
+          npx -y @modelcontextprotocol/conformance@0.1.16 server \
+            --url http://127.0.0.1:3001/mcp \
+            --expected-failures mcp/conformance-baseline.yml
+
       # The benchmarks are run once each rather than measured: the point here
       # is that they still compile and do not panic on the fixtures. Timing in
       # CI is meaningless, and the numbers are only comparable within one

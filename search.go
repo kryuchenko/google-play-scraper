@@ -63,8 +63,13 @@ type SearchResult struct {
 	Currency string `json:"currency" example:""`
 	// Price is the purchase price in major currency units; 0 for free apps.
 	Price float64 `json:"price" minimum:"0" example:"0"`
-	// Free is true when Price == 0.
+	// Free is true when Price == 0. It means something only when PriceKnown
+	// is true: rows that carry no price (the search grid, similar apps, a
+	// developer page) report Free true for paid apps too.
 	Free bool `json:"free" example:"true"`
+	// PriceKnown reports whether Price and Free come from the store rather
+	// than a default. Ask for FullDetail to get it for every row.
+	PriceKnown bool `json:"priceKnown" example:"true"`
 	// Summary is the short tagline; may contain HTML entities as served.
 	Summary string `json:"summary"`
 	// ScoreText is the rounded, one-decimal rating label, e.g. "4.6".
@@ -213,7 +218,9 @@ func fillSearchResult(r, m SearchResult) SearchResult {
 	if r.Score == 0 {
 		r.Score = m.Score
 	}
-	if r.Price == 0 && m.Price != 0 {
+	if !r.PriceKnown && m.PriceKnown {
+		r.Price, r.Free, r.PriceKnown = m.Price, m.Free, true
+	} else if r.Price == 0 && m.Price != 0 {
 		r.Price, r.Free = m.Price, m.Free
 	}
 	return r
@@ -558,6 +565,7 @@ func searchResultFromApp(app *App) SearchResult {
 		Currency:    app.Currency,
 		Price:       app.Price,
 		Free:        app.Free,
+		PriceKnown:  true,
 		Summary:     app.Summary,
 		ScoreText:   app.ScoreText,
 		Score:       app.Score,

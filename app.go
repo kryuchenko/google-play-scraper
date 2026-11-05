@@ -140,9 +140,10 @@ func parseAppRecord(block any, appID, url string) (*App, error) {
 		app.Description = stripHTML(app.DescriptionHTML)
 	}
 
-	// Summary: [73][0][1]
+	// Summary: [73][0][1]. Served with HTML entities ("&amp;"); decoded here
+	// as Description is, so a consumer never sees markup in plain text.
 	if v := getPath(appData, 73, 0, 1); v != nil {
-		app.Summary = toString(v)
+		app.Summary = html.UnescapeString(toString(v))
 	}
 
 	// Installs: [13][0]
@@ -245,6 +246,10 @@ func parseAppRecord(block any, appID, url string) (*App, error) {
 	if v := getPath(appData, 79, 0, 0, 2); v != nil {
 		app.GenreID = toString(v)
 	}
+
+	// Categories: the genre entries at [79], then the tags at [118] (Puzzle,
+	// Match 3, Single player for a game; empty for most non-games).
+	app.Categories = categoryNames(getPath(appData, 79), getPath(appData, 118))
 
 	// Icon: [95][0][3][2]
 	if v := getPath(appData, 95, 0, 3, 2); v != nil {
@@ -542,4 +547,39 @@ func stripHTML(s string) string {
 	s = htmlTagRegex.ReplaceAllString(s, "")
 	// Decode HTML entities (&#39; -> ', &amp; -> &, ...)
 	return html.UnescapeString(s)
+}
+
+// categoryNames collects the names of the category and tag entries under the
+// given nodes, in document order and without repeats. An entry is
+// [name, [_, _, _, _, [_, _, link]], ...]: a string followed by a node that
+// holds a store link. Nothing else on the page has that shape, so the walk
+// does not need to know how deeply Google nests the groups.
+func categoryNames(nodes ...any) []string {
+	var names []string
+	seen := map[string]bool{}
+	var walk func(any)
+	walk = func(n any) {
+		arr, ok := n.([]any)
+		if !ok {
+			return
+		}
+		if len(arr) >= 2 {
+			if name, ok := arr[0].(string); ok && name != "" {
+				if link, ok := getPath(arr[1], 4, 2).(string); ok && strings.HasPrefix(link, "/store/") {
+					if !seen[name] {
+						seen[name] = true
+						names = append(names, name)
+					}
+					return
+				}
+			}
+		}
+		for _, child := range arr {
+			walk(child)
+		}
+	}
+	for _, n := range nodes {
+		walk(n)
+	}
+	return names
 }
