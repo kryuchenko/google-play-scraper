@@ -1060,9 +1060,12 @@ func canaryCollections(t *testing.T, client *googleplayscraper.Client) {
 			ctx, cancel := canaryCtx(t)
 			defer cancel()
 
+			// All games rather than one genre: a narrow chart can be empty
+			// for real. NEW_PAID for GAME_ACTION was, in November 2026, while
+			// the same chart for GAME had entries.
 			results, err := client.List(ctx, googleplayscraper.ListOptions{
 				Collection: col,
-				Category:   googleplayscraper.CategoryGameAction,
+				Category:   googleplayscraper.CategoryGame,
 				Num:        50,
 			})
 			if err != nil {

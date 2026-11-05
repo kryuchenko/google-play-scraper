@@ -55,15 +55,18 @@ func canaryPCApp(t *testing.T, client *googleplayscraper.Client) {
 			t.Errorf("Requirements = %v, want an OS line — ds:3 [2][0] may have changed", pc.Requirements)
 		}
 
-		// The point of reading this page at all. If the PC screenshots ever
-		// match the phone ones, either the developer merged the two sets or
-		// the page stopped asking for the PC record; the second is drift.
+		// The point of reading this page at all: ds:4 must be the PC record,
+		// not the phone one. The rating says so -- [51] is the PC players'
+		// rating, a few votes against the phone listing's million. The
+		// screenshots used to be the check, until the developer copied the
+		// PC set into the phone listing (November 2026), which is content,
+		// not drift.
 		app, err := client.App(ctx, canaryPCGame, googleplayscraper.AppOptions{})
 		if err != nil {
 			t.Fatalf("App(%s): %v", canaryPCGame, err)
 		}
-		if slices.ContainsFunc(pc.Screenshots, func(s string) bool { return slices.Contains(app.Screenshots, s) }) {
-			t.Errorf("PC screenshots overlap the phone listing's — ds:4 may no longer be the PC record")
+		if pc.Ratings == app.Ratings {
+			t.Errorf("PC ratings equal the phone listing's (%d) — ds:4 may no longer be the PC record", pc.Ratings)
 		}
 	})
 
