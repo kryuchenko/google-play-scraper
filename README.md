@@ -3,7 +3,6 @@
 [![Tests](https://github.com/kryuchenko/google-play-scraper/actions/workflows/test.yml/badge.svg)](https://github.com/kryuchenko/google-play-scraper/actions/workflows/test.yml)
 ![Coverage](https://img.shields.io/badge/coverage-93.8%25-brightgreen)
 [![Go Reference](https://pkg.go.dev/badge/github.com/kryuchenko/google-play-scraper.svg)](https://pkg.go.dev/github.com/kryuchenko/google-play-scraper)
-[![Go Report Card](https://goreportcard.com/badge/github.com/kryuchenko/google-play-scraper)](https://goreportcard.com/report/github.com/kryuchenko/google-play-scraper)
 
 Read public Google Play Store data from the shell or from Go: app details,
 reviews, search, charts, permissions, data safety, per-country availability,

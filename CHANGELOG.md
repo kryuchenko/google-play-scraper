@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-11-05
+
 ### Added
 
 - `mcp/`, a separate module with `gpscrape-mcp`: an MCP server that gives AI
