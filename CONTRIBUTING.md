@@ -172,11 +172,12 @@ make a local rewrite recoverable and are noise in a shared repository.
 Tag order matters, because the submodules require a published version of the
 root module:
 
-1. Tag the root: `v1.4.0`.
+1. Tag the root, e.g. `v1.5.0`.
 2. Bump `require github.com/kryuchenko/google-play-scraper` in `apidoc/go.mod`,
    `lightfeed/go.mod` and `mcp/go.mod` to that version, and commit.
-3. Tag the submodules with their directory as prefix: `apidoc/v0.1.0`,
-   `lightfeed/v0.1.0`, `mcp/v…`.
+3. Tag the submodules with their directory as prefix. Each has its own
+   version line, independent of the root's: the first `mcp` tag is
+   `mcp/v0.1.0`, next to `apidoc/v0.1.0` and `lightfeed/v0.1.0`.
 
 Doing this in the other order bakes an unresolvable `require` into the
 submodule tags, which cannot be fixed without a new tag. The `Publish check`
