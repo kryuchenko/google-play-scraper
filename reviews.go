@@ -3,6 +3,7 @@ package googleplayscraper
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"iter"
 	"net/url"
@@ -180,7 +181,7 @@ func (c *Client) reviewsPage(ctx context.Context, appID string, opts ReviewOptio
 //
 // The ceiling is real but much higher: 3000 and 4000 both return exactly what
 // they ask for; 5000 and 10000 come back as a PlayGatewayError frame, which
-// this package surfaces as "data is not a string" rather than as reviews.
+// this package surfaces as ErrNoReviewsPage rather than as reviews.
 //
 // An earlier version of this comment said those failures were indistinguishable
 // from Google's "no more reviews" signal and therefore truncated a sweep in
@@ -369,6 +370,13 @@ func parseReviewsResponse(body []byte, appID string) (*ReviewsResult, error) {
 	return parseReviewsPayload(payload, appID)
 }
 
+// ErrNoReviewsPage reports a reviews request Google answered with no page: a
+// NextToken it no longer honours, or a page size above its ceiling. An app id
+// the store does not list is not one of them: that gets an empty page and no
+// error, the same as an app nobody has reviewed. Its text keeps the historical "data is not a
+// string" prefix so callers matching on the old message keep working.
+var ErrNoReviewsPage = errors.New("data is not a string: Google returned no reviews page (expired NextToken, or page too large)")
+
 // parseReviewsPayload reads the inner JSON of one oCPfdb frame, split from the
 // envelope handling so the request path can decode the envelope once and hand
 // the payload straight over -- the same division suggest.go and permissions.go
@@ -380,7 +388,7 @@ func parseReviewsResponse(body []byte, appID string) (*ReviewsResult, error) {
 // more reviews" would end in silence at an arbitrary point.
 func parseReviewsPayload(payload, appID string) (*ReviewsResult, error) {
 	if payload == "" {
-		return nil, fmt.Errorf("data is not a string")
+		return nil, ErrNoReviewsPage
 	}
 
 	var data []any

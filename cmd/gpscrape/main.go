@@ -639,9 +639,11 @@ func cmdPCApp(args []string) error {
 
 func cmdSearch(args []string) error {
 	c := newCommon("search")
-	num := c.fs.Int("num", 20, "maximum results (clamped to 250)")
+	num := c.fs.Int("num", 20, "maximum results (clamped to 50, as many as Google returns for one query)")
 	price := c.fs.String("price", "all", `"free", "paid" or "all"`)
-	full := c.fs.Bool("full", false, "fetch full details for every result (one extra batched request per 32)")
+	// On by default: the search grid carries no price and no developer id,
+	// so without it every paid app comes out free:true with priceKnown:false.
+	full := c.fs.Bool("full", true, "fetch full details for every result (one extra batched request per 32); without it paid apps read as free and developerId is empty")
 	if err := c.parse(args); err != nil {
 		return err
 	}
@@ -883,7 +885,10 @@ func cmdList(args []string) error {
 	c := newCommon("list")
 	collection := c.fs.String("collection", "top_free", "one of: "+collectionNames())
 	num := c.fs.Int("num", 200, "maximum apps (clamped to 660; Google returns ~200 in practice)")
-	full := c.fs.Bool("full", false, "fetch full details for each app (one extra batched request per 32)")
+	// On by default like search, similar and developer: chart rows carry no
+	// developer id and no tagline (summary is the description's first
+	// paragraph).
+	full := c.fs.Bool("full", true, "fetch full details for each app (one extra batched request per 32); without it developerId is empty and summary is the description's first paragraph")
 	if err := c.parse(args); err != nil {
 		return err
 	}
@@ -919,6 +924,7 @@ func cmdList(args []string) error {
 
 func cmdSimilar(args []string) error {
 	c := newCommon("similar")
+	full := c.fs.Bool("full", true, "fetch full details for every result (one extra batched request per 32); without it paid apps read as free and developerId is empty")
 	if err := c.parse(args); err != nil {
 		return err
 	}
@@ -930,7 +936,7 @@ func cmdSimilar(args []string) error {
 	defer stop()
 
 	results, err := c.client().Similar(ctx, googleplayscraper.SimilarOptions{
-		AppID: appID, Lang: c.lang, Country: c.country,
+		AppID: appID, Lang: c.lang, Country: c.country, FullDetail: *full,
 	})
 	if err != nil {
 		return err
@@ -940,6 +946,7 @@ func cmdSimilar(args []string) error {
 
 func cmdDeveloper(args []string) error {
 	c := newCommon("developer")
+	full := c.fs.Bool("full", true, "fetch full details for every result (one extra batched request per 32); without it paid apps read as free and developerId is empty")
 	if err := c.parse(args); err != nil {
 		return err
 	}
@@ -951,7 +958,7 @@ func cmdDeveloper(args []string) error {
 	defer stop()
 
 	results, err := c.client().Developer(ctx, googleplayscraper.DeveloperOptions{
-		DevID: dev, Lang: c.lang, Country: c.country,
+		DevID: dev, Lang: c.lang, Country: c.country, FullDetail: *full,
 	})
 	if err != nil {
 		return err

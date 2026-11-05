@@ -175,11 +175,16 @@ the same reviews id for id.
 gpscrape search "podcast player" -num 50
 gpscrape suggest spoti
 gpscrape list -collection new_free GAME_PUZZLE      # what is new in a category
-gpscrape list -collection top_free -full            # details for each app, batched
+gpscrape list -collection top_free -full=false      # chart rows only, no extra requests
 gpscrape categories -kind game                      # the genre ids list accepts
 gpscrape similar com.spotify.music
 gpscrape developer "Spotify AB"
 ```
+
+`search`, `list`, `similar` and `developer` fetch each result's details in
+batches of 32 by default, because their result rows carry no price (search,
+similar, developer), no developer id, and for charts no tagline. `-full=false`
+skips that and marks unpriced rows `"priceKnown": false`.
 
 Google returns roughly one page for any of these, about 200 apps at most, and
 rejects the continuation token for stateless clients. Breadth comes from
@@ -414,8 +419,11 @@ operation that makes a request opens a `runtime/trace` task, so
   step and lives in the root module: it replays the page's own stateless feed
   tokens, one extra request per topic, and takes `GAME_ACTION` from ~18 apps
   to ~77 where the browser reaches ~149.
+- [`mcp/`](mcp/): `gpscrape-mcp`, an MCP server that gives AI agents
+  (Claude Code, Codex CLI, OpenCode, ChatGPT and other MCP clients) the
+  store's quick lookups as tools, over stdio or Streamable HTTP.
 
-Both are separate Go modules; the root library stays stdlib-only.
+All three are separate Go modules; the root library stays stdlib-only.
 
 ## Documentation
 

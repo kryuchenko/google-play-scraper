@@ -108,8 +108,11 @@ func mergeResult(base, incoming SearchResult) SearchResult {
 		base.Score = incoming.Score
 	}
 
-	// Price/Free: prefer any concrete paid price over the default-free stamp.
-	if base.Price == 0 && incoming.Price > 0 {
+	// Price/Free: a known price beats the default-free stamp; otherwise
+	// prefer any concrete paid price over it.
+	if !base.PriceKnown && incoming.PriceKnown {
+		base.Price, base.Free, base.PriceKnown = incoming.Price, incoming.Free, true
+	} else if base.Price == 0 && incoming.Price > 0 {
 		base.Price = incoming.Price
 		base.Free = false
 	} else if !incoming.Free && incoming.Price > 0 && base.Price == 0 {

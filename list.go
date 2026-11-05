@@ -173,11 +173,13 @@ var clusterListAppPaths = rowPaths{
 	icon:      [][]int{{0, 1, 3, 2}},
 	developer: [][]int{{0, 14}},
 	summary:   [][]int{{0, 13, 1}},
-	score:     [][]int{{0, 4, 1}},
-	scoreText: [][]int{{0, 4, 0}},
-	currency:  [][]int{{0, 8, 1, 0, 1}},
-	price:     [][]int{{0, 8, 1, 0, 0}},
-	urlPath:   [][]int{{0, 10, 4, 2}},
+	// [0][13][1] is the whole HTML description; there is no tagline here.
+	summaryIsDescription: true,
+	score:                [][]int{{0, 4, 1}},
+	scoreText:            [][]int{{0, 4, 0}},
+	currency:             [][]int{{0, 8, 1, 0, 1}},
+	price:                [][]int{{0, 8, 1, 0, 0}},
+	urlPath:              [][]int{{0, 10, 4, 2}},
 }
 
 // parseClusterListApp maps a single app entry from the vyAe2 response.

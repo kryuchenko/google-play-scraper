@@ -46,7 +46,7 @@ const docTemplate = `{
                         "type": "boolean"
                     },
                     "categories": {
-                        "description": "Categories is the list of category names the app is filed under.",
+                        "description": "Categories lists the names the store files the app under: the genre\nfirst, then its tags (for a game: \"Puzzle\", \"Match 3\", \"Single\nplayer\"...). Localized like Genre. Empty when the page has neither.",
                         "items": {
                             "type": "string"
                         },
@@ -567,7 +567,7 @@ const docTemplate = `{
                         "type": "string"
                     },
                     "free": {
-                        "description": "Free is true when Price == 0.",
+                        "description": "Free is true when Price == 0. It means something only when PriceKnown\nis true: rows that carry no price (the search grid, similar apps, a\ndeveloper page) report Free true for paid apps too.",
                         "examples": [
                             true
                         ],
@@ -588,6 +588,13 @@ const docTemplate = `{
                         ],
                         "minimum": 0,
                         "type": "number"
+                    },
+                    "priceKnown": {
+                        "description": "PriceKnown reports whether Price and Free come from the store rather\nthan a default. Ask for FullDetail to get it for every row.",
+                        "examples": [
+                            true
+                        ],
+                        "type": "boolean"
                     },
                     "score": {
                         "description": "Score is the average star rating, a float in [0,5] at full precision.",

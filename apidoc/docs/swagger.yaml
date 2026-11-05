@@ -34,7 +34,10 @@ components:
             - true
           type: boolean
         categories:
-          description: Categories is the list of category names the app is filed under.
+          description: |-
+            Categories lists the names the store files the app under: the genre
+            first, then its tags (for a game: "Puzzle", "Match 3", "Single
+            player"...). Localized like Genre. Empty when the page has neither.
           items:
             type: string
           type: array
@@ -483,7 +486,10 @@ components:
             - King
           type: string
         free:
-          description: Free is true when Price == 0.
+          description: |-
+            Free is true when Price == 0. It means something only when PriceKnown
+            is true: rows that carry no price (the search grid, similar apps, a
+            developer page) report Free true for paid apps too.
           examples:
             - true
           type: boolean
@@ -499,6 +505,13 @@ components:
             - 0
           minimum: 0
           type: number
+        priceKnown:
+          description: |-
+            PriceKnown reports whether Price and Free come from the store rather
+            than a default. Ask for FullDetail to get it for every row.
+          examples:
+            - true
+          type: boolean
         score:
           description: Score is the average star rating, a float in [0,5] at full precision.
           examples:

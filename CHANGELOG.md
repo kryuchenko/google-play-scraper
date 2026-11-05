@@ -7,6 +7,21 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- `mcp/`, a separate module with `gpscrape-mcp`: an MCP server that gives AI
+  agents the store's quick lookups as twelve read-only tools (search, app,
+  apps, list, reviews, similar, developer, permissions, datasafety, suggest,
+  categories, availability). It speaks stdio for Claude Code, Codex and
+  OpenCode, and stateless Streamable HTTP with a bearer token -- or the token
+  as the last path segment, for ChatGPT, which cannot send one. Results are
+  small by default; store text comes back in `untrusted_*` fields. CI
+  runs the official MCP conformance suite against it. See `mcp/README.md`.
+- `SearchResult.PriceKnown`: whether `Price` and `Free` come from the store.
+  The search grid, similar apps and developer pages carry no price, and their
+  rows always reported `Free: true`, so a paid app (Hitman Absolution, 14.99)
+  came back as free. `PriceKnown` is false on those rows unless `FullDetail`
+  is set, and merging results now prefers a known price over the default.
+- `ErrNoDataSafety` and `ErrNoReviewsPage`, so a caller can tell "nothing to
+  read" from data with `errors.Is`.
 - `App.DeveloperNumericID`: Google's numeric developer id (`[68][2]`). It was
   a number on all 138 listings checked, also when the listing link uses a
   name, so it is the field to key on. `DeveloperID` stays the value
@@ -49,6 +64,16 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- `gpscrape search`, `list`, `similar` and `developer` fetch full details by
+  default (`-full`, one extra batched request per 32 apps; `-full=false`
+  restores the old output). Without it, paid apps printed as free,
+  `developerId` was empty and chart rows had no tagline. `similar` and
+  `developer` gain the `-full` flag.
+- `DataSafety` returns `ErrNoDataSafety` when the page has no section it can
+  read. It used to return an empty `*DataSafety`, which reads as "collects and
+  shares nothing", or `nil, nil` when the block did not parse.
+- An empty reviews payload returns `ErrNoReviewsPage`. Its message keeps the
+  old "data is not a string" prefix and says what it means.
 - A response that used to come back as an empty result with a nil error,
   because Google served a block page with status 200, now returns a
   `*SoftBlockError`. `Hooks.OnResponse` fires after the body is read and
@@ -58,6 +83,19 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- `App.Categories` was never filled. It now lists the genre and the store's
+  tags for the app, e.g. Casual, Puzzle, Match 3, Single player for Candy
+  Crush Saga.
+- `App.Summary` kept HTML entities (`navigation &amp; local suggestions`); it
+  is decoded now, as `Description` already was. So is `SearchResult.Summary`.
+- `List` rows put the whole HTML description in `Summary` (`<br>`, `&#39;`):
+  the chart RPC carries no tagline. They now get the description's first
+  paragraph as plain text; `FullDetail` gives the tagline.
+- `DataSafety` for an id the store does not list reported a block (`blocked
+  response (no-data-blocks)`), which paused an adaptive client for its whole
+  cooldown. The endpoint answers such ids with a 200 "Not Found" page without
+  data blocks; that page is now checked against the details page, and an
+  unknown id returns `ErrNoDataSafety` wrapping `ErrNotFound`.
 - `App.VideoImage` is the trailer thumbnail (`i.ytimg.com`) again. It was read
   from `[100][1][0]`, which now repeats the feature graphic, so it always
   equalled `HeaderImage`.
@@ -86,7 +124,6 @@ All notable changes to this project are documented here. The format is based on
   the retry budget, and neither runs when most of a batch came back empty. In a
   293-app, 177-country sweep about half of the empty items were transient.
   (#18)
-
 - `Search` returns the featured card Google shows above the result grid when
   one app matches the query outright. The card lives outside the grid, in an
   app-details block of its own, so the parser never saw it, and the best match

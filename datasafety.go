@@ -2,7 +2,9 @@ package googleplayscraper
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"net/url"
 )
 
 // DataSafetyEntry is a single collected or shared data item.
@@ -67,7 +69,11 @@ func (c *Client) DataSafety(ctx context.Context, opts DataSafetyOptions) (*DataS
 	reqURL := fmt.Sprintf("%s/store/apps/datasafety?id=%s&hl=%s&gl=%s",
 		BaseURL, opts.AppID, opts.Lang, opts.Country)
 
-	body, err := c.getPage(ctx, reqURL, requireBlock("ds:3"))
+	body, err := c.getPage(ctx, reqURL, dataSafetyPage)
+	var sb *SoftBlockError
+	if errors.As(err, &sb) && sb.Reason == "no-data-blocks" {
+		return nil, c.dataSafetyMissing(ctx, opts)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("request failed: %w", err)
 	}
@@ -75,17 +81,59 @@ func (c *Client) DataSafety(ctx context.Context, opts DataSafetyOptions) (*DataS
 	return parseDataSafetyPage(body)
 }
 
+// dataSafetyPage is requireBlock("ds:3") with one difference. For an id the
+// store does not list, this endpoint answers 200 with a localized "Not
+// Found" page that has no data blocks -- the same shape as a challenge page,
+// which requireBlock rightly calls a block. Called a block here, a typo in an
+// id would pause an adaptive client. So the page is marked malformed (gentle
+// slowdown, no pause) and dataSafetyMissing settles what it was.
+func dataSafetyPage(body []byte) (Verdict, string) {
+	v, reason := requireBlock("ds:3")(body)
+	if v == VerdictBlocked && reason == "no-data-blocks" {
+		return VerdictMalformed, reason
+	}
+	return v, reason
+}
+
+// dataSafetyMissing asks the details page, which answers an unknown id with a
+// real 404, what a data safety page without data blocks meant. One request,
+// and only on this failure path. A block there is a block, and is returned
+// as one; a listed app means the page simply had nothing to read.
+func (c *Client) dataSafetyMissing(ctx context.Context, opts DataSafetyOptions) error {
+	detailsURL := fmt.Sprintf("%s/store/apps/details?id=%s&hl=%s&gl=%s",
+		BaseURL, url.QueryEscape(opts.AppID), opts.Lang, opts.Country)
+	_, err := c.getPage(ctx, detailsURL, requireBlock("ds:5"))
+	var se *StatusError
+	switch {
+	case errors.As(err, &se) && se.Code == 404:
+		return fmt.Errorf("%w: %w: %s", ErrNoDataSafety, ErrNotFound, opts.AppID)
+	case err != nil:
+		return fmt.Errorf("request failed: %w", err)
+	}
+	return ErrNoDataSafety
+}
+
+// ErrNoDataSafety reports a data safety page with no section this package can
+// read: the app has no declaration, the id is not one the store lists, or the
+// layout moved. Before it existed the first case returned an empty
+// *DataSafety, which reads as "collects and shares nothing", and the last
+// returned (nil, nil).
+var ErrNoDataSafety = errors.New("no data safety section on the page")
+
 func parseDataSafetyPage(body []byte) (*DataSafety, error) {
 
 	ds3, ok := dataBlock(body, "ds:3")
 	if !ok {
-		return nil, nil
+		return nil, ErrNoDataSafety
 	}
 
 	result := &DataSafety{}
 
 	// Data safety section: [1][2][1][138]
 	safetySection := getPath(ds3, 1, 2, 1, 138)
+	if safetySection == nil {
+		return nil, ErrNoDataSafety
+	}
 
 	if safetySection != nil {
 		// Shared data: [4][0][0]

@@ -2,6 +2,7 @@ package googleplayscraper
 
 import (
 	"fmt"
+	"html"
 	"net/url"
 	"strings"
 )
@@ -33,6 +34,12 @@ type rowPaths struct {
 	score     [][]int
 	scoreText [][]int
 	summary   [][]int
+
+	// summaryIsDescription marks a layout whose summary path holds the full
+	// HTML description rather than the store's tagline (the vyAe2 chart
+	// rows carry no tagline). The row then gets the description's first
+	// paragraph as plain text.
+	summaryIsDescription bool
 
 	// developerIDLink points at a "…?id=DEV" developer URL; the id is taken from
 	// the query. Used by the qnKhOb layout, which carries no bare developer id.
@@ -78,7 +85,10 @@ func decodeResultRow(item any, paths rowPaths) SearchResult {
 	r.Title = firstString(arr, paths.title)
 	r.Icon = firstString(arr, paths.icon)
 	r.Developer = firstString(arr, paths.developer)
-	r.Summary = firstString(arr, paths.summary)
+	r.Summary = html.UnescapeString(firstString(arr, paths.summary))
+	if paths.summaryIsDescription {
+		r.Summary = firstParagraph(firstString(arr, paths.summary))
+	}
 	r.ScoreText = firstString(arr, paths.scoreText)
 	r.Currency = firstString(arr, paths.currency)
 
@@ -92,6 +102,7 @@ func decodeResultRow(item any, paths rowPaths) SearchResult {
 		price := toFloat64(v)
 		r.Price = price / 1000000
 		r.Free = price == 0
+		r.PriceKnown = true
 	} else {
 		r.Free = true
 	}
@@ -183,4 +194,14 @@ func resultURL(path, appID string, pathOnly bool) string {
 		return ""
 	}
 	return fmt.Sprintf("%s/store/apps/details?id=%s", BaseURL, appID)
+}
+
+// firstParagraph is the text of an HTML description up to its first blank
+// line or <br>, with tags dropped and entities decoded.
+func firstParagraph(descHTML string) string {
+	text := strings.TrimSpace(stripHTML(descHTML))
+	if i := strings.Index(text, "\n"); i >= 0 {
+		text = strings.TrimSpace(text[:i])
+	}
+	return text
 }

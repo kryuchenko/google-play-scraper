@@ -2,13 +2,14 @@
 
 ## Repository layout
 
-Three Go modules live here, and the split is deliberate:
+Four Go modules live here, and the split is deliberate:
 
 | Module | Go | Purpose |
 | --- | --- | --- |
 | `.` | 1.25 | the library — **zero third-party dependencies**, enforced by `TestRootIsZeroDependency` |
 | `apidoc/` | 1.27 | OpenAPI spec for Google's endpoints plus its drift tests; pulls swaggo and libopenapi |
 | `lightfeed/` | 1.27 | optional browser-driven feed paginator; pulls chromedp |
+| `mcp/` | 1.27 | `gpscrape-mcp`, an MCP server over the library; pulls the MCP Go SDK |
 
 The root module's floor stays conservative because consumers import it. The
 submodules are tooling and an opt-in extra, so they track the current Go
@@ -22,9 +23,9 @@ cd google-play-scraper
 go build ./...
 ```
 
-The committed `go.work` wires the three modules together so that a change in
-the root is visible to `apidoc` and `lightfeed` without publishing anything.
-Without it, both submodules would resolve the root module from the proxy and
+The committed `go.work` wires the four modules together so that a change in
+the root is visible to `apidoc`, `lightfeed` and `mcp` without publishing anything.
+Without it, the submodules would resolve the root module from the proxy and
 you would be testing the last release instead of your working tree.
 
 The workspace also picks the toolchain. `go.work` says `go 1.27.0`, because
@@ -53,8 +54,9 @@ Two things follow from that, and both are load-bearing:
 GOWORK=off go test -short -race ./...
 
 # the submodules
-cd apidoc    && go test ./...
-cd lightfeed && go test ./...
+(cd apidoc    && go test ./...)
+(cd lightfeed && go test ./...)
+(cd mcp       && go test ./...)
 
 # live contract tests against play.google.com — slow, rate-limited, not for CI
 GOWORK=off go test -tags canary -run TestCanary -v -timeout 15m ./...
@@ -130,7 +132,7 @@ The module a consumer downloads is not the repository. Two things keep it
 small, and both work by the same rule -- the module zip omits any directory
 containing its own `go.mod`:
 
-- `apidoc/` and `lightfeed/` are real submodules, opted into separately.
+- `apidoc/`, `lightfeed/` and `mcp/` are real submodules, opted into separately.
 - `testdata/` holds a `go.mod` that is not a real module at all. Its only job
   is exclusion. The recorded pages there are 14.8MB against 0.8MB of actual
   library, so without it every consumer of a zero-dependency library downloads
@@ -157,6 +159,7 @@ GOWORK=off go test -tags canary -run TestCanary ./...  # production check
 $(go env GOPATH)/bin/golangci-lint run ./...
 (cd apidoc && GOWORK=off go test ./...)
 (cd lightfeed && GOWORK=off go test ./...)
+(cd mcp && go test ./...)   # needs the workspace until mcp/go.mod requires the new tag
 ```
 
 The changelog entry for the version being released is the release body — the
@@ -170,14 +173,16 @@ Tag order matters, because the submodules require a published version of the
 root module:
 
 1. Tag the root: `v1.4.0`.
-2. Bump `require github.com/kryuchenko/google-play-scraper` in `apidoc/go.mod`
-   and `lightfeed/go.mod` to that version, and commit.
-3. Tag the submodules: `apidoc/v0.1.0`, `lightfeed/v0.1.0`.
+2. Bump `require github.com/kryuchenko/google-play-scraper` in `apidoc/go.mod`,
+   `lightfeed/go.mod` and `mcp/go.mod` to that version, and commit.
+3. Tag the submodules with their directory as prefix: `apidoc/v0.1.0`,
+   `lightfeed/v0.1.0`, `mcp/v…`.
 
 Doing this in the other order bakes an unresolvable `require` into the
 submodule tags, which cannot be fixed without a new tag. The `Publish check`
-workflow resolves all three modules from the proxy and is the gate on getting
-this right — run it via `workflow_dispatch` before announcing a release.
+workflow resolves the root, `apidoc` and `lightfeed` from the proxy and is the
+gate on getting this right — run it via `workflow_dispatch` before announcing
+a release.
 
 ### Releasing a new major
 
