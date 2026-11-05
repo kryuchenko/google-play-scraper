@@ -92,9 +92,16 @@ jobs:
           go test ./...
 
       # The MCP server is its own module so the root stays zero-dependency.
-      # It is built against this branch only: it uses errors (ErrNotFound,
-      # ErrBlocked) that the last release, v1.4.0, does not have yet. Add a
-      # proxy-resolved step like lightfeed's once the next release is out.
+      # Like lightfeed: once as a consumer builds it, against the root from
+      # the proxy, and once against this branch through the workspace.
+      - name: Build and test mcp submodule
+        if: matrix.go-version == 'stable'
+        working-directory: mcp
+        run: |
+          go build ./...
+          go vet ./...
+          go test ./...
+
       - name: Build and test mcp submodule against this branch
         if: matrix.go-version == 'stable'
         env:

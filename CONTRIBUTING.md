@@ -159,7 +159,7 @@ GOWORK=off go test -tags canary -run TestCanary ./...  # production check
 $(go env GOPATH)/bin/golangci-lint run ./...
 (cd apidoc && GOWORK=off go test ./...)
 (cd lightfeed && GOWORK=off go test ./...)
-(cd mcp && go test ./...)   # needs the workspace until mcp/go.mod requires the new tag
+(cd mcp && GOWORK=off go test ./...)
 ```
 
 The changelog entry for the version being released is the release body — the
@@ -181,7 +181,7 @@ root module:
 
 Doing this in the other order bakes an unresolvable `require` into the
 submodule tags, which cannot be fixed without a new tag. The `Publish check`
-workflow resolves the root, `apidoc` and `lightfeed` from the proxy and is the
+workflow resolves the root, `apidoc`, `lightfeed` and `mcp` from the proxy and is the
 gate on getting this right — run it via `workflow_dispatch` before announcing
 a release.
 

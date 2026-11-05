@@ -4,7 +4,7 @@ go 1.27
 
 require (
 	github.com/google/jsonschema-go v0.4.3
-	github.com/kryuchenko/google-play-scraper v1.4.0
+	github.com/kryuchenko/google-play-scraper v1.5.0
 	github.com/modelcontextprotocol/go-sdk v1.8.0
 )
 

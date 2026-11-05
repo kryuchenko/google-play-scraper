@@ -29,6 +29,7 @@ jobs:
           - github.com/kryuchenko/google-play-scraper
           - github.com/kryuchenko/google-play-scraper/lightfeed
           - github.com/kryuchenko/google-play-scraper/apidoc
+          - github.com/kryuchenko/google-play-scraper/mcp
 
     steps:
       - name: Setup Go
