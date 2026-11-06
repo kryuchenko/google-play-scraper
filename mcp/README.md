@@ -12,7 +12,7 @@ reach it over Streamable HTTP.
 This is a separate Go module, so the root library keeps its zero-dependency
 guarantee. The long sweeps (the sitemap catalog, every review of an app) are
 left out on purpose and stay in the [`gpscrape`](../README.md) command. The
-server tells the agent so, in its instructions and again in the `reviews`
+server tells the agent so, in its instructions and again in the `play_get_reviews`
 tool description (some clients, such as claude.ai and the OpenAI Agents SDK,
 do not pass instructions to the model). An agent that can run shell commands
 is pointed at `gpscrape` for bulk jobs if it is already installed. If it is
@@ -34,12 +34,21 @@ Requires Go 1.27. Without Go:
   (the Go module tag is `mcp/v*`; the release uses a tag without the slash,
   which the MCP Registry requires in download URLs).
 - **MCPB bundle**: `gpscrape-mcp.mcpb` on the same release installs in one
-  step in clients that take MCP bundles, such as Claude Desktop.
+  step in clients that take MCP bundles, such as Claude Desktop. It carries
+  macOS (universal), Linux (amd64 and arm64) and Windows (amd64) binaries.
 - **Container**: `docker run -i --rm ghcr.io/kryuchenko/gpscrape-mcp` speaks
   stdio; for HTTP, `docker run --rm -p 8080:8080 -e GPSCRAPE_MCP_TOKEN=<token>
   ghcr.io/kryuchenko/gpscrape-mcp -http 0.0.0.0:8080`.
 - **MCP Registry**: listed as `io.github.kryuchenko/gpscrape`, so clients that
   browse the registry can find it.
+
+Every release file and the image carry signed build provenance. Check a
+download before running it:
+
+```bash
+gh attestation verify gpscrape-mcp.mcpb --repo kryuchenko/google-play-scraper
+gh attestation verify oci://ghcr.io/kryuchenko/gpscrape-mcp:<version> --repo kryuchenko/google-play-scraper
+```
 
 For agents that also have a shell, the
 [`gpscrape` skill](../skills/gpscrape/SKILL.md) explains when to reach for the
@@ -95,18 +104,25 @@ cancelled. Legacy HTTP clients' cancellation notifications cannot reach work
 running in a different request's temporary session; the per-call timeout
 still bounds that work. Stdio cancellation uses the persistent connection.
 
+Give the token in `$GPSCRAPE_MCP_TOKEN` or in a file with `-token-file`
+(a Docker or systemd secret, for instance). There is no `-token` flag: a
+secret on the command line is visible to every user of the machine in `ps`.
+
 **ChatGPT** cannot start a local process and cannot send a token: its custom
 apps take OAuth or nothing. Host the server yourself (a VPS, or your own
-machine behind a tunnel such as Cloudflare Tunnel) with HTTPS in front, and
-give ChatGPT the token as the last part of the URL:
+machine behind a tunnel such as Cloudflare Tunnel) with HTTPS in front, start
+it with `-secret-path`, and give ChatGPT the token as the last part of the
+URL:
 
 ```
 https://play-mcp.example.com/mcp/<GPSCRAPE_MCP_TOKEN>
 ```
 
 Add it in ChatGPT as a custom app (developer mode) with
-**No authentication**: the secret path is the password. Any other path under
-`/mcp/` answers 404. Use a long random token (`openssl rand -hex 32`); the
+**No authentication**: the secret path is the password. It is off unless
+`-secret-path` is given, because a token in a URL ends up in proxy logs and
+browser history; any path under `/mcp/` answers 404 without it, and so does a
+wrong token with it. Use a long random token (`openssl rand -hex 32`); the
 server warns when it is shorter than 24 characters. Keep your proxy from
 logging request paths, and rotate the token if the URL leaks. Requests to
 Google Play then come from the host's IP, and Google rate-limits data-centre
@@ -134,35 +150,39 @@ bearer_token_env_var = "GPSCRAPE_MCP_TOKEN"
 
 | Tool | What it returns | Default / max |
 |---|---|---|
-| `search` | apps matching keywords, with package ids | 20 / 50 |
-| `app` | one app's store page, including whether it can be installed in that country; `response_format: detailed` adds description, histogram, developer contacts | — |
-| `apps` | concise details for several package ids in one request | up to 20 ids |
-| `list` | a chart: `top_free`, `top_paid`, `grossing`, `new_free`, `new_paid`, `movers_shakers` | 50 / 200 |
-| `reviews` | one page of reviews; `next_token` for the next page; filter by star rating | 20 / 100 |
-| `similar` | apps the store lists as similar | 20 / 100 |
-| `developer` | apps by one developer | 20 / 100 |
-| `permissions` | Android permissions, grouped | — |
-| `datasafety` | declared data collection, sharing and security practices | — |
-| `suggest` | autocomplete suggestions for a query | — |
-| `categories` | category ids accepted by `list` | — |
-| `availability` | per country: `available`, `region_locked` (listed, not installable) or `not_listed` | up to 50 countries |
+| `play_search_apps` | apps matching keywords, with package ids | 20 / 50 |
+| `play_get_app` | one app's store page, including whether it can be installed in that country; `response_format: detailed` adds description, histogram, developer contacts | — |
+| `play_get_apps` | concise details for several package ids in one request | up to 20 ids |
+| `play_get_chart` | a chart: `top_free`, `top_paid`, `grossing`, `new_free`, `new_paid`, `movers_shakers` | 50 / 200 |
+| `play_get_reviews` | one page of reviews; `next_token` for the next page; filter by star rating | 20 / 100 |
+| `play_get_similar_apps` | apps the store lists as similar | 20 / 100 |
+| `play_get_developer_apps` | apps by one developer | 20 / 100 |
+| `play_get_permissions` | Android permissions, grouped | — |
+| `play_get_data_safety` | declared data collection, sharing and security practices | — |
+| `play_suggest_queries` | autocomplete suggestions for a query | — |
+| `play_list_categories` | category ids accepted by `play_get_chart` | — |
+| `play_check_availability` | per country: `available`, `region_locked` (listed, not installable) or `not_listed` | up to 50 countries |
 
 Tools take `lang` and `country` (default `en`, `us`), with three exceptions:
-`reviews` takes only `lang`, `availability` takes a list of `countries`, and
-`categories` takes nothing. An unknown country code or a malformed language
+`play_get_reviews` takes only `lang`, `play_check_availability` takes a list
+of `countries`, and `play_list_categories` takes nothing. An unknown country code or a malformed language
 code is an error, because the store would silently answer with its defaults.
-In `reviews`, `lang` selects the language group of the reviews (Google's
+In `play_get_reviews`, `lang` selects the language group of the reviews (Google's
 grouping, so a few may be in other languages); reviews are the same in every
 country. Prices, charts and installability depend on `country`.
 
-`search`, `list`, `similar` and `developer` fetch full details for their
+`play_search_apps`, `play_get_chart`, `play_get_similar_apps` and
+`play_get_developer_apps` fetch full details for their
 results (one extra batched request per 32 apps), because the store's result
 rows carry no developer id, and outside charts no price.
 
 ### Design notes
 
+- **Names say what they do.** `play_` + verb + object, as Anthropic's tool
+  guidance (namespacing) and OpenAI's (action-oriented names) both ask; the
+  prefix also keeps them apart from another store's tools in one session.
 - **Small answers by default.** Lists come back as one-line summaries.
-  `reviews` cuts each text to 400 characters unless you ask for `detailed`,
+  `play_get_reviews` cuts each text to 400 characters unless you ask for `detailed`,
   and says how many it returned, which filters applied and whether anything
   was cut.
 - **Schemas both ways.** Input schemas carry `minimum`/`maximum`, `enum`
@@ -181,20 +201,49 @@ rows carry no developer id, and outside charts no price.
   replies, app summaries, descriptions and release notes come back in fields
   named `untrusted_*`, and the server's instructions tell the agent to treat
   them as data, not instructions.
-- **Errors say what to do next.** A name instead of a package id points to
-  `search`; an unknown category points to `categories` before any request is
-  made; a 404 says to check the id or the country; a block says to wait. A
-  call that waits too long for a free slot is told the server is busy; a bug
-  that panics returns an error instead of ending the session.
-- **Gentle on the store.** Requests to Google Play are throttled and retried
-  honouring `Retry-After`, and tool calls run at most `-max-concurrent` at
-  once (see [Flags](#flags)). `availability` gets twice the `-timeout`.
+- **Errors say what to do next, behind a stable code.** Every tool error
+  reads `code: what to do`. A name instead of a package id points to
+  `play_search_apps`; an unknown category points to `play_list_categories`
+  before any request is made; a 404 says to check the id or the country; a
+  block says to wait; a bug that panics returns an error instead of ending
+  the session. The codes:
+
+  | Code | Meaning | Retry? |
+  |---|---|---|
+  | `invalid_argument` | fix the arguments | no |
+  | `not_found` | no such app or page in this storefront | another id or country |
+  | `not_listed` | the store returned nothing for this id here | once, then check the id |
+  | `rate_limited` | the store is refusing this server for now | after a few minutes |
+  | `timeout` | the store did not answer in time | once |
+  | `busy` | this server is at capacity | shortly |
+  | `cancelled` | the client cancelled the call | — |
+  | `store_error` | any other failure talking to the store | once |
+  | `internal` | a bug in gpscrape-mcp | no; report it |
+
+  Arguments that break the input schema are rejected by the MCP SDK before
+  the tool runs; those errors start with `validating "arguments"`.
+- **Gentle on the store, bounded on the server.** Requests to Google Play are
+  throttled and retried honouring `Retry-After`. Tool calls run at most
+  `-max-concurrent` at once, at most four times that many wait for a slot,
+  and any further call is refused at once as `busy`. String arguments have a
+  maximum length in the schema. `play_check_availability` gets twice the
+  `-timeout`.
+- **Progress for the slow tool.** `play_check_availability` makes one store
+  request per country and can take two minutes for fifty. A client that sends
+  a `progressToken` gets a notification per country over stdio (the stateless
+  HTTP transport answers with one JSON body and has no stream to send them
+  on).
+- **Cancelled means cancelled.** A call the client cancelled returns no
+  result, even if the work behind it finished.
+- **Cacheable catalog.** `tools/list` and `server/discover` say `ttlMs` of an
+  hour: the tool set never changes while the server runs.
 
 ## Flags
 
 ```
 -http addr          serve Streamable HTTP instead of stdio
--token string       bearer token for /mcp (default $GPSCRAPE_MCP_TOKEN)
+-token-file path    read the bearer token from a file (default $GPSCRAPE_MCP_TOKEN)
+-secret-path        also accept the token as /mcp/<token>, for ChatGPT
 -throttle 300ms     minimum interval between requests to Google Play
 -max-concurrent 4   tool calls running at once
 -timeout 60s        time limit for one tool call

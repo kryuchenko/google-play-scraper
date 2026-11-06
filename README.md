@@ -168,7 +168,7 @@ reviews means reading every language. `-limit` applies per language when
 `-langs` is given, and records carry the corpus they came from. There is no
 country filter, because a review carries no country: `ru/kz` and `ru/us` return
 the same reviews id for id. `-fields mcp` names the fields as the
-[MCP server's](mcp/) `reviews` tool does (`untrusted_text`, `thumbs_up`), so a
+[MCP server's](mcp/) `play_get_reviews` tool does (`untrusted_text`, `thumbs_up`), so a
 filter written against one works on the other.
 
 ### Search and charts

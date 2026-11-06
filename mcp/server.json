@@ -10,17 +10,30 @@
     "subfolder": "mcp"
   },
   "websiteUrl": "https://github.com/kryuchenko/google-play-scraper/tree/main/mcp",
+  "icons": [
+    {
+      "src": "https://raw.githubusercontent.com/kryuchenko/google-play-scraper/main/mcp/assets/icon.svg",
+      "mimeType": "image/svg+xml",
+      "sizes": [
+        "any"
+      ]
+    }
+  ],
   "packages": [
     {
       "registryType": "mcpb",
       "identifier": "https://github.com/kryuchenko/google-play-scraper/releases/download/mcp-v0.0.0/gpscrape-mcp.mcpb",
       "fileSha256": "0000000000000000000000000000000000000000000000000000000000000000",
-      "transport": { "type": "stdio" }
+      "transport": {
+        "type": "stdio"
+      }
     },
     {
       "registryType": "oci",
       "identifier": "ghcr.io/kryuchenko/gpscrape-mcp:0.0.0",
-      "transport": { "type": "stdio" }
+      "transport": {
+        "type": "stdio"
+      }
     }
   ]
 }

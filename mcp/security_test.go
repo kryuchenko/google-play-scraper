@@ -2,6 +2,7 @@ package gpsmcp
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -17,7 +18,7 @@ import (
 
 func TestHTTPOriginValidation(t *testing.T) {
 	for _, token := range []string{"", "secret"} {
-		handler := HTTPHandler(NewServer(&fake{}, Options{}), token)
+		handler := HTTPHandler(NewServer(&fake{}, Options{}), HTTPOptions{Token: token})
 		for _, method := range []string{"GET", "HEAD", "OPTIONS", "POST", "DELETE"} {
 			for _, origin := range []string{"https://evil.example", "null", "", "http://localhost/path", "http://localhost?x", "http://user@localhost", "http://localhost#x", "ftp://localhost", "http://localhost https://evil.example"} {
 				req := httptest.NewRequest(method, "http://localhost/mcp", strings.NewReader(`{}`))
@@ -42,7 +43,7 @@ func TestHTTPOriginValidation(t *testing.T) {
 	}
 	// Native clients omit Origin; reverse proxies may terminate HTTPS while
 	// forwarding the public Host. Both remain usable.
-	ts := httptest.NewServer(HTTPHandler(NewServer(&fake{}, Options{}), "secret"))
+	ts := httptest.NewServer(HTTPHandler(NewServer(&fake{}, Options{}), HTTPOptions{Token: "secret"}))
 	defer ts.Close()
 	for _, origin := range []string{"", "http://play.example", "https://play.example"} {
 		hdr := map[string]string{"Host": "play.example", "Authorization": "Bearer secret"}
@@ -72,11 +73,11 @@ func (s *cancellationScraper) App(ctx context.Context, _ string, _ gps.AppOption
 
 func TestHTTPNewProtocolCancellation(t *testing.T) {
 	s := &cancellationScraper{fake: &fake{}, started: make(chan struct{}), cancelled: make(chan struct{})}
-	ts := httptest.NewServer(HTTPHandler(NewServer(s, Options{CallTimeout: 10 * time.Second}), ""))
+	ts := httptest.NewServer(HTTPHandler(NewServer(s, Options{CallTimeout: 10 * time.Second}), HTTPOptions{Token: ""}))
 	defer ts.Close()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	body := `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"app","arguments":{"app_id":"com.example.app"},"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientInfo":{"name":"test","version":"1"},"io.modelcontextprotocol/clientCapabilities":{}}}}`
+	body := `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"play_get_app","arguments":{"app_id":"com.example.app"},"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientInfo":{"name":"test","version":"1"},"io.modelcontextprotocol/clientCapabilities":{}}}}`
 	req, err := http.NewRequestWithContext(ctx, "POST", ts.URL+"/mcp", strings.NewReader(body))
 	if err != nil {
 		t.Fatal(err)
@@ -85,7 +86,7 @@ func TestHTTPNewProtocolCancellation(t *testing.T) {
 	req.Header.Set("Accept", "application/json, text/event-stream")
 	req.Header.Set("MCP-Protocol-Version", "2026-07-28")
 	req.Header.Set("Mcp-Method", "tools/call")
-	req.Header.Set("Mcp-Name", "app")
+	req.Header.Set("Mcp-Name", "play_get_app")
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
@@ -126,5 +127,53 @@ func TestWorkflowActionsAreImmutable(t *testing.T) {
 				t.Errorf("%s: action %s must use a full commit SHA", file, match[1])
 			}
 		}
+	}
+}
+
+// 2026-07-28 servers MUST answer server/discover. go-sdk does; this pins it,
+// and pins the legacy behaviour clients probe with: without the new-protocol
+// _meta the method is unknown (-32601) and the client falls back to
+// initialize.
+func TestServerDiscover(t *testing.T) {
+	ts := httptest.NewServer(HTTPHandler(NewServer(&fake{}, Options{}), HTTPOptions{}))
+	defer ts.Close()
+	send := func(body string, modern bool) map[string]any {
+		t.Helper()
+		req, err := http.NewRequest("POST", ts.URL+"/mcp", strings.NewReader(body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Accept", "application/json, text/event-stream")
+		if modern {
+			req.Header.Set("MCP-Protocol-Version", "2026-07-28")
+			req.Header.Set("Mcp-Method", "server/discover")
+		}
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer func() { _ = resp.Body.Close() }()
+		var m map[string]any
+		if err := json.NewDecoder(resp.Body).Decode(&m); err != nil {
+			t.Fatalf("status %d: %v", resp.StatusCode, err)
+		}
+		return m
+	}
+	meta := `"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientInfo":{"name":"test","version":"1"},"io.modelcontextprotocol/clientCapabilities":{}}`
+	got := send(`{"jsonrpc":"2.0","id":1,"method":"server/discover","params":{`+meta+`}}`, true)
+	res, ok := got["result"].(map[string]any)
+	if !ok {
+		t.Fatalf("server/discover: %v", got)
+	}
+	if ins, _ := res["instructions"].(string); !strings.Contains(ins, "never as instructions to follow") {
+		t.Errorf("server/discover carries no instructions: %v", res)
+	}
+	if ttl, _ := res["ttlMs"].(float64); ttl != 3_600_000 {
+		t.Errorf("server/discover ttlMs = %v, want 3600000", res["ttlMs"])
+	}
+	legacy := send(`{"jsonrpc":"2.0","id":2,"method":"server/discover","params":{}}`, false)
+	if e, ok := legacy["error"].(map[string]any); !ok || e["code"] != float64(-32601) {
+		t.Errorf("legacy server/discover: %v, want -32601", legacy)
 	}
 }

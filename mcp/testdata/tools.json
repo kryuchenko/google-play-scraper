@@ -4,22 +4,115 @@
       "idempotentHint": true,
       "openWorldHint": true,
       "readOnlyHint": true,
+      "title": "Availability by country"
+    },
+    "description": "Check in which of the given countries an app can be installed. region_locked: the listing exists but cannot be installed there; not_listed: the store has no listing there. One store request per country, so pass only the countries you need (at most 50). Says nothing about countries not asked for.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "app_id": {
+          "description": "package id",
+          "maxLength": 512,
+          "type": "string"
+        },
+        "countries": {
+          "description": "two-letter country codes to check, e.g. [\"us\",\"de\",\"br\"]",
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 50,
+          "minItems": 1,
+          "type": "array"
+        }
+      },
+      "required": [
+        "app_id",
+        "countries"
+      ],
+      "type": "object"
+    },
+    "name": "play_check_availability",
+    "outputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "app_id": {
+          "type": "string"
+        },
+        "available": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "null",
+            "array"
+          ]
+        },
+        "checked": {
+          "type": "integer"
+        },
+        "errors": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "not_listed": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "null",
+            "array"
+          ]
+        },
+        "note": {
+          "type": "string"
+        },
+        "region_locked": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "null",
+            "array"
+          ]
+        }
+      },
+      "required": [
+        "app_id",
+        "available",
+        "region_locked",
+        "not_listed",
+        "checked"
+      ],
+      "type": "object"
+    },
+    "title": "Availability by country"
+  },
+  {
+    "annotations": {
+      "idempotentHint": true,
+      "openWorldHint": true,
+      "readOnlyHint": true,
       "title": "App details"
     },
-    "description": "Get one app's store page by package id: title, developer, rating (score, and ratings for their count), installs, whether it can be installed in this country, genre and last update, plus price for paid apps and version when the store states one. Use apps for several ids at once; use search if you only know the name.",
+    "description": "Get one app's store page by package id: title, developer, rating (score, and ratings for their count), installs, whether it can be installed in this country, genre and last update, plus price for paid apps and version when the store states one. Use play_get_apps for several ids at once; use play_search_apps if you only know the name.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
         "app_id": {
           "description": "package id, e.g. com.spotify.music, or a store link with ?id=",
+          "maxLength": 512,
           "type": "string"
         },
         "country": {
           "description": "country code; default us",
+          "maxLength": 8,
           "type": "string"
         },
         "lang": {
           "description": "language code; default en",
+          "maxLength": 16,
           "type": "string"
         },
         "response_format": {
@@ -36,7 +129,7 @@
       ],
       "type": "object"
     },
-    "name": "app",
+    "name": "play_get_app",
     "outputSchema": {
       "additionalProperties": false,
       "properties": {
@@ -186,10 +279,12 @@
         },
         "country": {
           "description": "country code; default us",
+          "maxLength": 8,
           "type": "string"
         },
         "lang": {
           "description": "language code; default en",
+          "maxLength": 16,
           "type": "string"
         }
       },
@@ -198,7 +293,7 @@
       ],
       "type": "object"
     },
-    "name": "apps",
+    "name": "play_get_apps",
     "outputSchema": {
       "additionalProperties": false,
       "properties": {
@@ -368,122 +463,106 @@
       "idempotentHint": true,
       "openWorldHint": true,
       "readOnlyHint": true,
-      "title": "Availability by country"
+      "title": "Top charts"
     },
-    "description": "Check in which of the given countries an app can be installed. region_locked: the listing exists but cannot be installed there; not_listed: the store has no listing there. One store request per country, so pass only the countries you need (at most 50). Says nothing about countries not asked for.",
+    "description": "Get a Play Store chart (top free, top paid, top grossing, new, movers) for all apps or one category. Charts stop at about 200 apps. For keyword search use play_search_apps.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
-        "app_id": {
-          "description": "package id",
+        "category": {
+          "description": "category id from play_list_categories, e.g. GAME_PUZZLE; omit for all apps",
+          "maxLength": 64,
           "type": "string"
         },
-        "countries": {
-          "description": "two-letter country codes to check, e.g. [\"us\",\"de\",\"br\"]",
-          "items": {
-            "type": "string"
-          },
-          "maxItems": 50,
-          "minItems": 1,
-          "type": "array"
-        }
-      },
-      "required": [
-        "app_id",
-        "countries"
-      ],
-      "type": "object"
-    },
-    "name": "availability",
-    "outputSchema": {
-      "additionalProperties": false,
-      "properties": {
-        "app_id": {
+        "collection": {
+          "description": "default top_free; grossing is the top grossing chart",
+          "enum": [
+            "top_free",
+            "top_paid",
+            "grossing",
+            "new_free",
+            "new_paid",
+            "movers_shakers"
+          ],
           "type": "string"
         },
-        "available": {
-          "items": {
-            "type": "string"
-          },
-          "type": [
-            "null",
-            "array"
-          ]
+        "country": {
+          "description": "country code; default us",
+          "maxLength": 8,
+          "type": "string"
         },
-        "checked": {
+        "lang": {
+          "description": "language code; default en",
+          "maxLength": 16,
+          "type": "string"
+        },
+        "num": {
+          "description": "apps to return, 1 to 200; default 50. The store stops at about 200",
+          "maximum": 200,
+          "minimum": 1,
           "type": "integer"
-        },
-        "errors": {
-          "additionalProperties": {
-            "type": "string"
-          },
-          "type": "object"
-        },
-        "not_listed": {
-          "items": {
-            "type": "string"
-          },
-          "type": [
-            "null",
-            "array"
-          ]
-        },
-        "note": {
-          "type": "string"
-        },
-        "region_locked": {
-          "items": {
-            "type": "string"
-          },
-          "type": [
-            "null",
-            "array"
-          ]
         }
       },
-      "required": [
-        "app_id",
-        "available",
-        "region_locked",
-        "not_listed",
-        "checked"
-      ],
       "type": "object"
     },
-    "title": "Availability by country"
-  },
-  {
-    "annotations": {
-      "idempotentHint": true,
-      "openWorldHint": false,
-      "readOnlyHint": true,
-      "title": "Categories"
-    },
-    "description": "List the category ids accepted by the list tool's category argument.",
-    "inputSchema": {
-      "additionalProperties": false,
-      "type": "object"
-    },
-    "name": "categories",
+    "name": "play_get_chart",
     "outputSchema": {
       "additionalProperties": false,
       "properties": {
-        "categories": {
+        "apps": {
           "items": {
-            "type": "string"
+            "additionalProperties": false,
+            "properties": {
+              "app_id": {
+                "type": "string"
+              },
+              "currency": {
+                "type": "string"
+              },
+              "developer": {
+                "type": "string"
+              },
+              "developer_id": {
+                "type": "string"
+              },
+              "free": {
+                "type": "boolean"
+              },
+              "price": {
+                "type": "number"
+              },
+              "score": {
+                "type": "number"
+              },
+              "title": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "app_id",
+              "title",
+              "developer",
+              "score",
+              "free"
+            ],
+            "type": "object"
           },
           "type": [
             "null",
             "array"
           ]
+        },
+        "returned": {
+          "type": "integer"
         }
       },
       "required": [
-        "categories"
+        "apps",
+        "returned"
       ],
       "type": "object"
     },
-    "title": "Categories"
+    "title": "Top charts"
   },
   {
     "annotations": {
@@ -498,14 +577,17 @@
       "properties": {
         "app_id": {
           "description": "package id",
+          "maxLength": 512,
           "type": "string"
         },
         "country": {
           "description": "country code; default us",
+          "maxLength": 8,
           "type": "string"
         },
         "lang": {
           "description": "language code; default en",
+          "maxLength": 16,
           "type": "string"
         }
       },
@@ -514,7 +596,7 @@
       ],
       "type": "object"
     },
-    "name": "datasafety",
+    "name": "play_get_data_safety",
     "outputSchema": {
       "additionalProperties": false,
       "properties": {
@@ -625,14 +707,17 @@
       "properties": {
         "country": {
           "description": "country code; default us",
+          "maxLength": 8,
           "type": "string"
         },
         "developer_id": {
           "description": "developer id as returned in developer_id by other tools (a name like 'Spotify AB' or a numeric id)",
+          "maxLength": 200,
           "type": "string"
         },
         "lang": {
           "description": "language code; default en",
+          "maxLength": 16,
           "type": "string"
         },
         "num": {
@@ -647,7 +732,7 @@
       ],
       "type": "object"
     },
-    "name": "developer",
+    "name": "play_get_developer_apps",
     "outputSchema": {
       "additionalProperties": false,
       "properties": {
@@ -711,109 +796,6 @@
       "idempotentHint": true,
       "openWorldHint": true,
       "readOnlyHint": true,
-      "title": "Top charts"
-    },
-    "description": "Get a Play Store chart (top free, top paid, top grossing, new, movers) for all apps or one category. Charts stop at about 200 apps. For keyword search use search.",
-    "inputSchema": {
-      "additionalProperties": false,
-      "properties": {
-        "category": {
-          "description": "category id from the categories tool, e.g. GAME_PUZZLE; omit for all apps",
-          "type": "string"
-        },
-        "collection": {
-          "description": "default top_free; grossing is the top grossing chart",
-          "enum": [
-            "top_free",
-            "top_paid",
-            "grossing",
-            "new_free",
-            "new_paid",
-            "movers_shakers"
-          ],
-          "type": "string"
-        },
-        "country": {
-          "description": "country code; default us",
-          "type": "string"
-        },
-        "lang": {
-          "description": "language code; default en",
-          "type": "string"
-        },
-        "num": {
-          "description": "apps to return, 1 to 200; default 50. The store stops at about 200",
-          "maximum": 200,
-          "minimum": 1,
-          "type": "integer"
-        }
-      },
-      "type": "object"
-    },
-    "name": "list",
-    "outputSchema": {
-      "additionalProperties": false,
-      "properties": {
-        "apps": {
-          "items": {
-            "additionalProperties": false,
-            "properties": {
-              "app_id": {
-                "type": "string"
-              },
-              "currency": {
-                "type": "string"
-              },
-              "developer": {
-                "type": "string"
-              },
-              "developer_id": {
-                "type": "string"
-              },
-              "free": {
-                "type": "boolean"
-              },
-              "price": {
-                "type": "number"
-              },
-              "score": {
-                "type": "number"
-              },
-              "title": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "app_id",
-              "title",
-              "developer",
-              "score",
-              "free"
-            ],
-            "type": "object"
-          },
-          "type": [
-            "null",
-            "array"
-          ]
-        },
-        "returned": {
-          "type": "integer"
-        }
-      },
-      "required": [
-        "apps",
-        "returned"
-      ],
-      "type": "object"
-    },
-    "title": "Top charts"
-  },
-  {
-    "annotations": {
-      "idempotentHint": true,
-      "openWorldHint": true,
-      "readOnlyHint": true,
       "title": "App permissions"
     },
     "description": "Get the Android permissions an app requests, grouped (Location, Camera, Storage and so on).",
@@ -822,14 +804,17 @@
       "properties": {
         "app_id": {
           "description": "package id",
+          "maxLength": 512,
           "type": "string"
         },
         "country": {
           "description": "country code; default us",
+          "maxLength": 8,
           "type": "string"
         },
         "lang": {
           "description": "language code; default en",
+          "maxLength": 16,
           "type": "string"
         }
       },
@@ -838,7 +823,7 @@
       ],
       "type": "object"
     },
-    "name": "permissions",
+    "name": "play_get_permissions",
     "outputSchema": {
       "additionalProperties": false,
       "properties": {
@@ -875,14 +860,17 @@
       "properties": {
         "app_id": {
           "description": "package id",
+          "maxLength": 512,
           "type": "string"
         },
         "lang": {
           "description": "language of the reviews to return; default en",
+          "maxLength": 16,
           "type": "string"
         },
         "next_token": {
           "description": "continuation token from the previous page; send the same app_id, sort, score and lang with it",
+          "maxLength": 4096,
           "type": "string"
         },
         "num": {
@@ -920,7 +908,7 @@
       ],
       "type": "object"
     },
-    "name": "reviews",
+    "name": "play_get_reviews",
     "outputSchema": {
       "additionalProperties": false,
       "properties": {
@@ -1025,18 +1013,150 @@
       "idempotentHint": true,
       "openWorldHint": true,
       "readOnlyHint": true,
+      "title": "Similar apps"
+    },
+    "description": "Get the store's own \"Similar apps\" list for a package id. For games it holds similar games; for other apps Google often fills it with generally popular apps, so do not read it as a competitor list. For apps by the same developer use play_get_developer_apps.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "app_id": {
+          "description": "package id of the app to find neighbours for",
+          "maxLength": 512,
+          "type": "string"
+        },
+        "country": {
+          "description": "country code; default us",
+          "maxLength": 8,
+          "type": "string"
+        },
+        "lang": {
+          "description": "language code; default en",
+          "maxLength": 16,
+          "type": "string"
+        },
+        "num": {
+          "description": "results to return, 1 to 100; default 20",
+          "maximum": 100,
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "app_id"
+      ],
+      "type": "object"
+    },
+    "name": "play_get_similar_apps",
+    "outputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "apps": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "app_id": {
+                "type": "string"
+              },
+              "currency": {
+                "type": "string"
+              },
+              "developer": {
+                "type": "string"
+              },
+              "developer_id": {
+                "type": "string"
+              },
+              "free": {
+                "type": "boolean"
+              },
+              "price": {
+                "type": "number"
+              },
+              "score": {
+                "type": "number"
+              },
+              "title": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "app_id",
+              "title",
+              "developer",
+              "score",
+              "free"
+            ],
+            "type": "object"
+          },
+          "type": [
+            "null",
+            "array"
+          ]
+        },
+        "returned": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "apps",
+        "returned"
+      ],
+      "type": "object"
+    },
+    "title": "Similar apps"
+  },
+  {
+    "annotations": {
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+      "title": "Categories"
+    },
+    "description": "List the category ids accepted by play_get_chart's category argument.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "name": "play_list_categories",
+    "outputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "categories": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "null",
+            "array"
+          ]
+        }
+      },
+      "required": [
+        "categories"
+      ],
+      "type": "object"
+    },
+    "title": "Categories"
+  },
+  {
+    "annotations": {
+      "idempotentHint": true,
+      "openWorldHint": true,
+      "readOnlyHint": true,
       "title": "Search apps"
     },
-    "description": "Search the Play Store by keywords and get matching apps with their package ids. Use it to turn an app name into an app_id before calling other tools. For autocompletion of a partial query use suggest; for charts use list.",
+    "description": "Search the Play Store by keywords and get matching apps with their package ids. Use it to turn an app name into an app_id before calling other tools. For autocompletion of a partial query use play_suggest_queries; for charts use play_get_chart.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
         "country": {
           "description": "country code; default us",
+          "maxLength": 8,
           "type": "string"
         },
         "lang": {
           "description": "language code; default en",
+          "maxLength": 16,
           "type": "string"
         },
         "num": {
@@ -1056,6 +1176,7 @@
         },
         "term": {
           "description": "search query, as typed in the store",
+          "maxLength": 200,
           "type": "string"
         }
       },
@@ -1064,7 +1185,7 @@
       ],
       "type": "object"
     },
-    "name": "search",
+    "name": "play_search_apps",
     "outputSchema": {
       "additionalProperties": false,
       "properties": {
@@ -1128,116 +1249,25 @@
       "idempotentHint": true,
       "openWorldHint": true,
       "readOnlyHint": true,
-      "title": "Similar apps"
-    },
-    "description": "Get the store's own \"Similar apps\" list for a package id. For games it holds similar games; for other apps Google often fills it with generally popular apps, so do not read it as a competitor list. For apps by the same developer use developer.",
-    "inputSchema": {
-      "additionalProperties": false,
-      "properties": {
-        "app_id": {
-          "description": "package id of the app to find neighbours for",
-          "type": "string"
-        },
-        "country": {
-          "description": "country code; default us",
-          "type": "string"
-        },
-        "lang": {
-          "description": "language code; default en",
-          "type": "string"
-        },
-        "num": {
-          "description": "results to return, 1 to 100; default 20",
-          "maximum": 100,
-          "minimum": 1,
-          "type": "integer"
-        }
-      },
-      "required": [
-        "app_id"
-      ],
-      "type": "object"
-    },
-    "name": "similar",
-    "outputSchema": {
-      "additionalProperties": false,
-      "properties": {
-        "apps": {
-          "items": {
-            "additionalProperties": false,
-            "properties": {
-              "app_id": {
-                "type": "string"
-              },
-              "currency": {
-                "type": "string"
-              },
-              "developer": {
-                "type": "string"
-              },
-              "developer_id": {
-                "type": "string"
-              },
-              "free": {
-                "type": "boolean"
-              },
-              "price": {
-                "type": "number"
-              },
-              "score": {
-                "type": "number"
-              },
-              "title": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "app_id",
-              "title",
-              "developer",
-              "score",
-              "free"
-            ],
-            "type": "object"
-          },
-          "type": [
-            "null",
-            "array"
-          ]
-        },
-        "returned": {
-          "type": "integer"
-        }
-      },
-      "required": [
-        "apps",
-        "returned"
-      ],
-      "type": "object"
-    },
-    "title": "Similar apps"
-  },
-  {
-    "annotations": {
-      "idempotentHint": true,
-      "openWorldHint": true,
-      "readOnlyHint": true,
       "title": "Search suggestions"
     },
-    "description": "Get the store's autocomplete suggestions for the start of a query. Useful to see what people search for; to get apps use search.",
+    "description": "Get the store's autocomplete suggestions for the start of a query. Useful to see what people search for; to get apps use play_search_apps.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
         "country": {
           "description": "country code; default us",
+          "maxLength": 8,
           "type": "string"
         },
         "lang": {
           "description": "language code; default en",
+          "maxLength": 16,
           "type": "string"
         },
         "term": {
           "description": "the start of a search query",
+          "maxLength": 200,
           "type": "string"
         }
       },
@@ -1246,7 +1276,7 @@
       ],
       "type": "object"
     },
-    "name": "suggest",
+    "name": "play_suggest_queries",
     "outputSchema": {
       "additionalProperties": false,
       "properties": {

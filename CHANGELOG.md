@@ -11,7 +11,7 @@ All notable changes to this project are documented here. The format is based on
   has dependencies; dependabot watches them. Every workflow pins its actions
   to a commit SHA, with the version in a comment.
 - `gpscrape reviews -fields mcp` names the fields as the `gpscrape-mcp`
-  `reviews` tool does (`untrusted_text`, `thumbs_up`, `reply_date`, ...), so
+  `play_get_reviews` tool does (`untrusted_text`, `thumbs_up`, `reply_date`, ...), so
   a jq filter written against the tool works on the CLI's bulk output. The
   default stays the library's names. Both sides are tested against one list,
   `mcp/testdata/review-fields.txt`.
@@ -25,9 +25,51 @@ All notable changes to this project are documented here. The format is based on
 - A weekly workflow asks Claude Code and Codex to quote the server
   instructions back, to notice a client release that stops passing them to
   the model.
+- `gpscrape-mcp`: every tool error starts with a stable code
+  (`invalid_argument`, `not_found`, `not_listed`, `rate_limited`, `timeout`,
+  `busy`, `cancelled`, `store_error`, `internal`), so a program can branch on
+  it; the README says which are worth retrying.
+- `gpscrape-mcp`: `play_check_availability` sends a progress notification
+  per probed country to a client that passes a `progressToken` (stdio).
+- `gpscrape-mcp`: `-token-file` reads the bearer token from a file, for
+  Docker and systemd secrets.
+- `gpscrape-mcp` has an icon, in its server info, `server.json` and the MCPB
+  bundle.
+- Releases carry signed build provenance (GitHub artifact attestations) for
+  the CLI binaries, the server binaries, the MCPB bundle and the image; check
+  one with `gh attestation verify`.
+- The MCPB bundle runs on Linux arm64 too: on Linux it starts a launcher
+  that picks the amd64 or arm64 binary.
 
 ### Changed
 
+- **Breaking, `gpscrape-mcp`:** the tools are renamed to `play_` + verb +
+  object, as Anthropic's (namespacing) and OpenAI's (action-oriented names)
+  tool guidance both ask: `search` → `play_search_apps`, `app` →
+  `play_get_app`, `apps` → `play_get_apps`, `list` → `play_get_chart`,
+  `reviews` → `play_get_reviews`, `similar` → `play_get_similar_apps`,
+  `developer` → `play_get_developer_apps`, `permissions` →
+  `play_get_permissions`, `datasafety` → `play_get_data_safety`, `suggest` →
+  `play_suggest_queries`, `categories` → `play_list_categories`,
+  `availability` → `play_check_availability`.
+- **Breaking, `gpscrape-mcp`:** the secret path `/mcp/<token>` for ChatGPT is
+  off unless `-secret-path` is given; a token alone opens only the bearer
+  header. A token in a URL ends up in proxy logs and browser history, so only
+  a deployment that needs it should accept it.
+- **Breaking, `gpscrape-mcp`:** the `-token` flag is gone; a secret on the
+  command line is visible to every user of the machine in `ps`. Use
+  `$GPSCRAPE_MCP_TOKEN` or `-token-file`.
+- `gpscrape-mcp`: `tools/list` and `server/discover` say `ttlMs` of an hour
+  instead of 0 ("stale at once"); the tool set never changes while the
+  server runs.
+- `gpscrape-mcp`: a call the client cancelled returns no result even if the
+  work behind it finished, as the spec's cancellation rule asks.
+- `gpscrape-mcp`: at most four calls per concurrency slot wait for one; a
+  call past that is refused at once as `busy` instead of joining a queue that
+  cannot drain before its deadline. String arguments have a maximum length
+  in the input schema.
+- The container's base images are pinned by digest, and dependabot keeps
+  the pins current.
 - Every `gpscrape-mcp` tool publishes an output schema, and the server
   checks each result against it before sending. OpenAI's MCP guidance asks
   for one on structured results; `tools/list` grows from about 9.8 KB to
@@ -41,10 +83,10 @@ All notable changes to this project are documented here. The format is based on
   and `-langs all` for bulk jobs, which the one-page tools are not for, when
   the CLI is already installed; otherwise the agent pages with the tools or
   tells the user the job needs the CLI, and it must ask the user before
-  installing it. The `reviews` tool description repeats the hint, for
+  installing it. The `play_get_reviews` description repeats the hint, for
   clients that do not pass instructions to the model.
 - The server instructions are shorter and open with the untrusted-data
-  warning, and the `reviews` description puts it first too. Every tool
+  warning, and the `play_get_reviews` description puts it first too. Every tool
   description stays under 1000 bytes, where Codex cuts descriptions for
   servers installed as plugins.
 
@@ -58,7 +100,7 @@ All notable changes to this project are documented here. The format is based on
   transport spec requires. Go's cross-origin protection skipped GET and
   trusted `Sec-Fetch-Site` before looking at `Origin`; a request with a
   foreign or malformed `Origin` now gets 403 whatever else it claims.
-- `gpscrape-mcp`: `categories` no longer claims `openWorldHint`; it reads a
+- `gpscrape-mcp`: `play_list_categories` no longer claims `openWorldHint`; it reads a
   fixed table and makes no request.
 - `gpscrape-mcp`: a tool call cancelled while it waited for a free
   concurrency slot was logged as "server busy". It is now logged as a

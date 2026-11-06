@@ -53,3 +53,13 @@ updates:
       interval: monthly
     commit-message:
       prefix: "ci"
+
+  # mcp/Dockerfile pins its base images by digest; this keeps the pins from
+  # going stale (a digest never moves, so without it security fixes in the
+  # base image would never arrive).
+  - package-ecosystem: docker
+    directory: /mcp
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "deps(docker)"

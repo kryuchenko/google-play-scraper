@@ -46,7 +46,7 @@ Points that trip people up:
   by language, not by country: `-country` does not change which reviews come
   back.
 - Without `-fields mcp` the names are the library's (`text`, `thumbsUp`,
-  `userName`, `replyText`); with it they match the MCP `reviews` tool
+  `userName`, `replyText`); with it they match the MCP `play_get_reviews` tool
   (`untrusted_text`, `thumbs_up`, ...). A jq filter written against one set
   matches nothing on the other.
 - `gpscrape -h` lists the commands; `gpscrape <command> -h` lists the flags.
@@ -60,8 +60,9 @@ Points that trip people up:
 
 ## The MCP tools
 
-Typical flow: `search` to get a package id, then `app`, `reviews`, `similar`,
-`permissions` or `datasafety` with it. `reviews` returns one page and a
+Typical flow: `play_search_apps` to get a package id, then `play_get_app`,
+`play_get_reviews`, `play_get_similar_apps`, `play_get_permissions` or
+`play_get_data_safety` with it. `play_get_reviews` returns one page and a
 `next_token`; pass it back with the same `app_id`, `sort`, `score` and `lang`,
 or the store silently switches language. List tools return 20 to 50 rows by
 default; ask for more only when the task needs it.
