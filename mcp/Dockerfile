@@ -1,0 +1,22 @@
+# gpscrape-mcp in a container. Stdio by default, which is what MCP clients
+# launch (`docker run -i --rm ghcr.io/kryuchenko/gpscrape-mcp`). For HTTP:
+#   docker run --rm -p 8080:8080 -e GPSCRAPE_MCP_TOKEN=... \
+#     ghcr.io/kryuchenko/gpscrape-mcp -http 0.0.0.0:8080
+# Build from this directory: docker build -t gpscrape-mcp mcp
+# It resolves the root library from the module proxy (GOWORK=off), the way
+# a `go install` user gets it, so a release must tag the root first.
+FROM golang:1.27 AS build
+WORKDIR /src
+COPY . .
+ENV GOWORK=off CGO_ENABLED=0
+RUN go build -trimpath -ldflags "-s -w" -o /out/gpscrape-mcp ./cmd/gpscrape-mcp
+
+# static: no shell, no package manager, but CA certificates and a nonroot user,
+# which is all a client of play.google.com needs.
+FROM gcr.io/distroless/static-debian12:nonroot
+COPY --from=build /out/gpscrape-mcp /gpscrape-mcp
+LABEL io.modelcontextprotocol.server.name="io.github.kryuchenko/gpscrape"
+LABEL org.opencontainers.image.source="https://github.com/kryuchenko/google-play-scraper"
+LABEL org.opencontainers.image.description="MCP server for read-only Google Play Store data"
+LABEL org.opencontainers.image.licenses="MIT"
+ENTRYPOINT ["/gpscrape-mcp"]

@@ -1,0 +1,196 @@
+name: Release MCP server
+
+# Runs on an mcp/vX.Y.Z tag (release.yml only sees v*, the root module's
+# tags). Builds gpscrape-mcp, packs it as an MCPB bundle, pushes a container
+# image to ghcr, and publishes mcp/server.json to the official MCP Registry.
+#
+# Order matters: the root library must be tagged first and mcp/go.mod must
+# require it, because both the image and the bundle build in module mode
+# against the proxy, the way a `go install` user does.
+on:
+  push:
+    tags: ['mcp/v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to release, e.g. mcp/v0.1.1'
+        required: true
+
+permissions:
+  contents: read
+
+env:
+  TAG: ${{ github.event.inputs.tag || github.ref_name }}
+  IMAGE: ghcr.io/kryuchenko/gpscrape-mcp
+
+jobs:
+  bundle:
+    # macOS for lipo: one universal darwin binary serves both Apple chips,
+    # since an MCPB bundle can pick a binary per OS but not per architecture.
+    runs-on: macos-latest
+    permissions:
+      contents: write
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      sha256: ${{ steps.pack.outputs.sha256 }}
+    env:
+      GOWORK: 'off'
+      CGO_ENABLED: '0'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.TAG }}
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version: stable
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '20'
+
+      # The tag, the Version constant reported in the handshake, and the
+      # bundle and registry entries must all say the same thing.
+      - name: Check the version
+        id: version
+        working-directory: mcp
+        run: |
+          version="${TAG#mcp/v}"
+          reported="$(go run ./cmd/gpscrape-mcp -version)"
+          case "$reported" in
+            "$version"|"$version "*) ;;
+            *) echo "::error::tag says $version, gpscrape-mcp -version says $reported"; exit 1 ;;
+          esac
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Build
+        working-directory: mcp
+        run: |
+          mkdir -p ../dist bundle/server
+          b() { GOOS=$1 GOARCH=$2 go build -trimpath -ldflags "-s -w" -o "$3" ./cmd/gpscrape-mcp; }
+          b darwin amd64 /tmp/darwin-amd64
+          b darwin arm64 /tmp/darwin-arm64
+          lipo -create -output bundle/server/gpscrape-mcp-darwin /tmp/darwin-amd64 /tmp/darwin-arm64
+          b linux amd64 bundle/server/gpscrape-mcp-linux-amd64
+          b windows amd64 bundle/server/gpscrape-mcp-windows-amd64.exe
+          b linux arm64 ../dist/gpscrape-mcp_linux_arm64
+          cp bundle/server/gpscrape-mcp-darwin ../dist/gpscrape-mcp_darwin_universal
+          cp bundle/server/gpscrape-mcp-linux-amd64 ../dist/gpscrape-mcp_linux_amd64
+          cp bundle/server/gpscrape-mcp-windows-amd64.exe ../dist/gpscrape-mcp_windows_amd64.exe
+
+      - name: Pack the MCPB bundle
+        id: pack
+        working-directory: mcp
+        run: |
+          jq --arg v "${{ steps.version.outputs.version }}" '.version = $v' mcpb/manifest.json > bundle/manifest.json
+          cp ../LICENSE bundle/
+          npx -y @anthropic-ai/mcpb@2.1.2 validate bundle/manifest.json
+          npx -y @anthropic-ai/mcpb@2.1.2 pack bundle ../dist/gpscrape-mcp.mcpb
+          cd ../dist
+          shasum -a 256 * > checksums.txt && cat checksums.txt
+          echo "sha256=$(shasum -a 256 gpscrape-mcp.mcpb | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+
+      - name: Publish the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" --title "gpscrape-mcp ${TAG#mcp/}" --latest=false \
+              --notes "MCP server for Google Play. Install and client setup: https://github.com/kryuchenko/google-play-scraper/tree/main/mcp. Changes are in CHANGELOG.md."
+          fi
+          gh release upload "$TAG" dist/* --clobber
+
+  image:
+    needs: bundle
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.TAG }}
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      # The Dockerfile carries the io.modelcontextprotocol.server.name label
+      # the registry checks to prove the image belongs to this server.
+      - uses: docker/build-push-action@v6
+        with:
+          context: mcp
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ${{ env.IMAGE }}:${{ needs.bundle.outputs.version }}
+            ${{ env.IMAGE }}:latest
+
+  registry:
+    needs: [bundle, image]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # GitHub OIDC login to the registry, no stored secret
+    env:
+      MCP_PUBLISHER_VERSION: v1.8.8
+      VERSION: ${{ needs.bundle.outputs.version }}
+      SHA256: ${{ needs.bundle.outputs.sha256 }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.TAG }}
+
+      - name: Fill in server.json
+        working-directory: mcp
+        run: |
+          jq --arg v "$VERSION" --arg tag "$TAG" --arg sha "$SHA256" --arg img "$IMAGE" '
+            .version = $v
+            | .packages |= map(
+                if .registryType == "mcpb" then
+                  .identifier = "https://github.com/kryuchenko/google-play-scraper/releases/download/\($tag)/gpscrape-mcp.mcpb"
+                  | .fileSha256 = $sha
+                else .identifier = "\($img):\($v)" end)
+          ' server.json > server.out.json
+          mv server.out.json server.json
+          cat server.json
+
+      # ghcr makes a new package private, and the registry has to pull the
+      # image to read its label. Until the package is switched to public
+      # (once, in the repository's package settings), publish the bundle only
+      # rather than fail the release.
+      - name: Drop the image if it is not public yet
+        working-directory: mcp
+        run: |
+          token=$(curl -fsS "https://ghcr.io/token?scope=repository:kryuchenko/gpscrape-mcp:pull" | jq -r .token)
+          if ! curl -fsS -o /dev/null -H "Authorization: Bearer $token" \
+               -H "Accept: application/vnd.oci.image.index.v1+json" \
+               "https://ghcr.io/v2/kryuchenko/gpscrape-mcp/manifests/$VERSION"; then
+            echo "::warning::ghcr.io/kryuchenko/gpscrape-mcp is not publicly pullable; publishing without the image"
+            jq '.packages |= map(select(.registryType != "oci"))' server.json > s.json && mv s.json server.json
+          fi
+
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+
+      # Pinned and verified against its Sigstore bundle, as the registry's
+      # own instructions ask; bump MCP_PUBLISHER_VERSION deliberately.
+      - name: Download and verify mcp-publisher
+        run: |
+          set -euo pipefail
+          archive="mcp-publisher_linux_amd64.tar.gz"
+          base="https://github.com/modelcontextprotocol/registry/releases/download/${MCP_PUBLISHER_VERSION}"
+          curl -fsSL -o "$archive" "$base/$archive"
+          curl -fsSL -o "$archive.sigstore.json" "$base/$archive.sigstore.json"
+          cosign verify-blob --bundle "$archive.sigstore.json" \
+            --certificate-identity "https://github.com/modelcontextprotocol/registry/.github/workflows/release.yml@refs/tags/${MCP_PUBLISHER_VERSION}" \
+            --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+            "$archive"
+          tar xzf "$archive" mcp-publisher
+
+      - name: Publish to the MCP Registry
+        working-directory: mcp
+        run: |
+          ../mcp-publisher login github-oidc
+          ../mcp-publisher publish

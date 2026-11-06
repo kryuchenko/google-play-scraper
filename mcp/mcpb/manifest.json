@@ -1,0 +1,40 @@
+{
+  "manifest_version": "0.3",
+  "name": "gpscrape",
+  "display_name": "Google Play Store",
+  "version": "0.0.0",
+  "description": "Read-only Google Play data: app details, search, charts, reviews, permissions, data safety.",
+  "long_description": "Twelve read-only tools over public Google Play Store pages: search, app details, charts, one page of reviews at a time, similar apps, developer listings, permissions, data safety, suggestions, categories and per-country availability. No account or API key. Text from the store is third-party data and is marked as such.",
+  "author": { "name": "Andrey Kryuchenko", "url": "https://github.com/kryuchenko" },
+  "repository": { "type": "git", "url": "https://github.com/kryuchenko/google-play-scraper" },
+  "homepage": "https://github.com/kryuchenko/google-play-scraper/tree/main/mcp",
+  "license": "MIT",
+  "server": {
+    "type": "binary",
+    "entry_point": "server/gpscrape-mcp-linux-amd64",
+    "mcp_config": {
+      "command": "${__dirname}/server/gpscrape-mcp-linux-amd64",
+      "args": [],
+      "platform_overrides": {
+        "darwin": { "command": "${__dirname}/server/gpscrape-mcp-darwin" },
+        "win32": { "command": "${__dirname}/server/gpscrape-mcp-windows-amd64.exe" }
+      }
+    }
+  },
+  "tools": [
+    { "name": "search", "description": "Apps matching keywords, with package ids" },
+    { "name": "app", "description": "One app's store page" },
+    { "name": "apps", "description": "Concise details for several package ids" },
+    { "name": "list", "description": "A chart: top free, top paid, grossing, new" },
+    { "name": "reviews", "description": "One page of user reviews" },
+    { "name": "similar", "description": "Apps the store lists as similar" },
+    { "name": "developer", "description": "A developer's apps" },
+    { "name": "permissions", "description": "Permissions an app requests" },
+    { "name": "datasafety", "description": "An app's data safety section" },
+    { "name": "suggest", "description": "Search query completions" },
+    { "name": "categories", "description": "Store categories" },
+    { "name": "availability", "description": "Which countries list an app" }
+  ],
+  "compatibility": { "platforms": ["darwin", "win32", "linux"] },
+  "keywords": ["google play", "android", "app store", "reviews"]
+}

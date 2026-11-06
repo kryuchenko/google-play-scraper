@@ -133,6 +133,13 @@ jobs:
             --url http://127.0.0.1:3001/mcp \
             --expected-failures mcp/conformance-baseline.yml
 
+      # The release workflow packs the server as an MCPB bundle; a manifest
+      # the packer rejects should fail here, on the pull request, not at
+      # release time. Pinned like the other npx tools.
+      - name: Validate the MCPB manifest
+        if: matrix.go-version == 'stable'
+        run: npx -y @anthropic-ai/mcpb@2.1.2 validate mcp/mcpb/manifest.json
+
       # The benchmarks are run once each rather than measured: the point here
       # is that they still compile and do not panic on the fixtures. Timing in
       # CI is meaningless, and the numbers are only comparable within one

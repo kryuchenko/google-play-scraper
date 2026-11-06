@@ -5,6 +5,50 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+
+- `gpscrape reviews -fields mcp` names the fields as the `gpscrape-mcp`
+  `reviews` tool does (`untrusted_text`, `thumbs_up`, `reply_date`, ...), so
+  a jq filter written against the tool works on the CLI's bulk output. The
+  default stays the library's names. Both sides are tested against one list,
+  `mcp/testdata/review-fields.txt`.
+- `skills/gpscrape/SKILL.md`, a skill for Claude Code and other agents that
+  read `SKILL.md`: when to use the MCP tools and when the CLI, and how to
+  filter the CLI's output.
+- `gpscrape-mcp` releases (`mcp/v*` tags) build prebuilt binaries, an MCPB
+  bundle and a container image on `ghcr.io/kryuchenko/gpscrape-mcp`, and
+  publish `mcp/server.json` to the official MCP Registry as
+  `io.github.kryuchenko/gpscrape`.
+- A weekly workflow asks Claude Code and Codex to quote the server
+  instructions back, to notice a client release that stops passing them to
+  the model.
+
+### Changed
+
+- `gpscrape-mcp` tells agents about the `gpscrape` CLI. Its instructions
+  point an agent that can run shell commands at `gpscrape reviews … -limit`
+  and `-langs all` for bulk jobs, which the one-page tools are not for, when
+  the CLI is already installed; otherwise the agent pages with the tools or
+  tells the user the job needs the CLI, and it must ask the user before
+  installing it. The `reviews` tool description repeats the hint, for
+  clients that do not pass instructions to the model.
+- The server instructions are shorter and open with the untrusted-data
+  warning, and the `reviews` description puts it first too. Every tool
+  description stays under 1000 bytes, where Codex cuts descriptions for
+  servers installed as plugins.
+
+### Fixed
+
+- `gpscrape reviews -lang all` and `-lang ru,de` were sent to Google as-is:
+  the store answered in English or in the first language, every record was
+  stamped with the bogus code, and the exit was 0. `-lang` now refuses a
+  list or `all` and points at `-langs`.
+- `gpscrape catalog -h` failed with "-h is a flag, not a verb", although
+  `gpscrape -h` tells you to run `<command> -h`. It prints the catalog usage.
+- A CLI test that caps file size for the whole process (to make a write
+  fail) also capped the log `go test` writes, and failed the package with
+  "file too large" once the log outgrew 128 KB.
+
 ## [1.5.0] - 2026-11-05
 
 ### Added

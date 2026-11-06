@@ -11,7 +11,15 @@ reach it over Streamable HTTP.
 
 This is a separate Go module, so the root library keeps its zero-dependency
 guarantee. The long sweeps (the sitemap catalog, every review of an app) are
-left out on purpose and stay in the [`gpscrape`](../README.md) command.
+left out on purpose and stay in the [`gpscrape`](../README.md) command. The
+server tells the agent so, in its instructions and again in the `reviews`
+tool description (some clients, such as claude.ai and the OpenAI Agents SDK,
+do not pass instructions to the model). An agent that can run shell commands
+is pointed at `gpscrape` for bulk jobs if it is already installed. If it is
+not, the agent pages with the tools or tells the user the job needs the CLI,
+and it is told to ask the user before installing it. The instructions open
+with the untrusted-data warning and stay short; every tool description stays
+under 1000 bytes, where Codex cuts them for servers installed as plugins.
 
 ## Install
 
@@ -19,7 +27,21 @@ left out on purpose and stay in the [`gpscrape`](../README.md) command.
 go install github.com/kryuchenko/google-play-scraper/mcp/cmd/gpscrape-mcp@latest
 ```
 
-Requires Go 1.27.
+Requires Go 1.27. Without Go:
+
+- **Prebuilt binaries** for macOS, Linux and Windows are attached to each
+  [`mcp/v*` release](https://github.com/kryuchenko/google-play-scraper/releases).
+- **MCPB bundle**: `gpscrape-mcp.mcpb` on the same release installs in one
+  step in clients that take MCP bundles, such as Claude Desktop.
+- **Container**: `docker run -i --rm ghcr.io/kryuchenko/gpscrape-mcp` speaks
+  stdio; for HTTP, `docker run --rm -p 8080:8080 -e GPSCRAPE_MCP_TOKEN=<token>
+  ghcr.io/kryuchenko/gpscrape-mcp -http 0.0.0.0:8080`.
+- **MCP Registry**: listed as `io.github.kryuchenko/gpscrape`, so clients that
+  browse the registry can find it.
+
+For agents that also have a shell, the
+[`gpscrape` skill](../skills/gpscrape/SKILL.md) explains when to reach for the
+CLI instead of these tools.
 
 ## Connect a client
 
@@ -136,7 +158,7 @@ rows carry no developer id, and outside charts no price.
   `minimum`/`maximum`, `enum` and array lengths, so a client can check an
   argument before calling; an omitted number takes its default, an explicit
   `0` is out of range. Output schemas are left out to keep `tools/list`
-  small (about 9.5 KB), since every client loads it before the first
+  small (about 9.9 KB), since every client loads it before the first
   question. Results come back as `structuredContent` and as the same JSON in
   `content`, because some clients (the OpenAI Agents SDK by default) show the
   model only `content`.
