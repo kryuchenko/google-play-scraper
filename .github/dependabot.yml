@@ -37,6 +37,16 @@ updates:
         patterns:
           - "github.com/chromedp/*"
 
+  # The MCP server talks to untrusted clients over HTTP through the go-sdk,
+  # so its security fixes should reach a pull request without anyone
+  # remembering to look.
+  - package-ecosystem: gomod
+    directory: /mcp
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "deps(mcp)"
+
   - package-ecosystem: github-actions
     directory: /
     schedule:

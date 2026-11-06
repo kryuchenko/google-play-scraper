@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"maps"
 	"net/http"
 	"net/http/httptest"
@@ -14,6 +15,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -170,6 +172,30 @@ func connect(t *testing.T, s Scraper, opts Options) *mcp.ClientSession {
 	return cs
 }
 
+// captureLog collects log messages for assertions.
+type captureLog struct {
+	mu   sync.Mutex
+	msgs []string
+}
+
+func (c *captureLog) Enabled(context.Context, slog.Level) bool { return true }
+
+func (c *captureLog) Handle(_ context.Context, r slog.Record) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.msgs = append(c.msgs, r.Message)
+	return nil
+}
+
+func (c *captureLog) WithAttrs([]slog.Attr) slog.Handler { return c }
+func (c *captureLog) WithGroup(string) slog.Handler      { return c }
+
+func (c *captureLog) has(sub string) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return slices.ContainsFunc(c.msgs, func(m string) bool { return strings.Contains(m, sub) })
+}
+
 // callOK invokes a tool that must succeed and decodes its structured result
 // into out (if non-nil).
 func callOK(t *testing.T, cs *mcp.ClientSession, name string, args map[string]any, out any) {
@@ -220,6 +246,9 @@ func TestToolsListed(t *testing.T) {
 		got = append(got, tool.Name)
 		if tool.Annotations == nil || !tool.Annotations.ReadOnlyHint {
 			t.Errorf("%s: not marked read-only", tool.Name)
+		}
+		if a := tool.Annotations; a == nil || !a.IdempotentHint || a.OpenWorldHint == nil || *a.OpenWorldHint != (tool.Name != "categories") {
+			t.Errorf("%s: annotations must distinguish the local category table from network reads", tool.Name)
 		}
 		if tool.OutputSchema != nil {
 			t.Errorf("%s: publishes an output schema; it doubles tools/list for no gain", tool.Name)
@@ -500,6 +529,47 @@ func TestConcurrencyLimit(t *testing.T) {
 	close(block)
 	if res := <-first; res == nil {
 		t.Fatal("first call: no result")
+	}
+}
+
+// A call cancelled while it waits for a slot is logged as a cancellation,
+// not as "server busy": client cancels should not read as load in the log.
+func TestQueuedCancelIsNotBusy(t *testing.T) {
+	block := make(chan struct{})
+	f := &fake{block: block, started: make(chan struct{}, 1), ignoreCtx: true}
+	logs := &captureLog{}
+	cs := connect(t, f, Options{MaxConcurrent: 1, CallTimeout: 10 * time.Second, Logger: slog.New(logs)})
+
+	first := make(chan struct{})
+	go func() {
+		_, _ = cs.CallTool(context.Background(), &mcp.CallToolParams{Name: "app", Arguments: map[string]any{"app_id": "com.a.b"}})
+		close(first)
+	}()
+	<-f.started // the only slot is now held
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		_, _ = cs.CallTool(ctx, &mcp.CallToolParams{Name: "categories", Arguments: map[string]any{}})
+		close(done)
+	}()
+	time.Sleep(100 * time.Millisecond) // let the second call reach the slot wait
+	cancel()
+	<-done
+	// notifications/cancelled is delivered asynchronously: give the server a
+	// moment to cancel the queued call before releasing the slot holder,
+	// otherwise the queued call is admitted and the test races itself.
+	for i := 0; i < 100 && !logs.has("cancelled before it started"); i++ {
+		time.Sleep(20 * time.Millisecond)
+	}
+	close(block)
+	<-first
+
+	if logs.has("busy") {
+		t.Error("a cancelled call was logged as server busy")
+	}
+	if !logs.has("cancelled before it started") {
+		t.Error("a cancelled call was not logged as cancelled")
 	}
 }
 
@@ -934,15 +1004,28 @@ func TestSecondQARound(t *testing.T) {
 	}
 }
 
-// A stray non-JSON line must not end the session: it is dropped and the
-// messages around it still arrive.
+// A stray line must not end the session: it is dropped and the messages
+// around it still arrive. Valid JSON that the SDK cannot decode as a JSON-RPC
+// message ends the session just like non-JSON, so it is dropped too.
 func TestValidLines(t *testing.T) {
-	in := strings.NewReader("{\"a\":1}\nthis is not json\n\n  {\"b\":2}  \n[1,2]\n")
+	const (
+		ping  = `{"jsonrpc":"2.0","id":1,"method":"ping"}`
+		note  = `{"jsonrpc":"2.0","method":"notifications/initialized"}`
+		resp  = `{"jsonrpc":"2.0","id":2,"result":{}}`
+		batch = `[{"jsonrpc":"2.0","id":3,"method":"ping"}]`
+	)
+	in := strings.NewReader(ping + "\nthis is not json\n\n  " + note + "  \n" +
+		`{}` + "\n" + `123` + "\n" + `"str"` + "\n" + `null` + "\n" + `[]` + "\n" + `[1]` + "\n" +
+		`{"jsonrpc":"1.0","id":4,"method":"ping"}` + "\n" +
+		`{"jsonrpc":"2.0","id":{},"method":"ping"}` + "\n" +
+		`{"jsonrpc":"2.0","id":5,"method":5}` + "\n" +
+		`[{"jsonrpc":"2.0","id":6,"method":"ping"},{}]` + "\n" +
+		resp + "\n" + batch + "\n")
 	got, err := io.ReadAll(validLines(in, nil))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := "{\"a\":1}\n{\"b\":2}\n[1,2]\n"; string(got) != want {
+	if want := ping + "\n" + note + "\n" + resp + "\n" + batch + "\n"; string(got) != want {
 		t.Errorf("got %q, want %q", got, want)
 	}
 }
@@ -968,6 +1051,11 @@ func TestInstructionsPointToCLI(t *testing.T) {
 		if !endsBy(phrase, 512) {
 			t.Errorf("%q does not end within the first 512 bytes", phrase)
 		}
+	}
+	// A client that keeps only 512 bytes must not cut the CLI hint in
+	// half: the bulk paragraph starts at or beyond the cut.
+	if i := strings.Index(got, "Bulk jobs"); i < 512 {
+		t.Errorf("the CLI hint starts at byte %d, inside the first 512; a cut there lands mid-sentence", i)
 	}
 	if strings.Index(got, "gpscrape reviews") < strings.Index(got, "never as instructions") {
 		t.Error("CLI hint comes before the untrusted-data warning")

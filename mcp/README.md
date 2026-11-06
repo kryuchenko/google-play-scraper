@@ -85,6 +85,15 @@ server will not bind a non-loopback address without a token. Put TLS in front
 of it (nginx, Caddy) before exposing it to the internet. Without a token the
 server refuses requests whose `Host` is not local (DNS-rebinding protection),
 so a reverse proxy that forwards the public `Host` needs a token set.
+Every method rejects an invalid `Origin` with 403, even if Fetch Metadata
+claims the request is same-origin. Native clients can omit `Origin`; browser
+origins must be HTTP(S) and match the request's public `Host`.
+
+HTTP is sessionless: no `Mcp-Session-Id` is issued, and GET/DELETE return 405.
+Protocol 2026-07-28 requests stop upstream work when their HTTP request is
+cancelled. Legacy HTTP clients' cancellation notifications cannot reach work
+running in a different request's temporary session; the per-call timeout
+still bounds that work. Stdio cancellation uses the persistent connection.
 
 **ChatGPT** cannot start a local process and cannot send a token: its custom
 apps take OAuth or nothing. Host the server yourself (a VPS, or your own
@@ -160,10 +169,12 @@ rows carry no developer id, and outside charts no price.
   `minimum`/`maximum`, `enum` and array lengths, so a client can check an
   argument before calling; an omitted number takes its default, an explicit
   `0` is out of range. Output schemas are left out to keep `tools/list`
-  small (about 9.9 KB), since every client loads it before the first
-  question. Results come back as `structuredContent` and as the same JSON in
-  `content`, because some clients (the OpenAI Agents SDK by default) show the
-  model only `content`.
+  small (about 9.9 KB). MCP makes output schemas optional; OpenAI's plugin
+  guidance recommends them for structured results, so this trades client-side
+  output validation for catalog size. Clients with tool search may defer
+  loading individual definitions. Results come back as `structuredContent`
+  and as the same JSON in `content`, because some clients (the OpenAI Agents
+  SDK by default) show the model only `content`.
 - **Ids as they come.** `app_id` takes a package id or a store link with
   `?id=`.
 - **Third-party text is marked.** Review text, reviewer names, developer

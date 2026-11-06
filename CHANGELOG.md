@@ -7,6 +7,9 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- CI lints and vulnerability-scans the `mcp` module, which, unlike the root,
+  has dependencies; dependabot watches them. Every workflow pins its actions
+  to a commit SHA, with the version in a comment.
 - `gpscrape reviews -fields mcp` names the fields as the `gpscrape-mcp`
   `reviews` tool does (`untrusted_text`, `thumbs_up`, `reply_date`, ...), so
   a jq filter written against the tool works on the CLI's bulk output. The
@@ -42,6 +45,23 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- `gpscrape-mcp` over stdio: a line that is valid JSON but not a JSON-RPC
+  message (`{}`, `123`, `null`, `[]`, `"jsonrpc":"1.0"`) ended the session,
+  taking every tool away until the client restarted the server. Such lines
+  are now logged and skipped, like lines that are not JSON at all.
+- `gpscrape-mcp` over HTTP checks `Origin` on every method, as the MCP
+  transport spec requires. Go's cross-origin protection skipped GET and
+  trusted `Sec-Fetch-Site` before looking at `Origin`; a request with a
+  foreign or malformed `Origin` now gets 403 whatever else it claims.
+- `gpscrape-mcp`: `categories` no longer claims `openWorldHint`; it reads a
+  fixed table and makes no request.
+- `gpscrape-mcp`: a tool call cancelled while it waited for a free
+  concurrency slot was logged as "server busy". It is now logged as a
+  cancellation, so client cancels do not read as load.
+- `gpscrape-mcp`: the server instructions now end at a paragraph boundary
+  within the first 512 bytes (OpenAI asks that they stand alone there):
+  the concise/detailed default moved up, and the CLI-hint paragraph starts
+  at byte 512 instead of being cut mid-sentence.
 - `gpscrape reviews -langs` rejects malformed entries and `all` mixed with
   individual codes, rather than fetching reviews under bogus language labels.
 - CLI language values are trimmed before use, so `-lang " ru "` requests and

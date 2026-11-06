@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/url"
 	"strings"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -31,8 +32,8 @@ func HTTPHandler(srv *mcp.Server, token string) http.Handler {
 		Stateless:    true,
 		JSONResponse: true,
 		// A client that cancels or drops a request stops the store requests
-		// behind it (2026-07-28 clients; older ones cancel by notification,
-		// which the SDK already honours).
+		// behind it for 2026-07-28 clients. Legacy HTTP cancellation cannot
+		// cross these per-request sessions; the call timeout still bounds it.
 		PropagateRequestCancellation: true,
 		// The SDK rejects a request that reaches a loopback socket with a
 		// foreign Host header: that is what a DNS-rebinding page does to a
@@ -53,7 +54,31 @@ func HTTPHandler(srv *mcp.Server, token string) http.Handler {
 		w.Header().Set("Content-Type", "text/plain")
 		_, _ = w.Write([]byte("ok\n"))
 	})
-	return http.NewCrossOriginProtection().Handler(mux)
+	return validateOrigin(http.NewCrossOriginProtection().Handler(mux))
+}
+
+// validateOrigin enforces MCP's Origin requirement on every method. Go's
+// CSRF protection alone skips safe methods and trusts Sec-Fetch-Site before
+// inspecting Origin. Native MCP clients normally omit Origin. Browser clients
+// may send a single HTTP(S) origin matching the public Host; TLS can terminate
+// at a reverse proxy, so the origin scheme need not match r.TLS.
+func validateOrigin(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if origins, present := r.Header["Origin"]; present {
+			valid := false
+			if len(origins) == 1 {
+				o, err := url.Parse(origins[0])
+				valid = err == nil && (o.Scheme == "http" || o.Scheme == "https") &&
+					o.Host != "" && strings.EqualFold(o.Host, r.Host) && o.User == nil &&
+					o.Path == "" && o.RawQuery == "" && !o.ForceQuery && o.Fragment == ""
+			}
+			if !valid {
+				http.Error(w, "invalid Origin", http.StatusForbidden)
+				return
+			}
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 // bearer admits requests whose Authorization header carries token. The

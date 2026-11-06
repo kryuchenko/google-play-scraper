@@ -113,7 +113,7 @@
   {
     "annotations": {
       "idempotentHint": true,
-      "openWorldHint": true,
+      "openWorldHint": false,
       "readOnlyHint": true,
       "title": "Categories"
     },
