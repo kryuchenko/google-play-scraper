@@ -72,9 +72,10 @@ func NewClient(throttle time.Duration) *gps.Client {
 // instructions are short and put the untrusted-data warning first. OpenAI
 // advises a self-contained first 512 characters (ours: the warning, the flow
 // and paging, ending before "Bulk jobs"), the MCP blog warns against writing
-// a manual, and Claude Code cuts at 4096. Codex used to cut at 1000 bytes; it
-// no longer does (openai/codex#36882), but the test still holds 1000 as a
-// budget. The reviews tool description repeats the CLI hint, against the
+// a manual, and Claude Code cuts at 4096. Codex used to cut instructions at
+// 1000 bytes; since openai/codex#36882 it no longer does, and the test keeps
+// 1000 as a budget. Codex does still cut each tool description at 1000 bytes
+// for servers installed as Agent Plugins; that limit is tested separately. The reviews tool description repeats the CLI hint, against the
 // 2026-07-28 spec's advice not to duplicate, because claude.ai drops
 // instructions (anthropics/claude-ai-mcp#93) and the OpenAI Agents SDK does
 // not forward them. The hint names no install command: a tool description

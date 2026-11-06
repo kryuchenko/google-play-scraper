@@ -5,12 +5,6 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
-### Changed
-
-- The library now requires Go 1.27 (was 1.25). Go supports its two newest
-  releases, 1.27 and 1.26, and 1.25 gets no more security fixes; the
-  submodules were already on 1.27.
-
 ### Added
 
 - `gpscrape reviews -fields mcp` names the fields as the `gpscrape-mcp`
@@ -31,6 +25,9 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- The library now requires Go 1.27 (was 1.25). Go supports its two newest
+  releases, 1.27 and 1.26, and 1.25 gets no more security fixes; the
+  submodules were already on 1.27.
 - `gpscrape-mcp` tells agents about the `gpscrape` CLI. Its instructions
   point an agent that can run shell commands at `gpscrape reviews … -limit`
   and `-langs all` for bulk jobs, which the one-page tools are not for, when
@@ -45,6 +42,10 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- `gpscrape reviews -langs` rejects malformed entries and `all` mixed with
+  individual codes, rather than fetching reviews under bogus language labels.
+- CLI language values are trimmed before use, so `-lang " ru "` requests and
+  labels the Russian corpus as `ru`.
 - `gpscrape reviews -lang all` and `-lang ru,de` were sent to Google as-is:
   the store answered in English or in the first language, every record was
   stamped with the bogus code, and the exit was 0. `-lang` now refuses a

@@ -11,10 +11,10 @@ Four Go modules live here, and the split is deliberate:
 | `lightfeed/` | 1.27 | optional browser-driven feed paginator; pulls chromedp |
 | `mcp/` | 1.27 | `gpscrape-mcp`, an MCP server over the library; pulls the MCP Go SDK |
 
-The root module's floor is the oldest Go release still supported upstream
-(Go supports the two newest), because consumers import it; it was 1.25 until
-v1.6.0. The submodules are tooling and an opt-in extra, so they track the
-current Go release.
+The root module requires Go 1.27 or newer; its floor was 1.25 until
+v1.6.0. The submodules also require Go 1.27. Go supports its two newest
+releases, but this project's floor can be newer than the oldest supported
+release.
 
 ## Local setup
 

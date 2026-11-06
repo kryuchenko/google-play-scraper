@@ -662,7 +662,28 @@ func TestCheckLang(t *testing.T) {
 			t.Errorf("search -lang %q accepted", bad)
 		}
 	}
+	if err := checkLang("reviews", ","); err == nil || strings.HasSuffix(err.Error(), "-langs ") {
+		t.Errorf("reviews -lang ',': %v, want no empty -langs hint", err)
+	}
 	if err := checkLang("reviews", "ru,de"); err == nil || !strings.Contains(err.Error(), "-langs ru,de") {
 		t.Errorf("reviews -lang ru,de: %v, want a pointer to -langs", err)
+	}
+}
+
+func TestReviewLangsRejectsMalformedEntries(t *testing.T) {
+	for _, value := range []string{"all,en", "en,ru de", "en,ru;de", "en,https://example.com", "en,e"} {
+		if got, err := reviewLangs(value, "en"); err == nil {
+			t.Errorf("-langs %q accepted as %v", value, got)
+		}
+	}
+}
+
+func TestCommonTrimsLanguageBeforeUse(t *testing.T) {
+	c := newCommon("app")
+	if err := c.parse([]string{"-lang", " ru "}); err != nil {
+		t.Fatal(err)
+	}
+	if c.lang != "ru" {
+		t.Errorf("language sent to store = %q, want ru", c.lang)
 	}
 }

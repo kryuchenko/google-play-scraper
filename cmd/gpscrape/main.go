@@ -437,6 +437,7 @@ func (c *common) parse(args []string) error {
 		}
 	}
 	if c.fs.Lookup("lang") != nil {
+		c.lang = strings.TrimSpace(c.lang)
 		if err := checkLang(c.fs.Name(), c.lang); err != nil {
 			return err
 		}
@@ -457,8 +458,10 @@ func checkLang(cmd, lang string) error {
 		return nil
 	}
 	if cmd == "reviews" {
-		if l == "all" || strings.Contains(l, ",") {
-			return fmt.Errorf("-lang takes one language code; for %q use -langs %s", lang, strings.Trim(l, ", "))
+		// Suggest -langs only with something to put after it: for "," the
+		// trimmed list is empty and the hint would end in a bare flag.
+		if list := strings.Trim(l, ", "); l == "all" || (strings.Contains(l, ",") && list != "") {
+			return fmt.Errorf("-lang takes one language code; for %q use -langs %s", lang, list)
 		}
 	}
 	return fmt.Errorf("-lang %q: want one language code, such as en or pt-BR", lang)
@@ -937,6 +940,14 @@ func reviewLangs(langs, single string) ([]string, error) {
 		l = strings.ToLower(strings.TrimSpace(l))
 		if l == "" {
 			continue
+		}
+		// Each entry goes out as hl=<entry>, and the store answers a bad one
+		// in English with exit 0, the same trap -lang is checked for.
+		if l == "all" {
+			return nil, fmt.Errorf(`-langs: "all" already covers every corpus; use -langs all with no other codes`)
+		}
+		if !langCode.MatchString(l) {
+			return nil, fmt.Errorf("-langs: %q is not one language code, such as en or pt-BR", l)
 		}
 		if _, dup := seen[l]; dup {
 			continue
