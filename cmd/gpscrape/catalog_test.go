@@ -198,6 +198,12 @@ func TestCatalogRefusesALeadingFlag(t *testing.T) {
 		t.Errorf("the error does not suggest the verb: %v", err)
 	}
 
+	for _, h := range []string{"-h", "-help", "--help"} {
+		if err := cmdCatalogGroup([]string{h}); err != nil {
+			t.Errorf("catalog %s failed: %v; it should print the usage", h, err)
+		}
+	}
+
 	if err := cmdCatalogGroup(nil); err == nil {
 		t.Error("a bare `catalog` was accepted")
 	}

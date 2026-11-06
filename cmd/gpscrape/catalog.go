@@ -74,6 +74,12 @@ func cmdCatalogGroup(args []string) error {
 	// first -- became a four-hour, eighteen-gigabyte run instead of an error
 	// message. Nothing about the shorthand is worth that.
 	verb := args[0]
+	// Asking for help is not a missing verb: `gpscrape -h` tells you to run
+	// `<command> -h`, and that has to work for catalog too.
+	if verb == "-h" || verb == "-help" || verb == "--help" {
+		fmt.Print(catalogUsage)
+		return nil
+	}
 	if strings.HasPrefix(verb, "-") {
 		return fmt.Errorf("catalog: %s is a flag, not a verb; did you mean `catalog ids %s`?\n\n%s",
 			verb, strings.Join(args, " "), catalogUsage)

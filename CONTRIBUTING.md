@@ -6,13 +6,14 @@ Four Go modules live here, and the split is deliberate:
 
 | Module | Go | Purpose |
 | --- | --- | --- |
-| `.` | 1.25 | the library — **zero third-party dependencies**, enforced by `TestRootIsZeroDependency` |
+| `.` | 1.27 | the library — **zero third-party dependencies**, enforced by `TestRootIsZeroDependency` |
 | `apidoc/` | 1.27 | OpenAPI spec for Google's endpoints plus its drift tests; pulls swaggo and libopenapi |
 | `lightfeed/` | 1.27 | optional browser-driven feed paginator; pulls chromedp |
 | `mcp/` | 1.27 | `gpscrape-mcp`, an MCP server over the library; pulls the MCP Go SDK |
 
-The root module's floor stays conservative because consumers import it. The
-submodules are tooling and an opt-in extra, so they track the current Go
+The root module requires Go 1.27 or newer; its floor was 1.25 until
+v1.6.0. The submodules also require Go 1.27. Go supports its two newest
+releases, but this project's floor can be newer than the oldest supported
 release.
 
 ## Local setup
@@ -30,9 +31,9 @@ you would be testing the last release instead of your working tree.
 
 The workspace also picks the toolchain. `go.work` says `go 1.27.0`, because
 the submodules need it, so any command run from the root without `GOWORK=off`
-— the `go build ./...` above included — needs Go 1.27 even though the library
-itself builds on 1.25. To build or test the root module on its 1.25 floor, set
-`GOWORK=off`; that is what CI does for the whole root job.
+— the `go build ./...` above included — needs Go 1.27, which is also the
+library's floor. To build or test the root module alone, as a consumer sees
+it, set `GOWORK=off`; that is what CI does for the whole root job.
 
 Two things follow from that, and both are load-bearing:
 
