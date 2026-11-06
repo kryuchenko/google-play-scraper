@@ -159,10 +159,13 @@ func add[In, Out any](r *registry, name, title, desc string, timeout time.Durati
 			OpenWorldHint: ptr(name != "categories"),
 		},
 	}
-	// Out is erased to any so the SDK publishes no output schema. MCP permits
-	// this, although OpenAI's plugin guidance recommends output schemas for
-	// structured results. We trade client-side output validation for a smaller
-	// tool catalog; some clients defer loading tools rather than load it all.
+	// Out stays typed, so the SDK publishes an output schema inferred from it
+	// (OpenAI's MCP guidance asks for one when a tool returns structured
+	// data) and validates every result against it before sending. Slices and
+	// pointers keep "null" in the output schema -- only input schemas drop it
+	// -- so an empty result is still valid. The cost is size: tools/list
+	// roughly doubles. TestOutputsMatchSchemas runs every tool's real result
+	// shapes through the published schemas.
 	//
 	// The value goes out twice: as structuredContent and, filled in by the
 	// SDK, as the same JSON in content. The spec suggests the copy (SHOULD).
@@ -171,7 +174,7 @@ func add[In, Out any](r *registry, name, title, desc string, timeout time.Durati
 	// false. Claude, Codex and OpenCode pass the model one copy or the other
 	// -- measured: the same tokens with the copy and without -- so it costs
 	// bytes on the wire, not context.
-	mcp.AddTool(r.srv, t, func(ctx context.Context, _ *mcp.CallToolRequest, in In) (_ *mcp.CallToolResult, _ any, err error) {
+	mcp.AddTool(r.srv, t, func(ctx context.Context, _ *mcp.CallToolRequest, in In) (_ *mcp.CallToolResult, out Out, err error) {
 		start := time.Now()
 		// The deadline covers the wait for a slot too: a call queued behind
 		// four stuck ones gives up after timeout instead of waiting forever.
@@ -185,10 +188,10 @@ func add[In, Out any](r *registry, name, title, desc string, timeout time.Durati
 			// dress it up as "busy" in the (usually dropped) response.
 			if errors.Is(ctx.Err(), context.Canceled) {
 				r.log.Debug("tool call cancelled before it started", "tool", name)
-				return nil, nil, ctx.Err()
+				return nil, out, ctx.Err()
 			}
 			r.log.Warn("tool call not started: server busy", "tool", name)
-			return nil, nil, fmt.Errorf("the server is busy with other calls and none finished in time; retry shortly")
+			return nil, out, fmt.Errorf("the server is busy with other calls and none finished in time; retry shortly")
 		}
 		// The SDK does not recover handler panics, and in stdio mode one
 		// would end the whole session. A panic here is a bug in this package
@@ -200,14 +203,14 @@ func add[In, Out any](r *registry, name, title, desc string, timeout time.Durati
 			}
 		}()
 
-		out, err := h(ctx, in)
+		res, err := h(ctx, in)
 		if err != nil {
 			err = explain(err)
 			r.log.Warn("tool call failed", "tool", name, "duration", time.Since(start).Round(time.Millisecond), "err", err)
-			return nil, nil, err
+			return nil, out, err
 		}
 		r.log.Info("tool call", "tool", name, "duration", time.Since(start).Round(time.Millisecond))
-		return nil, out, nil
+		return nil, res, nil
 	})
 }
 

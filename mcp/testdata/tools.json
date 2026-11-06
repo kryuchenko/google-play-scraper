@@ -37,6 +37,131 @@
       "type": "object"
     },
     "name": "app",
+    "outputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "ad_supported": {
+          "type": [
+            "null",
+            "boolean"
+          ]
+        },
+        "android_version": {
+          "type": "string"
+        },
+        "app_id": {
+          "type": "string"
+        },
+        "content_rating": {
+          "type": "string"
+        },
+        "currency": {
+          "type": "string"
+        },
+        "developer": {
+          "type": "string"
+        },
+        "developer_email": {
+          "type": "string"
+        },
+        "developer_id": {
+          "type": "string"
+        },
+        "developer_website": {
+          "type": "string"
+        },
+        "free": {
+          "type": "boolean"
+        },
+        "genre": {
+          "type": "string"
+        },
+        "genre_id": {
+          "type": "string"
+        },
+        "histogram_1_to_5": {
+          "items": {
+            "type": "integer"
+          },
+          "type": [
+            "null",
+            "array"
+          ]
+        },
+        "iap_range": {
+          "type": "string"
+        },
+        "installable_here": {
+          "type": "boolean"
+        },
+        "installs": {
+          "type": "string"
+        },
+        "offers_iap": {
+          "type": [
+            "null",
+            "boolean"
+          ]
+        },
+        "preregister": {
+          "type": "boolean"
+        },
+        "price": {
+          "type": "number"
+        },
+        "privacy_policy": {
+          "type": "string"
+        },
+        "ratings": {
+          "type": "integer"
+        },
+        "released": {
+          "type": "string"
+        },
+        "reviews": {
+          "type": "integer"
+        },
+        "score": {
+          "type": "number"
+        },
+        "title": {
+          "type": "string"
+        },
+        "untrusted_description": {
+          "type": "string"
+        },
+        "untrusted_recent_changes": {
+          "type": "string"
+        },
+        "untrusted_summary": {
+          "type": "string"
+        },
+        "updated": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "app_id",
+        "title",
+        "developer",
+        "developer_id",
+        "score",
+        "ratings",
+        "installs",
+        "free",
+        "genre",
+        "genre_id",
+        "installable_here",
+        "url"
+      ],
+      "type": "object"
+    },
     "title": "App details"
   },
   {
@@ -74,6 +199,168 @@
       "type": "object"
     },
     "name": "apps",
+    "outputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "apps": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "ad_supported": {
+                "type": [
+                  "null",
+                  "boolean"
+                ]
+              },
+              "android_version": {
+                "type": "string"
+              },
+              "app_id": {
+                "type": "string"
+              },
+              "content_rating": {
+                "type": "string"
+              },
+              "currency": {
+                "type": "string"
+              },
+              "developer": {
+                "type": "string"
+              },
+              "developer_email": {
+                "type": "string"
+              },
+              "developer_id": {
+                "type": "string"
+              },
+              "developer_website": {
+                "type": "string"
+              },
+              "free": {
+                "type": "boolean"
+              },
+              "genre": {
+                "type": "string"
+              },
+              "genre_id": {
+                "type": "string"
+              },
+              "histogram_1_to_5": {
+                "items": {
+                  "type": "integer"
+                },
+                "type": [
+                  "null",
+                  "array"
+                ]
+              },
+              "iap_range": {
+                "type": "string"
+              },
+              "installable_here": {
+                "type": "boolean"
+              },
+              "installs": {
+                "type": "string"
+              },
+              "offers_iap": {
+                "type": [
+                  "null",
+                  "boolean"
+                ]
+              },
+              "preregister": {
+                "type": "boolean"
+              },
+              "price": {
+                "type": "number"
+              },
+              "privacy_policy": {
+                "type": "string"
+              },
+              "ratings": {
+                "type": "integer"
+              },
+              "released": {
+                "type": "string"
+              },
+              "reviews": {
+                "type": "integer"
+              },
+              "score": {
+                "type": "number"
+              },
+              "title": {
+                "type": "string"
+              },
+              "untrusted_description": {
+                "type": "string"
+              },
+              "untrusted_recent_changes": {
+                "type": "string"
+              },
+              "untrusted_summary": {
+                "type": "string"
+              },
+              "updated": {
+                "type": "string"
+              },
+              "url": {
+                "type": "string"
+              },
+              "version": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "app_id",
+              "title",
+              "developer",
+              "developer_id",
+              "score",
+              "ratings",
+              "installs",
+              "free",
+              "genre",
+              "genre_id",
+              "installable_here",
+              "url"
+            ],
+            "type": "object"
+          },
+          "type": [
+            "null",
+            "array"
+          ]
+        },
+        "errors": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "app_id": {
+                "type": "string"
+              },
+              "error": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "app_id",
+              "error"
+            ],
+            "type": "object"
+          },
+          "type": [
+            "null",
+            "array"
+          ]
+        }
+      },
+      "required": [
+        "apps"
+      ],
+      "type": "object"
+    },
     "title": "Details for several apps"
   },
   {
@@ -108,6 +395,61 @@
       "type": "object"
     },
     "name": "availability",
+    "outputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "app_id": {
+          "type": "string"
+        },
+        "available": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "null",
+            "array"
+          ]
+        },
+        "checked": {
+          "type": "integer"
+        },
+        "errors": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "not_listed": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "null",
+            "array"
+          ]
+        },
+        "note": {
+          "type": "string"
+        },
+        "region_locked": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "null",
+            "array"
+          ]
+        }
+      },
+      "required": [
+        "app_id",
+        "available",
+        "region_locked",
+        "not_listed",
+        "checked"
+      ],
+      "type": "object"
+    },
     "title": "Availability by country"
   },
   {
@@ -123,6 +465,24 @@
       "type": "object"
     },
     "name": "categories",
+    "outputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "categories": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "null",
+            "array"
+          ]
+        }
+      },
+      "required": [
+        "categories"
+      ],
+      "type": "object"
+    },
     "title": "Categories"
   },
   {
@@ -155,6 +515,101 @@
       "type": "object"
     },
     "name": "datasafety",
+    "outputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "collected_data": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "data": {
+                "type": "string"
+              },
+              "optional": {
+                "type": "boolean"
+              },
+              "purpose": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "data",
+              "type",
+              "purpose",
+              "optional"
+            ],
+            "type": "object"
+          },
+          "type": [
+            "null",
+            "array"
+          ]
+        },
+        "privacy_policy_url": {
+          "type": "string"
+        },
+        "security_practices": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "description": {
+                "type": "string"
+              },
+              "practice": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "practice"
+            ],
+            "type": "object"
+          },
+          "type": [
+            "null",
+            "array"
+          ]
+        },
+        "shared_data": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "data": {
+                "type": "string"
+              },
+              "optional": {
+                "type": "boolean"
+              },
+              "purpose": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "data",
+              "type",
+              "purpose",
+              "optional"
+            ],
+            "type": "object"
+          },
+          "type": [
+            "null",
+            "array"
+          ]
+        }
+      },
+      "required": [
+        "shared_data",
+        "collected_data",
+        "security_practices"
+      ],
+      "type": "object"
+    },
     "title": "Data safety"
   },
   {
@@ -193,6 +648,62 @@
       "type": "object"
     },
     "name": "developer",
+    "outputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "apps": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "app_id": {
+                "type": "string"
+              },
+              "currency": {
+                "type": "string"
+              },
+              "developer": {
+                "type": "string"
+              },
+              "developer_id": {
+                "type": "string"
+              },
+              "free": {
+                "type": "boolean"
+              },
+              "price": {
+                "type": "number"
+              },
+              "score": {
+                "type": "number"
+              },
+              "title": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "app_id",
+              "title",
+              "developer",
+              "score",
+              "free"
+            ],
+            "type": "object"
+          },
+          "type": [
+            "null",
+            "array"
+          ]
+        },
+        "returned": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "apps",
+        "returned"
+      ],
+      "type": "object"
+    },
     "title": "Developer's apps"
   },
   {
@@ -240,6 +751,62 @@
       "type": "object"
     },
     "name": "list",
+    "outputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "apps": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "app_id": {
+                "type": "string"
+              },
+              "currency": {
+                "type": "string"
+              },
+              "developer": {
+                "type": "string"
+              },
+              "developer_id": {
+                "type": "string"
+              },
+              "free": {
+                "type": "boolean"
+              },
+              "price": {
+                "type": "number"
+              },
+              "score": {
+                "type": "number"
+              },
+              "title": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "app_id",
+              "title",
+              "developer",
+              "score",
+              "free"
+            ],
+            "type": "object"
+          },
+          "type": [
+            "null",
+            "array"
+          ]
+        },
+        "returned": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "apps",
+        "returned"
+      ],
+      "type": "object"
+    },
     "title": "Top charts"
   },
   {
@@ -272,6 +839,27 @@
       "type": "object"
     },
     "name": "permissions",
+    "outputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "permissions": {
+          "additionalProperties": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
+          },
+          "type": "object"
+        }
+      },
+      "required": [
+        "permissions"
+      ],
+      "type": "object"
+    },
     "title": "App permissions"
   },
   {
@@ -333,6 +921,103 @@
       "type": "object"
     },
     "name": "reviews",
+    "outputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "filters": {
+          "additionalProperties": false,
+          "properties": {
+            "app_id": {
+              "type": "string"
+            },
+            "lang": {
+              "type": "string"
+            },
+            "score": {
+              "type": "integer"
+            },
+            "sort": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "app_id",
+            "sort",
+            "lang"
+          ],
+          "type": "object"
+        },
+        "next_token": {
+          "type": "string"
+        },
+        "note": {
+          "type": "string"
+        },
+        "returned": {
+          "type": "integer"
+        },
+        "reviews": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "date": {
+                "type": "string"
+              },
+              "id": {
+                "type": "string"
+              },
+              "reply_date": {
+                "type": "string"
+              },
+              "score": {
+                "type": "integer"
+              },
+              "thumbs_up": {
+                "type": "integer"
+              },
+              "truncated": {
+                "type": "boolean"
+              },
+              "untrusted_reply_text": {
+                "type": "string"
+              },
+              "untrusted_text": {
+                "type": "string"
+              },
+              "untrusted_user_name": {
+                "type": "string"
+              },
+              "version": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "score",
+              "date",
+              "thumbs_up",
+              "untrusted_text"
+            ],
+            "type": "object"
+          },
+          "type": [
+            "null",
+            "array"
+          ]
+        },
+        "truncated": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "reviews",
+        "returned",
+        "truncated",
+        "filters",
+        "note"
+      ],
+      "type": "object"
+    },
     "title": "App reviews"
   },
   {
@@ -380,6 +1065,62 @@
       "type": "object"
     },
     "name": "search",
+    "outputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "apps": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "app_id": {
+                "type": "string"
+              },
+              "currency": {
+                "type": "string"
+              },
+              "developer": {
+                "type": "string"
+              },
+              "developer_id": {
+                "type": "string"
+              },
+              "free": {
+                "type": "boolean"
+              },
+              "price": {
+                "type": "number"
+              },
+              "score": {
+                "type": "number"
+              },
+              "title": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "app_id",
+              "title",
+              "developer",
+              "score",
+              "free"
+            ],
+            "type": "object"
+          },
+          "type": [
+            "null",
+            "array"
+          ]
+        },
+        "returned": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "apps",
+        "returned"
+      ],
+      "type": "object"
+    },
     "title": "Search apps"
   },
   {
@@ -418,6 +1159,62 @@
       "type": "object"
     },
     "name": "similar",
+    "outputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "apps": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "app_id": {
+                "type": "string"
+              },
+              "currency": {
+                "type": "string"
+              },
+              "developer": {
+                "type": "string"
+              },
+              "developer_id": {
+                "type": "string"
+              },
+              "free": {
+                "type": "boolean"
+              },
+              "price": {
+                "type": "number"
+              },
+              "score": {
+                "type": "number"
+              },
+              "title": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "app_id",
+              "title",
+              "developer",
+              "score",
+              "free"
+            ],
+            "type": "object"
+          },
+          "type": [
+            "null",
+            "array"
+          ]
+        },
+        "returned": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "apps",
+        "returned"
+      ],
+      "type": "object"
+    },
     "title": "Similar apps"
   },
   {
@@ -450,6 +1247,24 @@
       "type": "object"
     },
     "name": "suggest",
+    "outputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "suggestions": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "null",
+            "array"
+          ]
+        }
+      },
+      "required": [
+        "suggestions"
+      ],
+      "type": "object"
+    },
     "title": "Search suggestions"
   }
 ]

@@ -250,8 +250,10 @@ func TestToolsListed(t *testing.T) {
 		if a := tool.Annotations; a == nil || !a.IdempotentHint || a.OpenWorldHint == nil || *a.OpenWorldHint != (tool.Name != "categories") {
 			t.Errorf("%s: annotations must distinguish the local category table from network reads", tool.Name)
 		}
-		if tool.OutputSchema != nil {
-			t.Errorf("%s: publishes an output schema; it doubles tools/list for no gain", tool.Name)
+		// Every tool returns structured data and says what shape it has
+		// (OpenAI's MCP guidance; MCP requires an object at the top).
+		if os, ok := tool.OutputSchema.(map[string]any); !ok || os["type"] != "object" {
+			t.Errorf("%s: output schema %v, want an object schema", tool.Name, tool.OutputSchema)
 		}
 		b, _ := json.Marshal(tool)
 		size += len(b)
@@ -259,10 +261,11 @@ func TestToolsListed(t *testing.T) {
 	if strings.Join(got, ",") != strings.Join(want, ",") {
 		t.Fatalf("tools = %v, want %v", got, want)
 	}
-	// Every client loads tools/list into context before the first question.
-	// Growth past this is a decision, not an accident.
-	if size > 10_000 {
-		t.Errorf("tools/list is %d bytes, over the 10 KB budget", size)
+	// Clients without tool search load tools/list into context before the
+	// first question. Output schemas took it from about 9.8 KB to 17.5 KB;
+	// growth past this budget is a decision, not an accident.
+	if size > 18_500 {
+		t.Errorf("tools/list is %d bytes, over the 18.5 KB budget", size)
 	}
 }
 
@@ -1167,6 +1170,97 @@ func TestClientsWorkflowPhrasesAreInTheInstructions(t *testing.T) {
 	for _, p := range strings.Split(string(m[1]), "|") {
 		if !strings.Contains(strings.ToLower(instructions), strings.ToLower(p)) {
 			t.Errorf("mcp-clients.yml looks for %q, which the instructions do not contain", p)
+		}
+	}
+}
+
+// emptyScraper answers every call with no data and no error: the shape that
+// trips an output schema (nil slices, zero structs) if one is too strict.
+type emptyScraper struct{}
+
+func (emptyScraper) App(_ context.Context, id string, _ gps.AppOptions) (*gps.App, error) {
+	return &gps.App{AppID: id}, nil
+}
+func (emptyScraper) AppsMany(context.Context, []string, gps.AppOptions) []gps.AppResult { return nil }
+func (emptyScraper) Search(context.Context, gps.SearchOptions) ([]gps.SearchResult, error) {
+	return nil, nil
+}
+func (emptyScraper) List(context.Context, gps.ListOptions) ([]gps.SearchResult, error) {
+	return nil, nil
+}
+func (emptyScraper) Similar(context.Context, gps.SimilarOptions) ([]gps.SearchResult, error) {
+	return nil, nil
+}
+func (emptyScraper) Developer(context.Context, gps.DeveloperOptions) ([]gps.SearchResult, error) {
+	return nil, nil
+}
+func (emptyScraper) Reviews(context.Context, string, gps.ReviewOptions) (*gps.ReviewsResult, error) {
+	return &gps.ReviewsResult{}, nil
+}
+func (emptyScraper) Permissions(context.Context, gps.PermissionsOptions) ([]gps.Permission, error) {
+	return nil, nil
+}
+func (emptyScraper) DataSafety(context.Context, gps.DataSafetyOptions) (*gps.DataSafety, error) {
+	return &gps.DataSafety{}, nil
+}
+func (emptyScraper) Suggest(context.Context, gps.SuggestOptions) ([]string, error) { return nil, nil }
+func (emptyScraper) Categories(context.Context, gps.CategoriesOptions) ([]gps.Category, error) {
+	return nil, nil
+}
+func (emptyScraper) Availability(context.Context, string, gps.AvailabilityOptions) (gps.AvailabilityResult, error) {
+	return gps.AvailabilityResult{}, nil
+}
+
+// The SDK validates every result against the tool's output schema and turns
+// a mismatch into a failed call. Run each tool with full data and with none,
+// concise and detailed, and fail on any validation error -- a tool may still
+// refuse empty data on purpose, but never because its own schema rejects it.
+func TestOutputsMatchSchemas(t *testing.T) {
+	calls := map[string]map[string]any{
+		"app":          {"app_id": "com.a.b"},
+		"apps":         {"app_ids": []string{"com.a.b", "com.c.d"}},
+		"availability": {"app_id": "com.a.b", "countries": []string{"us", "de"}},
+		"categories":   {},
+		"datasafety":   {"app_id": "com.a.b"},
+		"developer":    {"developer_id": "Spotify AB"},
+		"list":         {},
+		"permissions":  {"app_id": "com.a.b"},
+		"reviews":      {"app_id": "com.a.b"},
+		"search":       {"term": "spotify"},
+		"similar":      {"app_id": "com.a.b"},
+		"suggest":      {"term": "spo"},
+	}
+	detailed := map[string]bool{"app": true, "reviews": true}
+	for _, s := range []struct {
+		name string
+		s    Scraper
+	}{{"full", &fake{reviews: []gps.Review{{ID: "r1", Score: 5, Text: "ok", ReplyText: "thanks"}}, nextToken: "t"}}, {"empty", emptyScraper{}}} {
+		cs := connect(t, s.s, Options{})
+		for tool, args := range calls {
+			formats := []string{""}
+			if detailed[tool] {
+				formats = append(formats, "concise", "detailed")
+			}
+			for _, f := range formats {
+				a := maps.Clone(args)
+				if f != "" {
+					a["response_format"] = f
+				}
+				res, err := cs.CallTool(context.Background(), &mcp.CallToolParams{Name: tool, Arguments: a})
+				if err != nil {
+					t.Errorf("%s %s %v: protocol error: %v", s.name, tool, a, err)
+					continue
+				}
+				if !res.IsError {
+					continue
+				}
+				msg := res.Content[0].(*mcp.TextContent).Text
+				if strings.Contains(msg, "validating") || strings.Contains(msg, "output") || strings.Contains(msg, "schema") {
+					t.Errorf("%s %s %v: result rejected by its own output schema: %s", s.name, tool, a, msg)
+				} else if s.name == "full" {
+					t.Errorf("%s %s %v: unexpected tool error: %s", s.name, tool, a, msg)
+				}
+			}
 		}
 	}
 }

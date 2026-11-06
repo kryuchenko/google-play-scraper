@@ -165,14 +165,14 @@ rows carry no developer id, and outside charts no price.
   `reviews` cuts each text to 400 characters unless you ask for `detailed`,
   and says how many it returned, which filters applied and whether anything
   was cut.
-- **Bounds in the schema, no output schemas.** Input schemas carry
-  `minimum`/`maximum`, `enum` and array lengths, so a client can check an
-  argument before calling; an omitted number takes its default, an explicit
-  `0` is out of range. Output schemas are left out to keep `tools/list`
-  small (about 9.9 KB). MCP makes output schemas optional; OpenAI's plugin
-  guidance recommends them for structured results, so this trades client-side
-  output validation for catalog size. Clients with tool search may defer
-  loading individual definitions. Results come back as `structuredContent`
+- **Schemas both ways.** Input schemas carry `minimum`/`maximum`, `enum`
+  and array lengths, so a client can check an argument before calling; an
+  omitted number takes its default, an explicit `0` is out of range. Every
+  tool also publishes an output schema, as OpenAI's MCP guidance asks for
+  structured results, and the server validates each result against it
+  before sending. That roughly doubles `tools/list` (about 17.5 KB, from
+  9.8 KB); clients with tool search load definitions on demand and pay it
+  only for the tools they use. Results come back as `structuredContent`
   and as the same JSON in `content`, because some clients (the OpenAI Agents
   SDK by default) show the model only `content`.
 - **Ids as they come.** `app_id` takes a package id or a store link with

@@ -28,6 +28,11 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- Every `gpscrape-mcp` tool publishes an output schema, and the server
+  checks each result against it before sending. OpenAI's MCP guidance asks
+  for one on structured results; `tools/list` grows from about 9.8 KB to
+  17.5 KB. A test runs every tool with full data and with none, concise and
+  detailed, through the schemas.
 - The library now requires Go 1.27 (was 1.25). Go supports its two newest
   releases, 1.27 and 1.26, and 1.25 gets no more security fixes; the
   submodules were already on 1.27.
