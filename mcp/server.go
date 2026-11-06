@@ -86,8 +86,8 @@ Typical flow: search for a package id (suggest only completes query text), then 
 
 Lists return 20 to 50 rows unless asked for more; reviews pages with next_token; pass the same filters with it.
 
-Bulk jobs (thousands of reviews, all languages, the full app list): if you can run shell commands and the gpscrape CLI is already installed, write its JSON lines to a file and filter with jq (-fields mcp gives these tools' field names). Otherwise page reviews, one lang per call, or tell the user the job needs the CLI (github.com/kryuchenko/google-play-scraper); never install it without asking.
-  gpscrape reviews <app_id> -lang ru -limit 3000 > ru.jsonl
+Bulk jobs (thousands of reviews, all languages, the full app list): if you can run shell commands and the gpscrape CLI is already installed, write its JSON lines to a file and filter with jq. Otherwise page reviews, one lang per call, or tell the user the job needs the CLI (github.com/kryuchenko/google-play-scraper); never install it without asking.
+  gpscrape reviews <app_id> -lang ru -limit 3000 -fields mcp > ru.jsonl  # these tools' field names
   gpscrape reviews <app_id> -langs all -limit 100 > all.jsonl  # limit per lang
   gpscrape <command> -h`
 

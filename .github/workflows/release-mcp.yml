@@ -19,6 +19,12 @@ on:
 permissions:
   contents: read
 
+# One release at a time per tag: a re-run must not race the first attempt
+# on the same release assets.
+concurrency:
+  group: release-mcp-${{ github.event.inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
 env:
   TAG: ${{ github.event.inputs.tag || github.ref_name }}
   IMAGE: ghcr.io/kryuchenko/gpscrape-mcp
@@ -47,7 +53,7 @@ jobs:
 
       - uses: actions/setup-node@v7
         with:
-          node-version: '20'
+          node-version: '22'
 
       # The tag, the Version constant reported in the handshake, and the
       # bundle and registry entries must all say the same thing.
@@ -90,15 +96,21 @@ jobs:
           shasum -a 256 * > checksums.txt && cat checksums.txt
           echo "sha256=$(shasum -a 256 gpscrape-mcp.mcpb | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
 
+      # The release hangs off a second tag, mcp-vX.Y.Z, on the same commit.
+      # mcp/vX.Y.Z is what Go needs for the submodule, but the registry's MCPB
+      # check wants the release tag to be one path segment of the download
+      # URL (releases/download/<tag>/<file>), and mcp/v0.1.1 is two.
       - name: Publish the GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: mcp-v${{ steps.version.outputs.version }}
         run: |
-          if ! gh release view "$TAG" >/dev/null 2>&1; then
-            gh release create "$TAG" --title "gpscrape-mcp ${TAG#mcp/}" --latest=false \
-              --notes "MCP server for Google Play. Install and client setup: https://github.com/kryuchenko/google-play-scraper/tree/main/mcp. Changes are in CHANGELOG.md."
+          if ! gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release create "$RELEASE_TAG" --target "$(git rev-parse HEAD)" \
+              --title "gpscrape-mcp v${RELEASE_TAG#mcp-v}" --latest=false \
+              --notes "MCP server for Google Play, built from the Go module tag $TAG. Install and client setup: https://github.com/kryuchenko/google-play-scraper/tree/main/mcp. Changes are in CHANGELOG.md."
           fi
-          gh release upload "$TAG" dist/* --clobber
+          gh release upload "$RELEASE_TAG" dist/* --clobber
 
   image:
     needs: bundle
@@ -110,16 +122,17 @@ jobs:
       - uses: actions/checkout@v7
         with:
           ref: ${{ env.TAG }}
-      - uses: docker/setup-qemu-action@v3
-      - uses: docker/setup-buildx-action@v3
-      - uses: docker/login-action@v3
+      # No QEMU: the Dockerfile cross-compiles on the build platform, and
+      # the final stage only copies a file.
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ github.token }}
       # The Dockerfile carries the io.modelcontextprotocol.server.name label
       # the registry checks to prove the image belongs to this server.
-      - uses: docker/build-push-action@v6
+      - uses: docker/build-push-action@v7
         with:
           context: mcp
           platforms: linux/amd64,linux/arm64
@@ -146,7 +159,7 @@ jobs:
       - name: Fill in server.json
         working-directory: mcp
         run: |
-          jq --arg v "$VERSION" --arg tag "$TAG" --arg sha "$SHA256" --arg img "$IMAGE" '
+          jq --arg v "$VERSION" --arg tag "mcp-v$VERSION" --arg sha "$SHA256" --arg img "$IMAGE" '
             .version = $v
             | .packages |= map(
                 if .registryType == "mcpb" then
@@ -164,10 +177,17 @@ jobs:
       - name: Drop the image if it is not public yet
         working-directory: mcp
         run: |
-          token=$(curl -fsS "https://ghcr.io/token?scope=repository:kryuchenko/gpscrape-mcp:pull" | jq -r .token)
-          if ! curl -fsS -o /dev/null -H "Authorization: Bearer $token" \
-               -H "Accept: application/vnd.oci.image.index.v1+json" \
-               "https://ghcr.io/v2/kryuchenko/gpscrape-mcp/manifests/$VERSION"; then
+          # Both requests sit inside the test: for a private package ghcr
+          # already refuses the anonymous token (403), and jq -e makes an
+          # empty token a failure too, instead of a request with no token.
+          public() {
+            local token
+            token=$(curl -fsS "https://ghcr.io/token?scope=repository:kryuchenko/gpscrape-mcp:pull" | jq -er .token) || return 1
+            curl -fsS -o /dev/null -H "Authorization: Bearer $token" \
+              -H "Accept: application/vnd.oci.image.index.v1+json" \
+              "https://ghcr.io/v2/kryuchenko/gpscrape-mcp/manifests/$VERSION"
+          }
+          if ! public; then
             echo "::warning::ghcr.io/kryuchenko/gpscrape-mcp is not publicly pullable; publishing without the image"
             jq '.packages |= map(select(.registryType != "oci"))' server.json > s.json && mv s.json server.json
           fi

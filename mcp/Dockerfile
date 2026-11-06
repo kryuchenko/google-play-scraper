@@ -5,11 +5,15 @@
 # Build from this directory: docker build -t gpscrape-mcp mcp
 # It resolves the root library from the module proxy (GOWORK=off), the way
 # a `go install` user gets it, so a release must tag the root first.
-FROM golang:1.27 AS build
+# The build stage runs on the builder's own platform and cross-compiles, so
+# a multi-arch build needs no emulation.
+FROM --platform=$BUILDPLATFORM golang:1.27 AS build
+ARG TARGETOS TARGETARCH
 WORKDIR /src
 COPY . .
 ENV GOWORK=off CGO_ENABLED=0
-RUN go build -trimpath -ldflags "-s -w" -o /out/gpscrape-mcp ./cmd/gpscrape-mcp
+RUN GOOS=$TARGETOS GOARCH=$TARGETARCH \
+    go build -trimpath -ldflags "-s -w" -o /out/gpscrape-mcp ./cmd/gpscrape-mcp
 
 # static: no shell, no package manager, but CA certificates and a nonroot user,
 # which is all a client of play.google.com needs.

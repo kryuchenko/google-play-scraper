@@ -60,8 +60,12 @@ jobs:
           EOF
           chmod +x "$RUNNER_TEMP/check.sh"
 
+      # Both clients run outside the checkout: with mcp/server.go on disk a
+      # model could quote the instructions from the file, and the check would
+      # pass for a client that no longer passes them on.
       - name: Claude Code
         if: env.ANTHROPIC_API_KEY != ''
+        working-directory: ${{ runner.temp }}
         run: |
           npm install -g @anthropic-ai/claude-code@latest
           claude --version
@@ -75,6 +79,7 @@ jobs:
       # allowed to look the server up; it must still not call gpscrape's tools.
       - name: Codex
         if: env.OPENAI_API_KEY != ''
+        working-directory: ${{ runner.temp }}
         run: |
           npm install -g @openai/codex@latest
           codex --version

@@ -649,3 +649,20 @@ func TestReviewRecordFor(t *testing.T) {
 		t.Error("-fields snake was accepted")
 	}
 }
+
+// Every command that sends hl checks it, not only reviews.
+func TestCheckLang(t *testing.T) {
+	for _, ok := range []string{"en", "pt-BR", "zh-Hant", "es-419", "fil", " ru "} {
+		if err := checkLang("app", ok); err != nil {
+			t.Errorf("-lang %q refused: %v", ok, err)
+		}
+	}
+	for _, bad := range []string{"all", "ru,de", "ru;de", "ru de", "", "e", "english!"} {
+		if err := checkLang("search", bad); err == nil {
+			t.Errorf("search -lang %q accepted", bad)
+		}
+	}
+	if err := checkLang("reviews", "ru,de"); err == nil || !strings.Contains(err.Error(), "-langs ru,de") {
+		t.Errorf("reviews -lang ru,de: %v, want a pointer to -langs", err)
+	}
+}

@@ -30,7 +30,9 @@ go install github.com/kryuchenko/google-play-scraper/mcp/cmd/gpscrape-mcp@latest
 Requires Go 1.27. Without Go:
 
 - **Prebuilt binaries** for macOS, Linux and Windows are attached to each
-  [`mcp/v*` release](https://github.com/kryuchenko/google-play-scraper/releases).
+  [`mcp-v*` release](https://github.com/kryuchenko/google-play-scraper/releases)
+  (the Go module tag is `mcp/v*`; the release uses a tag without the slash,
+  which the MCP Registry requires in download URLs).
 - **MCPB bundle**: `gpscrape-mcp.mcpb` on the same release installs in one
   step in clients that take MCP bundles, such as Claude Desktop.
 - **Container**: `docker run -i --rm ghcr.io/kryuchenko/gpscrape-mcp` speaks

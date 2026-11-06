@@ -21,7 +21,7 @@ instructions, whichever interface it came from.
 Check it is installed with `command -v gpscrape`. If it is not, do not install
 it yourself: ask the user. The install command is
 `go install github.com/kryuchenko/google-play-scraper/cmd/gpscrape@latest`
-(Go 1.25 or newer); prebuilt binaries are on the GitHub releases page.
+(Go 1.27 or newer); prebuilt binaries are on the GitHub releases page.
 
 The CLI writes one JSON record per line. Write it to a file and read the file
 with `jq` or a script; do not print thousands of records into the

@@ -36,6 +36,7 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"regexp"
 	"runtime/debug"
 	"slices"
 	"sort"
@@ -435,7 +436,32 @@ func (c *common) parse(args []string) error {
 			return err
 		}
 	}
+	if c.fs.Lookup("lang") != nil {
+		if err := checkLang(c.fs.Name(), c.lang); err != nil {
+			return err
+		}
+	}
 	return c.diagnostics()
+}
+
+// langCode is the shape of an hl value: a language, optionally a region or
+// script (en, pt-BR, zh-Hant, es-419).
+var langCode = regexp.MustCompile(`^[A-Za-z]{2,3}([-_][A-Za-z0-9]{2,8})*$`)
+
+// checkLang refuses a -lang that is not one code. Google does not reject
+// hl=all or hl=ru,de: it answers in English or in the first language, and
+// the run exits 0 with data in a language nobody asked for.
+func checkLang(cmd, lang string) error {
+	l := strings.ToLower(strings.TrimSpace(lang))
+	if l != "all" && langCode.MatchString(l) {
+		return nil
+	}
+	if cmd == "reviews" {
+		if l == "all" || strings.Contains(l, ",") {
+			return fmt.Errorf("-lang takes one language code; for %q use -langs %s", lang, strings.Trim(l, ", "))
+		}
+	}
+	return fmt.Errorf("-lang %q: want one language code, such as en or pt-BR", lang)
 }
 
 // arg returns the n-th positional argument, or an error naming what was

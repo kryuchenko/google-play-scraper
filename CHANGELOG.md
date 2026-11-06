@@ -5,6 +5,12 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Changed
+
+- The library now requires Go 1.27 (was 1.25). Go supports its two newest
+  releases, 1.27 and 1.26, and 1.25 gets no more security fixes; the
+  submodules were already on 1.27.
+
 ### Added
 
 - `gpscrape reviews -fields mcp` names the fields as the `gpscrape-mcp`
@@ -43,6 +49,9 @@ All notable changes to this project are documented here. The format is based on
   the store answered in English or in the first language, every record was
   stamped with the bogus code, and the exit was 0. `-lang` now refuses a
   list or `all` and points at `-langs`.
+- `-lang` is checked by every command, not only `reviews`: `app -lang all`
+  or `search -lang "ru de"` went to Google as hl=all and hl=ru+de and came
+  back in English, exit 0. A value that is not one language code is refused.
 - `gpscrape catalog -h` failed with "-h is a flag, not a verb", although
   `gpscrape -h` tells you to run `<command> -h`. It prints the catalog usage.
 - A CLI test that caps file size for the whole process (to make a write

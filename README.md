@@ -19,7 +19,7 @@ browser sees. Lists and charts stop at about 200 apps and cannot be paged
 deeper; the whole store is reachable only through the sitemaps. See
 [Limitations](#limitations) before building on either.
 
-Requires Go 1.25. Inspired by
+Requires Go 1.27. Inspired by
 [facundoolano/google-play-scraper](https://github.com/facundoolano/google-play-scraper)
 (Node.js).
 

@@ -1,0 +1,5 @@
+# Only the module itself goes into the build context.
+bundle/
+dist/
+*.mcpb
+testdata/
