@@ -1,0 +1,9 @@
+App: app_id title developer developer_id score ratings installs free price currency genre genre_id installable_here preregister version updated untrusted_summary url untrusted_description untrusted_recent_changes histogram_1_to_5 reviews released content_rating android_version ad_supported offers_iap iap_range developer_email developer_website privacy_policy
+AppSummary: app_id title developer developer_id score free price currency
+Review: id score date thumbs_up version untrusted_text truncated untrusted_user_name reply_date untrusted_reply_text lang
+Permissions: app_id permissions
+DataSafety: app_id shared_data collected_data security_practices privacy_policy_url
+DataEntry: data type purpose optional
+SecurityPractice: practice description
+Availability: app_id available region_locked not_listed errors checked note
+AppError: app_id code error

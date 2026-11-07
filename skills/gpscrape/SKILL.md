@@ -29,10 +29,10 @@ conversation.
 
 ```sh
 # 3000 Russian-language reviews, newest first, with the MCP tool's field names
-gpscrape reviews com.spotify.music -lang ru -limit 3000 -fields mcp > ru.jsonl
+gpscrape reviews com.spotify.music -lang ru -limit 3000 > ru.jsonl
 
 # every review language; -limit counts per language (71 languages x 100)
-gpscrape reviews com.spotify.music -langs all -limit 100 -fields mcp > all.jsonl
+gpscrape reviews com.spotify.music -langs all -limit 100 > all.jsonl
 
 # what is in the file
 jq -s 'group_by(.score) | map({score: .[0].score, n: length})' ru.jsonl
@@ -45,10 +45,17 @@ Points that trip people up:
 - `-lang` takes one code; a list or `all` goes to `-langs`. Reviews are split
   by language, not by country: `-country` does not change which reviews come
   back.
-- Without `-fields mcp` the names are the library's (`text`, `thumbsUp`,
-  `userName`, `replyText`); with it they match the MCP `play_get_reviews` tool
-  (`untrusted_text`, `thumbs_up`, ...). A jq filter written against one set
-  matches nothing on the other.
+- The CLI writes the same records as the MCP tools (`untrusted_text`,
+  `thumbs_up`, `app_id`, ...), so a jq filter works on both. `-raw` gives the
+  library's own camelCase types instead, with every field. `-fields
+  app_id,score` keeps only the keys you need, and `gpscrape schema <command>`
+  lists them.
+- Errors go to stderr as `{"error":{"code","message","retryable"}}`, with the
+  same codes as the MCP tools; the exit status says the same (2 bad
+  arguments, 3 not found, 4 rate limited, 5 timeout).
+- `catalog sweep` and an unlimited `catalog ids` refuse to start without
+  `-yes` when no terminal is attached: they are about 83,000 requests.
+  Ask the user first.
 - `gpscrape -h` lists the commands; `gpscrape <command> -h` lists the flags.
   `gpscrape catalog -h` lists the catalog verbs with their request cost:
   `catalog size` (about 900 requests) answers "how many apps", `catalog ids
