@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-11-07
+
 ### Added
 
 - CI lints and vulnerability-scans the `mcp` module, which, unlike the root,
