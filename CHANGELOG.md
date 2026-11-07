@@ -5,6 +5,14 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Changed
+
+- `gpscrape-mcp` returns the shared records of package `records`, the
+  objects `gpscrape` writes: a failed entry of `play_get_apps` gains a `code`
+  field next to its message, and the tool errors use `records.Code`. The
+  tools' field names are otherwise unchanged. `apidoc`, `lightfeed` and `mcp`
+  require v1.6.0.
+
 ## [1.6.0] - 2026-11-07
 
 ### Added

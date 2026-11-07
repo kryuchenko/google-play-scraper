@@ -18,11 +18,11 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"strings"
 	"sync/atomic"
 	"time"
 
 	gps "github.com/kryuchenko/google-play-scraper"
+	"github.com/kryuchenko/google-play-scraper/records"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -96,8 +96,8 @@ Typical flow: play_search_apps for a package id (play_suggest_queries only compl
 
 Lists return 20 to 50 items unless asked for more; play_get_reviews pages with next_token; pass the same filters with it. Default output is concise; response_format=detailed keeps all.
 
-Bulk jobs (thousands of reviews, all languages, catalog): if you can run shell commands and gpscrape is already installed, write JSON lines to a file, then jq. Otherwise page reviews, one lang per call, or tell the user the job needs the CLI (github.com/kryuchenko/google-play-scraper); never install it without asking.
-  gpscrape reviews <app_id> -lang ru -limit 3000 -fields mcp > ru.jsonl
+Bulk jobs (thousands of reviews, all languages, catalog): if you can run shell commands and gpscrape is already installed, write JSON lines (these fields) to a file, then jq. Otherwise page reviews, one lang per call, or tell the user the job needs the CLI (github.com/kryuchenko/google-play-scraper); never install it without asking.
+  gpscrape reviews <app_id> -lang ru -limit 3000 > ru.jsonl
   gpscrape reviews <app_id> -langs all -limit 100 > all.jsonl  # limit per lang
   gpscrape -h`
 
@@ -204,7 +204,7 @@ func add[In, Out any](r *registry, name, title, desc string, timeout time.Durati
 		if r.waiting.Add(1) > r.maxWaiting {
 			r.waiting.Add(-1)
 			r.log.Warn("tool call refused: queue full", "tool", name)
-			return nil, out, coded(codeBusy, errors.New("the server is busy with other calls; retry shortly"))
+			return nil, out, coded(records.CodeBusy, errors.New("the server is busy with other calls; retry shortly"))
 		}
 		select {
 		case r.sem <- struct{}{}:
@@ -216,10 +216,10 @@ func add[In, Out any](r *registry, name, title, desc string, timeout time.Durati
 			// dress it up as "busy" in the (usually dropped) response.
 			if errors.Is(ctx.Err(), context.Canceled) {
 				r.log.Debug("tool call cancelled before it started", "tool", name)
-				return nil, out, coded(codeCancelled, ctx.Err())
+				return nil, out, coded(records.CodeCancelled, ctx.Err())
 			}
 			r.log.Warn("tool call not started: server busy", "tool", name)
-			return nil, out, coded(codeBusy, errors.New("the server is busy with other calls and none finished in time; retry shortly"))
+			return nil, out, coded(records.CodeBusy, errors.New("the server is busy with other calls and none finished in time; retry shortly"))
 		}
 		// The SDK does not recover handler panics, and in stdio mode one
 		// would end the whole session. A panic here is a bug in this package
@@ -227,7 +227,7 @@ func add[In, Out any](r *registry, name, title, desc string, timeout time.Durati
 		defer func() {
 			if p := recover(); p != nil {
 				r.log.Error("tool call panicked", "tool", name, "panic", p)
-				err = coded(codeInternal, fmt.Errorf("internal error in the %s tool; this is a bug in gpscrape-mcp", name))
+				err = coded(records.CodeInternal, fmt.Errorf("internal error in the %s tool; this is a bug in gpscrape-mcp", name))
 			}
 		}()
 
@@ -240,7 +240,7 @@ func add[In, Out any](r *registry, name, title, desc string, timeout time.Durati
 		// time is worth returning, and the handler reports what did not.
 		if err == nil && errors.Is(ctx.Err(), context.Canceled) {
 			r.log.Info("tool call cancelled; result dropped", "tool", name, "duration", time.Since(start).Round(time.Millisecond))
-			return nil, out, coded(codeCancelled, ctx.Err())
+			return nil, out, coded(records.CodeCancelled, ctx.Err())
 		}
 		if err != nil {
 			err = explain(err)
@@ -252,61 +252,47 @@ func add[In, Out any](r *registry, name, title, desc string, timeout time.Durati
 	})
 }
 
-// Error codes open every tool error message, "code: what to do", so a
-// program can branch on them and a model still reads a sentence. The set is
-// stable; README lists which are worth retrying.
-const (
-	codeInvalid     = "invalid_argument" // fix the arguments; retrying the same call fails again
-	codeNotListed   = "not_listed"       // the store returned nothing for this id here
-	codeNotFound    = "not_found"        // no such app or page in this storefront
-	codeRateLimited = "rate_limited"     // the store is refusing this server for now; wait
-	codeTimeout     = "timeout"          // the store did not answer in time; retry once
-	codeBusy        = "busy"             // this server is at capacity; retry shortly
-	codeCancelled   = "cancelled"        // the client cancelled the call
-	codeInternal    = "internal"         // a bug in gpscrape-mcp
-	codeStore       = "store_error"      // any other failure talking to the store
-)
-
-// codedError is a tool error with its code; Error renders "code: message".
-type codedError struct {
-	code string
+// explained is a tool error as the agent reads it, "code: what to do". The
+// codes are records.Code, the same ones the CLI reports, so a program can
+// branch on them; the sentence after them is worded for an agent using these
+// tools (it names play_search_apps, not a CLI command).
+type explained struct {
+	code records.Code
 	err  error
 }
 
-func (e codedError) Error() string { return e.code + ": " + e.err.Error() }
-func (e codedError) Unwrap() error { return e.err }
+func (e explained) Error() string { return string(e.code) + ": " + e.err.Error() }
+func (e explained) Unwrap() error { return e.err }
 
-func coded(code string, err error) error { return codedError{code, err} }
+func coded(c records.Code, err error) error { return explained{c, err} }
 
-// explain rewrites the errors an agent can do something about into a sentence
-// that says what to do, behind a stable code.
+// explain classifies err with records.Classify and, for the errors an agent
+// can act on, says what to do.
 func explain(err error) error {
-	var ce codedError
-	var ve validationError
-	var se *gps.StatusError
-	switch {
-	case errors.As(err, &ce):
+	var ex explained
+	if errors.As(err, &ex) {
 		return err
-	case errors.As(err, &ve):
-		return coded(codeInvalid, err)
-	case strings.Contains(err.Error(), "no data returned"):
-		// The library's unexported empty-frame error: the batch RPC had
-		// nothing for this id, which is almost always an unlisted app.
-		return coded(codeNotListed, errors.New("no data returned: probably not listed in this storefront; check the id with play_search_apps, or retry"))
-	case errors.Is(err, gps.ErrNotFound), errors.As(err, &se) && se.Code == 404:
-		return coded(codeNotFound, fmt.Errorf("not found in this storefront: check the id with play_search_apps, or try another country (%w)", err))
-	case errors.Is(err, gps.ErrBlocked), errors.As(err, &se) && se.Code == 429:
-		return coded(codeRateLimited, fmt.Errorf("the store (Google Play) is temporarily refusing requests from this server; wait a few minutes before retrying (%w)", err))
-	case errors.Is(err, context.DeadlineExceeded):
-		return coded(codeTimeout, errors.New("the store did not answer in time; retry once, or narrow the request"))
-	case errors.Is(err, context.Canceled):
-		return coded(codeCancelled, err)
 	}
-	return coded(codeStore, err)
+	code := records.Classify(err)
+	switch code {
+	case records.CodeNotListed:
+		return coded(code, errors.New("no data returned: probably not listed in this storefront; check the id with play_search_apps, or retry"))
+	case records.CodeNotFound:
+		return coded(code, fmt.Errorf("not found in this storefront: check the id with play_search_apps, or try another country (%w)", err))
+	case records.CodeRateLimited:
+		return coded(code, fmt.Errorf("the store (Google Play) is temporarily refusing requests from this server; wait a few minutes before retrying (%w)", err))
+	case records.CodeTimeout:
+		return coded(code, errors.New("the store did not answer in time; retry once, or narrow the request"))
+	}
+	return coded(code, err)
 }
 
-// explainItem is explain for one entry of a batch.
-func explainItem(err error) error { return explain(err) }
+// itemError is a batch entry's error: the code in its own field, the
+// sentence without it.
+func itemError(id string, err error) records.AppError {
+	ex := explain(err).(explained)
+	return records.AppError{AppID: id, Code: ex.code, Error: ex.err.Error()}
+}
 
 // transient reports errors that say nothing about the input: blocks,
 // timeouts, server-side failures.
@@ -316,13 +302,9 @@ func transient(err error) bool {
 		(errors.As(err, &se) && (se.Code == 429 || se.Code >= 500))
 }
 
-// validationError is a bad argument, reported verbatim.
-type validationError struct{ msg string }
-
-func (e validationError) Error() string { return e.msg }
-
+// invalid is a bad argument, reported verbatim behind invalid_argument.
 func invalid(format string, args ...any) error {
-	return validationError{fmt.Sprintf(format, args...)}
+	return records.Invalid(format, args...)
 }
 
 func ptr[T any](v T) *T { return &v }

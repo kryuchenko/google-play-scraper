@@ -197,6 +197,10 @@ rows carry no developer id, and outside charts no price.
   SDK by default) show the model only `content`.
 - **Ids as they come.** `app_id` takes a package id or a store link with
   `?id=`.
+- **One contract with the CLI.** The records these tools return are the ones
+  in package `records`, and `gpscrape` writes the same objects one per line,
+  with the same error codes. A filter or parser written against one works on
+  the other; `records/testdata/fields.txt` pins the field names.
 - **Third-party text is marked.** Review text, reviewer names, developer
   replies, app summaries, descriptions and release notes come back in fields
   named `untrusted_*`, and the server's instructions tell the agent to treat
