@@ -48,10 +48,10 @@ func TestSweepStopsFetchingOnTheFirstWriteError(t *testing.T) {
 	useFakeClient(t, store.transport())
 	dir := t.TempDir()
 
-	// Enough ids in the first shard that the 1MB buffer flushes while it is
-	// still being written, so the failure happens mid-shard rather than at the
-	// final checkpoint.
-	big := make([]string, 60000)
+	// Enough ids in the first shard (about 4.5MB) that the 1MB buffer flushes
+	// several times while it is still being written, so the failure happens
+	// mid-shard rather than at the final checkpoint.
+	big := make([]string, 200000)
 	for i := range big {
 		big[i] = fmt.Sprintf("com.example.app%06d", i)
 	}
@@ -59,7 +59,11 @@ func TestSweepStopsFetchingOnTheFirstWriteError(t *testing.T) {
 		big, {"com.b"}, {"com.c"}, {"com.d"},
 	})
 
-	limitFileSize(t, 128<<10)
+	// The limit is process-wide, so it also caps the test log go test writes
+	// alongside (-test.testlogfile), which records every file this package
+	// opens. At 128KB that log outgrew the limit once the package had enough
+	// tests, and the run failed with "file too large" after every test passed.
+	limitFileSize(t, 2<<20)
 
 	_, _, err := runVerb(t, cmdSync, "-dir", dir, "-concurrency", "1")
 	if err == nil {

@@ -11,6 +11,11 @@
 # protocol level: -32602 for an unknown tool, prompt or resource, -32601 for an
 # unsupported method.
 #
+# Each entry is a whole scenario, which in suite 0.1.16 is also exactly one
+# check: every scenario listed here runs a single check, so a per-check entry
+# (scenario:check-id) would excuse nothing less. Revisit when a scenario
+# gains more checks, and when a published release offers --requirements.
+#
 # Everything else -- initialize, ping, logging, tools/list, resources/list,
 # prompts/list, DNS-rebinding protection -- must pass. The runner also fails if
 # an entry here starts passing, so the list cannot go stale.

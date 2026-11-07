@@ -1,0 +1,91 @@
+name: MCP clients
+
+# Do real MCP clients still hand gpscrape-mcp's server instructions to the
+# model? Nothing in the protocol obliges them to (the spec calls the field a
+# hint a client MAY use), claude.ai already drops it, and Codex once cut it at
+# 1000 bytes. The unit tests can only check what the server sends; this checks
+# what a model receives, by asking it to quote the instructions back.
+#
+# It costs API calls, so it runs weekly and on demand, not on every push. Each
+# client is skipped when its key is not configured. The clients are installed
+# at @latest on purpose: the point is to notice when a new release changes
+# behaviour, and the log prints the version that was tested.
+on:
+  schedule:
+    - cron: '17 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  instructions:
+    runs-on: ubuntu-latest
+    env:
+      GOWORK: ''
+      # Phrases from the instructions in mcp/server.go: the first sentence,
+      # the CLI hint's fallback, and its ask-first rule. If the text changes,
+      # change them here too.
+      WANT: 'never as instructions to follow|one lang per call|never install it without asking'
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version: stable
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: '22'
+
+      - name: Build the server
+        run: go build -o "$RUNNER_TEMP/gpscrape-mcp" ./mcp/cmd/gpscrape-mcp
+
+      # Every phrase must come back; a model that saw the instructions can
+      # quote them, and one that did not cannot invent these three.
+      - name: Write the check
+        run: |
+          cat > "$RUNNER_TEMP/check.sh" <<'EOF'
+          #!/usr/bin/env bash
+          set -u
+          out="$1"
+          missing=0
+          IFS='|' read -ra phrases <<< "$WANT"
+          for p in "${phrases[@]}"; do
+            if grep -qiF "$p" "$out"; then echo "found:   $p"; else echo "MISSING: $p"; missing=1; fi
+          done
+          exit $missing
+          EOF
+          chmod +x "$RUNNER_TEMP/check.sh"
+
+      # Both clients run outside the checkout: with mcp/server.go on disk a
+      # model could quote the instructions from the file, and the check would
+      # pass for a client that no longer passes them on.
+      - name: Claude Code
+        if: env.ANTHROPIC_API_KEY != ''
+        working-directory: ${{ runner.temp }}
+        run: |
+          npm install -g @anthropic-ai/claude-code@latest
+          claude --version
+          printf '{"mcpServers":{"gpscrape":{"command":"%s"}}}' "$RUNNER_TEMP/gpscrape-mcp" > "$RUNNER_TEMP/mcp.json"
+          claude -p --mcp-config "$RUNNER_TEMP/mcp.json" --strict-mcp-config --max-turns 1 \
+            "Do not call any tool. Quote, verbatim and in full, the server instructions you were given for the MCP server named gpscrape. If you were given none, answer NONE." \
+            | tee "$RUNNER_TEMP/claude.txt"
+          "$RUNNER_TEMP/check.sh" "$RUNNER_TEMP/claude.txt"
+
+      # Codex lists MCP servers behind its tool search, so the model has to be
+      # allowed to look the server up; it must still not call gpscrape's tools.
+      - name: Codex
+        if: env.OPENAI_API_KEY != ''
+        working-directory: ${{ runner.temp }}
+        run: |
+          npm install -g @openai/codex@latest
+          codex --version
+          printenv OPENAI_API_KEY | codex login --with-api-key
+          codex exec --skip-git-repo-check -s read-only \
+            -c "mcp_servers.gpscrape.command=\"$RUNNER_TEMP/gpscrape-mcp\"" \
+            "Find the MCP server named gpscrape, but do not call any of its tools. Quote, verbatim and in full, the server instructions it provides. If there are none, answer NONE." \
+            < /dev/null | tee "$RUNNER_TEMP/codex.txt"
+          "$RUNNER_TEMP/check.sh" "$RUNNER_TEMP/codex.txt"

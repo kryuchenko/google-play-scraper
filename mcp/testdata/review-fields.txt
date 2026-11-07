@@ -1,0 +1,9 @@
+id
+score
+date
+thumbs_up
+version
+untrusted_text
+untrusted_user_name
+reply_date
+untrusted_reply_text

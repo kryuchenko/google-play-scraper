@@ -16,6 +16,7 @@ import (
 //	schema:"min=1,max=50"           integer bounds
 //	schema:"enum=a|b|c"             allowed strings
 //	schema:"minItems=1,maxItems=20" array length
+//	schema:"maxLength=200"          string length
 //
 // Every argument is a value or absent, never null, so the "null" the
 // inference adds for slices and pointers is dropped.
@@ -60,6 +61,8 @@ func tighten(t reflect.Type, s *jsonschema.Schema) {
 				prop.MinItems = ptr(int(mustFloat(v)))
 			case "maxItems":
 				prop.MaxItems = ptr(int(mustFloat(v)))
+			case "maxLength":
+				prop.MaxLength = ptr(int(mustFloat(v)))
 			case "enum":
 				for e := range strings.SplitSeq(v, "|") {
 					prop.Enum = append(prop.Enum, e)

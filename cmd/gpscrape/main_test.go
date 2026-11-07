@@ -8,10 +8,13 @@ import (
 	"fmt"
 	"maps"
 	"net/http"
+	"os"
+	"reflect"
 	"slices"
 	"sort"
 	"strings"
 	"testing"
+	"time"
 
 	googleplayscraper "github.com/kryuchenko/google-play-scraper"
 )
@@ -580,5 +583,107 @@ func TestCatalogIDsEmitsFromTheFixture(t *testing.T) {
 	// A range that names no shard is a mistyped flag, not an empty catalog.
 	if _, _, err := runVerb(t, catalogIDs, "-shards", "999"); err == nil {
 		t.Error("a shard range outside the generation was accepted")
+	}
+}
+
+// -lang takes one code; "all" or a list belongs to -langs and used to be sent
+// to Google as-is, answered in the wrong language with exit 0.
+func TestReviewLangsRejectsAListInLang(t *testing.T) {
+	for _, bad := range []string{"all", "ALL", "ru,de", " ru , de "} {
+		if _, err := reviewLangs("", bad); err == nil || !strings.Contains(err.Error(), "-langs") {
+			t.Errorf("-lang %q: err = %v, want one pointing at -langs", bad, err)
+		}
+	}
+	if got, err := reviewLangs("", "pt-BR"); err != nil || len(got) != 1 {
+		t.Errorf("-lang pt-BR: %v, %v", got, err)
+	}
+}
+
+// -fields mcp promises the gpscrape-mcp reviews tool's field names. The list
+// lives in the mcp module's testdata; this side is the CLI. The file is not
+// in the root module's zip, so a test run from the module cache skips.
+func TestMCPReviewFieldsMatchTheSharedList(t *testing.T) {
+	raw, err := os.ReadFile("../../mcp/testdata/review-fields.txt")
+	if err != nil {
+		t.Skipf("shared list not available: %v", err)
+	}
+	want := strings.Fields(string(raw))
+	want = append(want, "lang") // the CLI says which corpus a review came from
+	slices.Sort(want)
+	var got []string
+	ty := reflect.TypeOf(mcpReviewRecord{})
+	for i := range ty.NumField() {
+		name, _, _ := strings.Cut(ty.Field(i).Tag.Get("json"), ",")
+		got = append(got, name)
+	}
+	slices.Sort(got)
+	if !slices.Equal(got, want) {
+		t.Errorf("mcpReviewRecord fields %v, shared list plus lang %v", got, want)
+	}
+}
+
+func TestReviewRecordFor(t *testing.T) {
+	r := googleplayscraper.Review{
+		ID: "1", Score: 4, Text: "ok", ThumbsUp: 2, UserName: "u",
+		Date: time.Date(2026, 11, 5, 23, 0, 0, 0, time.UTC),
+	}
+	mcp, err := reviewRecordFor("MCP")
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, _ := json.Marshal(mcp(r, "ru"))
+	for _, want := range []string{`"untrusted_text":"ok"`, `"thumbs_up":2`, `"date":"2026-11-05"`, `"lang":"ru"`, `"untrusted_user_name":"u"`} {
+		if !strings.Contains(string(b), want) {
+			t.Errorf("-fields mcp: %s lacks %s", b, want)
+		}
+	}
+	if strings.Contains(string(b), "reply_date") {
+		t.Errorf("-fields mcp: no reply, but %s has a reply_date", b)
+	}
+	lib, _ := reviewRecordFor("")
+	b, _ = json.Marshal(lib(r, "ru"))
+	if !strings.Contains(string(b), `"text":"ok"`) {
+		t.Errorf("default fields changed: %s", b)
+	}
+	if _, err := reviewRecordFor("snake"); err == nil {
+		t.Error("-fields snake was accepted")
+	}
+}
+
+// Every command that sends hl checks it, not only reviews.
+func TestCheckLang(t *testing.T) {
+	for _, ok := range []string{"en", "pt-BR", "zh-Hant", "es-419", "fil", " ru "} {
+		if err := checkLang("app", ok); err != nil {
+			t.Errorf("-lang %q refused: %v", ok, err)
+		}
+	}
+	for _, bad := range []string{"all", "ru,de", "ru;de", "ru de", "", "e", "english!"} {
+		if err := checkLang("search", bad); err == nil {
+			t.Errorf("search -lang %q accepted", bad)
+		}
+	}
+	if err := checkLang("reviews", ","); err == nil || strings.HasSuffix(err.Error(), "-langs ") {
+		t.Errorf("reviews -lang ',': %v, want no empty -langs hint", err)
+	}
+	if err := checkLang("reviews", "ru,de"); err == nil || !strings.Contains(err.Error(), "-langs ru,de") {
+		t.Errorf("reviews -lang ru,de: %v, want a pointer to -langs", err)
+	}
+}
+
+func TestReviewLangsRejectsMalformedEntries(t *testing.T) {
+	for _, value := range []string{"all,en", "en,ru de", "en,ru;de", "en,https://example.com", "en,e"} {
+		if got, err := reviewLangs(value, "en"); err == nil {
+			t.Errorf("-langs %q accepted as %v", value, got)
+		}
+	}
+}
+
+func TestCommonTrimsLanguageBeforeUse(t *testing.T) {
+	c := newCommon("app")
+	if err := c.parse([]string{"-lang", " ru "}); err != nil {
+		t.Fatal(err)
+	}
+	if c.lang != "ru" {
+		t.Errorf("language sent to store = %q, want ru", c.lang)
 	}
 }

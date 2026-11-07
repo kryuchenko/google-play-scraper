@@ -5,6 +5,127 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+
+- CI lints and vulnerability-scans the `mcp` module, which, unlike the root,
+  has dependencies; dependabot watches them. Every workflow pins its actions
+  to a commit SHA, with the version in a comment.
+- `gpscrape reviews -fields mcp` names the fields as the `gpscrape-mcp`
+  `play_get_reviews` tool does (`untrusted_text`, `thumbs_up`, `reply_date`, ...), so
+  a jq filter written against the tool works on the CLI's bulk output. The
+  default stays the library's names. Both sides are tested against one list,
+  `mcp/testdata/review-fields.txt`.
+- `skills/gpscrape/SKILL.md`, a skill for Claude Code and other agents that
+  read `SKILL.md`: when to use the MCP tools and when the CLI, and how to
+  filter the CLI's output.
+- `gpscrape-mcp` releases (`mcp/v*` tags) build prebuilt binaries, an MCPB
+  bundle and a container image on `ghcr.io/kryuchenko/gpscrape-mcp`, and
+  publish `mcp/server.json` to the official MCP Registry as
+  `io.github.kryuchenko/gpscrape`.
+- A weekly workflow asks Claude Code and Codex to quote the server
+  instructions back, to notice a client release that stops passing them to
+  the model.
+- `gpscrape-mcp`: every tool error starts with a stable code
+  (`invalid_argument`, `not_found`, `not_listed`, `rate_limited`, `timeout`,
+  `busy`, `cancelled`, `store_error`, `internal`), so a program can branch on
+  it; the README says which are worth retrying.
+- `gpscrape-mcp`: `play_check_availability` sends a progress notification
+  per probed country to a client that passes a `progressToken` (stdio).
+- `gpscrape-mcp`: `-token-file` reads the bearer token from a file, for
+  Docker and systemd secrets.
+- `gpscrape-mcp` has an icon, in its server info, `server.json` and the MCPB
+  bundle.
+- Releases carry signed build provenance (GitHub artifact attestations) for
+  the CLI binaries, the server binaries, the MCPB bundle and the image; check
+  one with `gh attestation verify`.
+- The MCPB bundle runs on Linux arm64 too: on Linux it starts a launcher
+  that picks the amd64 or arm64 binary.
+
+### Changed
+
+- **Breaking, `gpscrape-mcp`:** the tools are renamed to `play_` + verb +
+  object, as Anthropic's (namespacing) and OpenAI's (action-oriented names)
+  tool guidance both ask: `search` → `play_search_apps`, `app` →
+  `play_get_app`, `apps` → `play_get_apps`, `list` → `play_get_chart`,
+  `reviews` → `play_get_reviews`, `similar` → `play_get_similar_apps`,
+  `developer` → `play_get_developer_apps`, `permissions` →
+  `play_get_permissions`, `datasafety` → `play_get_data_safety`, `suggest` →
+  `play_suggest_queries`, `categories` → `play_list_categories`,
+  `availability` → `play_check_availability`.
+- **Breaking, `gpscrape-mcp`:** the secret path `/mcp/<token>` for ChatGPT is
+  off unless `-secret-path` is given; a token alone opens only the bearer
+  header. A token in a URL ends up in proxy logs and browser history, so only
+  a deployment that needs it should accept it.
+- **Breaking, `gpscrape-mcp`:** the `-token` flag is gone; a secret on the
+  command line is visible to every user of the machine in `ps`. Use
+  `$GPSCRAPE_MCP_TOKEN` or `-token-file`.
+- `gpscrape-mcp`: `tools/list` and `server/discover` say `ttlMs` of an hour
+  instead of 0 ("stale at once"); the tool set never changes while the
+  server runs.
+- `gpscrape-mcp`: a call the client cancelled returns no result even if the
+  work behind it finished, as the spec's cancellation rule asks.
+- `gpscrape-mcp`: at most four calls per concurrency slot wait for one; a
+  call past that is refused at once as `busy` instead of joining a queue that
+  cannot drain before its deadline. String arguments have a maximum length
+  in the input schema.
+- The container's base images are pinned by digest, and dependabot keeps
+  the pins current.
+- Every `gpscrape-mcp` tool publishes an output schema, and the server
+  checks each result against it before sending. OpenAI's MCP guidance asks
+  for one on structured results; `tools/list` grows from about 9.8 KB to
+  17.5 KB. A test runs every tool with full data and with none, concise and
+  detailed, through the schemas.
+- The library now requires Go 1.27 (was 1.25). Go supports its two newest
+  releases, 1.27 and 1.26, and 1.25 gets no more security fixes; the
+  submodules were already on 1.27.
+- `gpscrape-mcp` tells agents about the `gpscrape` CLI. Its instructions
+  point an agent that can run shell commands at `gpscrape reviews … -limit`
+  and `-langs all` for bulk jobs, which the one-page tools are not for, when
+  the CLI is already installed; otherwise the agent pages with the tools or
+  tells the user the job needs the CLI, and it must ask the user before
+  installing it. The `play_get_reviews` description repeats the hint, for
+  clients that do not pass instructions to the model.
+- The server instructions are shorter and open with the untrusted-data
+  warning, and the `play_get_reviews` description puts it first too. Every tool
+  description stays under 1000 bytes, where Codex cuts descriptions for
+  servers installed as plugins.
+
+### Fixed
+
+- `gpscrape-mcp` over stdio: a line that is valid JSON but not a JSON-RPC
+  message (`{}`, `123`, `null`, `[]`, `"jsonrpc":"1.0"`) ended the session,
+  taking every tool away until the client restarted the server. Such lines
+  are now logged and skipped, like lines that are not JSON at all.
+- `gpscrape-mcp` over HTTP checks `Origin` on every method, as the MCP
+  transport spec requires. Go's cross-origin protection skipped GET and
+  trusted `Sec-Fetch-Site` before looking at `Origin`; a request with a
+  foreign or malformed `Origin` now gets 403 whatever else it claims.
+- `gpscrape-mcp`: `play_list_categories` no longer claims `openWorldHint`; it reads a
+  fixed table and makes no request.
+- `gpscrape-mcp`: a tool call cancelled while it waited for a free
+  concurrency slot was logged as "server busy". It is now logged as a
+  cancellation, so client cancels do not read as load.
+- `gpscrape-mcp`: the server instructions now end at a paragraph boundary
+  within the first 512 bytes (OpenAI asks that they stand alone there):
+  the concise/detailed default moved up, and the CLI-hint paragraph starts
+  at byte 512 instead of being cut mid-sentence.
+- `gpscrape reviews -langs` rejects malformed entries and `all` mixed with
+  individual codes, rather than fetching reviews under bogus language labels.
+- CLI language values are trimmed before use, so `-lang " ru "` requests and
+  labels the Russian corpus as `ru`.
+- `gpscrape reviews -lang all` and `-lang ru,de` were sent to Google as-is:
+  the store answered in English or in the first language, every record was
+  stamped with the bogus code, and the exit was 0. `-lang` now refuses a
+  list or `all` and points at `-langs`.
+- `-lang` is checked by every command, not only `reviews`: `app -lang all`
+  or `search -lang "ru de"` went to Google as hl=all and hl=ru+de and came
+  back in English, exit 0. A value that is not one language code is refused.
+- `gpscrape catalog -h` failed with "-h is a flag, not a verb", although
+  `gpscrape -h` tells you to run `<command> -h`. It prints the catalog usage.
+- A CLI test that caps file size for the whole process (to make a write
+  fail) also capped the log `go test` writes, and failed the package with
+  "file too large" once the log outgrew 128 KB.
+
 ## [1.5.0] - 2026-11-05
 
 ### Added

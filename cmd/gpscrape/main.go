@@ -36,6 +36,7 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"regexp"
 	"runtime/debug"
 	"slices"
 	"sort"
@@ -435,7 +436,35 @@ func (c *common) parse(args []string) error {
 			return err
 		}
 	}
+	if c.fs.Lookup("lang") != nil {
+		c.lang = strings.TrimSpace(c.lang)
+		if err := checkLang(c.fs.Name(), c.lang); err != nil {
+			return err
+		}
+	}
 	return c.diagnostics()
+}
+
+// langCode is the shape of an hl value: a language, optionally a region or
+// script (en, pt-BR, zh-Hant, es-419).
+var langCode = regexp.MustCompile(`^[A-Za-z]{2,3}([-_][A-Za-z0-9]{2,8})*$`)
+
+// checkLang refuses a -lang that is not one code. Google does not reject
+// hl=all or hl=ru,de: it answers in English or in the first language, and
+// the run exits 0 with data in a language nobody asked for.
+func checkLang(cmd, lang string) error {
+	l := strings.ToLower(strings.TrimSpace(lang))
+	if l != "all" && langCode.MatchString(l) {
+		return nil
+	}
+	if cmd == "reviews" {
+		// Suggest -langs only with something to put after it: for "," the
+		// trimmed list is empty and the hint would end in a bare flag.
+		if list := strings.Trim(l, ", "); l == "all" || (strings.Contains(l, ",") && list != "") {
+			return fmt.Errorf("-lang takes one language code; for %q use -langs %s", lang, list)
+		}
+	}
+	return fmt.Errorf("-lang %q: want one language code, such as en or pt-BR", lang)
 }
 
 // arg returns the n-th positional argument, or an error naming what was
@@ -678,6 +707,57 @@ type reviewRecord struct {
 	Lang string `json:"lang"`
 }
 
+// mcpReviewRecord is a review under the field names the gpscrape-mcp reviews
+// tool uses. The server tells agents to use this command for bulk jobs, and an
+// agent that has seen the tool's output writes its jq filter against those
+// names: under the library's names (text, thumbsUp) the filter matched
+// nothing, silently. The untrusted_ prefixes mark text written by third
+// parties, as in the tool. Unlike the tool, text is never truncated.
+// mcp/testdata/review-fields.txt holds the shared list; tests on both sides
+// check against it.
+type mcpReviewRecord struct {
+	ID        string `json:"id"`
+	Score     int    `json:"score"`
+	Date      string `json:"date"`
+	ThumbsUp  int    `json:"thumbs_up"`
+	Version   string `json:"version,omitempty"`
+	Text      string `json:"untrusted_text"`
+	UserName  string `json:"untrusted_user_name,omitempty"`
+	ReplyDate string `json:"reply_date,omitempty"`
+	ReplyText string `json:"untrusted_reply_text,omitempty"`
+	Lang      string `json:"lang"`
+}
+
+func dateOnly(t time.Time) string {
+	if t.IsZero() {
+		return ""
+	}
+	return t.UTC().Format(time.DateOnly)
+}
+
+// reviewRecordFor returns the record builder for a -fields value.
+func reviewRecordFor(fields string) (func(googleplayscraper.Review, string) any, error) {
+	switch strings.ToLower(strings.TrimSpace(fields)) {
+	case "", "lib":
+		return func(r googleplayscraper.Review, lang string) any {
+			return reviewRecord{Review: r, Lang: lang}
+		}, nil
+	case "mcp":
+		return func(r googleplayscraper.Review, lang string) any {
+			o := mcpReviewRecord{
+				ID: r.ID, Score: r.Score, Date: dateOnly(r.Date), ThumbsUp: r.ThumbsUp,
+				Version: r.Version, Text: r.Text, UserName: r.UserName,
+				ReplyText: r.ReplyText, Lang: lang,
+			}
+			if r.ReplyText != "" {
+				o.ReplyDate = dateOnly(r.ReplyDate)
+			}
+			return o
+		}, nil
+	}
+	return nil, fmt.Errorf(`-fields %q: want "lib" or "mcp"`, fields)
+}
+
 func cmdReviews(args []string) error {
 	c := newCommon("reviews")
 	limit := c.fs.Int("limit", 200, "stop after this many reviews (0 = no limit); per language when -langs is given")
@@ -685,10 +765,16 @@ func cmdReviews(args []string) error {
 	score := c.fs.Int("score", 0, "keep only this star rating (1-5; 0 = all)")
 	langs := c.fs.String("langs", "", `read several review corpora: "en,ru,de", or "all" for every `+
 		`measured one. Reviews do not overlap between languages, so this is how to read all of them`)
+	fields := c.fs.String("fields", "lib", `field names: "lib" (the library's: text, thumbsUp, ...) or "mcp" `+
+		`(the gpscrape-mcp reviews tool's: untrusted_text, thumbs_up, ...), so a filter written against one works on the other`)
 	if err := c.parse(args); err != nil {
 		return err
 	}
 	appID, err := c.arg(0, "appID")
+	if err != nil {
+		return err
+	}
+	record, err := reviewRecordFor(*fields)
 	if err != nil {
 		return err
 	}
@@ -751,7 +837,7 @@ func cmdReviews(args []string) error {
 	// One language is the ordinary case and stays exactly as it was.
 	if len(list) == 1 {
 		opts.Lang = list[0]
-		if _, _, err := emitReviews(ctx, c, e, appID, opts, *limit, nil); err != nil {
+		if _, _, err := emitReviews(ctx, c, e, appID, opts, *limit, nil, record); err != nil {
 			return err
 		}
 		return e.flush()
@@ -774,7 +860,7 @@ func cmdReviews(args []string) error {
 	progress := progressTo(os.Stderr)
 	for _, lang := range list {
 		opts.Lang = lang
-		n, skipped, err := emitReviews(ctx, c, e, appID, opts, *limit, seen)
+		n, skipped, err := emitReviews(ctx, c, e, appID, opts, *limit, seen, record)
 		if err != nil {
 			return err
 		}
@@ -797,6 +883,7 @@ func cmdReviews(args []string) error {
 // emitted and is what makes a list containing two names for one corpus safe.
 func emitReviews(ctx context.Context, c *common, e *emitter, appID string,
 	opts googleplayscraper.ReviewOptions, limit int, seen map[string]struct{},
+	record func(googleplayscraper.Review, string) any,
 ) (emitted, skipped int, err error) {
 	for r, rerr := range c.client().ReviewsSeq(ctx, appID, opts) {
 		if rerr != nil {
@@ -813,7 +900,7 @@ func emitReviews(ctx context.Context, c *common, e *emitter, appID string,
 			}
 			seen[r.ID] = struct{}{}
 		}
-		if eerr := e.emit(reviewRecord{Review: r, Lang: opts.Lang}); eerr != nil {
+		if eerr := e.emit(record(r, opts.Lang)); eerr != nil {
 			return emitted, skipped, eerr
 		}
 		emitted++
@@ -832,6 +919,13 @@ func reviewLangs(langs, single string) ([]string, error) {
 	// as hl=all: one bogus corpus, exit 0, no warning, instead of 71.
 	langs = strings.ToLower(strings.TrimSpace(langs))
 	if langs == "" {
+		// -lang takes one code. "all" or a list here used to be sent as
+		// hl=all or hl=ru,de: Google answered in English or in the first
+		// language, every record was stamped with the bogus code, and the
+		// exit was 0.
+		if l := strings.ToLower(strings.TrimSpace(single)); l == "all" || strings.Contains(l, ",") {
+			return nil, fmt.Errorf("-lang takes one language code; for %q use -langs %s", single, strings.Trim(l, ", "))
+		}
 		return []string{single}, nil
 	}
 	if langs == "all" {
@@ -846,6 +940,14 @@ func reviewLangs(langs, single string) ([]string, error) {
 		l = strings.ToLower(strings.TrimSpace(l))
 		if l == "" {
 			continue
+		}
+		// Each entry goes out as hl=<entry>, and the store answers a bad one
+		// in English with exit 0, the same trap -lang is checked for.
+		if l == "all" {
+			return nil, fmt.Errorf(`-langs: "all" already covers every corpus; use -langs all with no other codes`)
+		}
+		if !langCode.MatchString(l) {
+			return nil, fmt.Errorf("-langs: %q is not one language code, such as en or pt-BR", l)
 		}
 		if _, dup := seen[l]; dup {
 			continue

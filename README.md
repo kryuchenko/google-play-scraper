@@ -19,7 +19,7 @@ browser sees. Lists and charts stop at about 200 apps and cannot be paged
 deeper; the whole store is reachable only through the sitemaps. See
 [Limitations](#limitations) before building on either.
 
-Requires Go 1.25. Inspired by
+Requires Go 1.27. Inspired by
 [facundoolano/google-play-scraper](https://github.com/facundoolano/google-play-scraper)
 (Node.js).
 
@@ -159,6 +159,7 @@ gpscrape reviews com.spotify.music -limit 500 | jq -r .text
 gpscrape reviews com.spotify.music -sort rating -score 1 -limit 100
 gpscrape reviews com.spotify.music -langs en,ru,de -limit 500   # three corpora
 gpscrape reviews com.spotify.music -langs all -limit 500        # every measured corpus
+gpscrape reviews com.spotify.music -limit 500 -fields mcp | jq -r .untrusted_text
 ```
 
 Language does not filter reviews, it partitions them: each `hl` code is served
@@ -166,7 +167,9 @@ its own corpus and the corpora do not overlap, so reading all of an app's
 reviews means reading every language. `-limit` applies per language when
 `-langs` is given, and records carry the corpus they came from. There is no
 country filter, because a review carries no country: `ru/kz` and `ru/us` return
-the same reviews id for id.
+the same reviews id for id. `-fields mcp` names the fields as the
+[MCP server's](mcp/) `play_get_reviews` tool does (`untrusted_text`, `thumbs_up`), so a
+filter written against one works on the other.
 
 ### Search and charts
 
@@ -423,6 +426,10 @@ operation that makes a request opens a `runtime/trace` task, so
   store's quick lookups as tools, over stdio or Streamable HTTP.
 
 All three are separate Go modules; the root library stays stdlib-only.
+
+[`skills/gpscrape/`](skills/gpscrape/SKILL.md) is a skill for Claude Code and
+other agents that read `SKILL.md`: when to use the MCP tools and when the CLI,
+and how to filter the CLI's output. Copy the folder to `~/.claude/skills/`.
 
 ## Documentation
 

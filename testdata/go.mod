@@ -8,4 +8,4 @@
 // reads them exactly as before.
 module github.com/kryuchenko/google-play-scraper/testdata
 
-go 1.25
+go 1.27

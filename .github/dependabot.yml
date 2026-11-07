@@ -37,9 +37,29 @@ updates:
         patterns:
           - "github.com/chromedp/*"
 
+  # The MCP server talks to untrusted clients over HTTP through the go-sdk,
+  # so its security fixes should reach a pull request without anyone
+  # remembering to look.
+  - package-ecosystem: gomod
+    directory: /mcp
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "deps(mcp)"
+
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: monthly
     commit-message:
       prefix: "ci"
+
+  # mcp/Dockerfile pins its base images by digest; this keeps the pins from
+  # going stale (a digest never moves, so without it security fixes in the
+  # base image would never arrive).
+  - package-ecosystem: docker
+    directory: /mcp
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "deps(docker)"
