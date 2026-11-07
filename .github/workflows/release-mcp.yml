@@ -97,7 +97,7 @@ jobs:
         run: |
           jq --arg v "${{ steps.version.outputs.version }}" '.version = $v' mcpb/manifest.json > bundle/manifest.json
           cp ../LICENSE bundle/
-          cp assets/icon.png bundle/icon.png
+          cp mcpb/icon.png bundle/icon.png
           npx -y @anthropic-ai/mcpb@2.1.2 validate bundle/manifest.json
           npx -y @anthropic-ai/mcpb@2.1.2 pack bundle ../dist/gpscrape-mcp.mcpb
           cd ../dist
