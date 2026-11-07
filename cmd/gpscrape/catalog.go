@@ -18,6 +18,7 @@ import (
 	"time"
 
 	googleplayscraper "github.com/kryuchenko/google-play-scraper"
+	"github.com/kryuchenko/google-play-scraper/records"
 )
 
 // The catalog verbs.
@@ -64,7 +65,7 @@ var catalogVerbs = map[string]func([]string) error{
 func cmdCatalogGroup(args []string) error {
 	verbs := catalogVerbs
 	if len(args) == 0 {
-		return fmt.Errorf("catalog: need a verb\n\n%s", catalogUsage)
+		return records.Invalid("catalog: need a verb\n\n%s", catalogUsage)
 	}
 	// A leading flag is a missing verb, not a shorthand for one.
 	//
@@ -81,12 +82,12 @@ func cmdCatalogGroup(args []string) error {
 		return nil
 	}
 	if strings.HasPrefix(verb, "-") {
-		return fmt.Errorf("catalog: %s is a flag, not a verb; did you mean `catalog ids %s`?\n\n%s",
+		return records.Invalid("catalog: %s is a flag, not a verb; did you mean `catalog ids %s`?\n\n%s",
 			verb, strings.Join(args, " "), catalogUsage)
 	}
 	run, ok := verbs[verb]
 	if !ok {
-		return fmt.Errorf("catalog: unknown verb %q\n\n%s", verb, catalogUsage)
+		return records.Invalid("catalog: unknown verb %q\n\n%s", verb, catalogUsage)
 	}
 	return run(args[1:])
 }
@@ -221,7 +222,7 @@ func catalogGenres(args []string) error {
 	// when the run saw everything. With -ids it would shrink the table to the
 	// subset -- the exact destruction the merge was added to prevent.
 	if *prune && *from != "" {
-		return fmt.Errorf("-prune needs the whole snapshot: with -ids it would delete every row " +
+		return records.Invalid("-prune needs the whole snapshot: with -ids it would delete every row " +
 			"outside the list you passed, which is not the same as the app being gone")
 	}
 
@@ -655,7 +656,7 @@ func catalogNew(args []string) error {
 	}
 	col, ok := collections[strings.ToLower(*collection)]
 	if !ok {
-		return fmt.Errorf("unknown collection %q; want one of: %s", *collection, collectionNames())
+		return records.Invalid("unknown collection %q; want one of: %s", *collection, collectionNames())
 	}
 	categories, err := categoryList(*cats)
 	if err != nil {
@@ -780,7 +781,7 @@ func categoryList(spec string) ([]googleplayscraper.Category, error) {
 		out = append(out, cat)
 	}
 	if len(out) == 0 {
-		return nil, fmt.Errorf("no categories in %q", spec)
+		return nil, records.Invalid("no categories in %q", spec)
 	}
 	return out, nil
 }
@@ -898,7 +899,7 @@ func catalogDiff(args []string) error {
 	case 2:
 		fromPath, toPath = c.args[0], c.args[1]
 	default:
-		return fmt.Errorf("catalog diff: give two snapshot files, or none to use the two newest in -dir")
+		return records.Invalid("catalog diff: give two snapshot files, or none to use the two newest in -dir")
 	}
 
 	oldIDs, err := readSnapshot(fromPath)
@@ -1187,7 +1188,7 @@ func catalogSize(args []string) error {
 
 	p, err := parsePercent(*precision)
 	if err != nil {
-		return fmt.Errorf("-precision: %w", err)
+		return records.Invalid("-precision: %w", err)
 	}
 	opts := googleplayscraper.SizeOptions{
 		Precision:   p,
@@ -1255,7 +1256,7 @@ func parsePercent(s string) (float64, error) {
 	pct := strings.HasSuffix(s, "%")
 	v, err := strconv.ParseFloat(strings.TrimSuffix(s, "%"), 64)
 	if err != nil {
-		return 0, fmt.Errorf("%q is not a number", s)
+		return 0, records.Invalid("%q is not a number", s)
 	}
 	if pct {
 		v /= 100
@@ -1268,7 +1269,7 @@ func parsePercent(s string) (float64, error) {
 	// through: -precision NaN produced a real-looking measurement at a target
 	// nobody can name.
 	if math.IsNaN(v) || v <= 0 || v >= 1 {
-		return 0, fmt.Errorf("%q is out of range; want something like 1%% or 0.5%%", s)
+		return 0, records.Invalid("%q is out of range; want something like 1%% or 0.5%%", s)
 	}
 	return v, nil
 }
@@ -1399,12 +1400,12 @@ func genreMatcher(pattern string) (func(string) bool, error) {
 	case strings.HasSuffix(pattern, "*"):
 		prefix := strings.TrimSuffix(pattern, "*")
 		if strings.Contains(prefix, "*") {
-			return nil, fmt.Errorf("-genre %q: only a trailing * is supported", pattern)
+			return nil, records.Invalid("-genre %q: only a trailing * is supported", pattern)
 		}
 		return func(g string) bool { return strings.HasPrefix(g, prefix) }, nil
 	default:
 		if strings.Contains(pattern, "*") {
-			return nil, fmt.Errorf("-genre %q: only a trailing * is supported", pattern)
+			return nil, records.Invalid("-genre %q: only a trailing * is supported", pattern)
 		}
 		return func(g string) bool { return g == pattern }, nil
 	}

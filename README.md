@@ -110,6 +110,21 @@ Every command takes `-lang`, `-country`, `-throttle`, `-concurrency` and
 its own rate. Output is one JSON record per line on stdout; progress and errors
 go to stderr.
 
+`app`, `search`, `list`, `reviews`, `similar`, `developer`, `permissions`,
+`datasafety` and `availability` write the records of package
+[`records`](https://pkg.go.dev/github.com/kryuchenko/google-play-scraper/records):
+snake_case fields, third-party text in `untrusted_*`, the same objects the
+[MCP server](mcp/) returns, so one jq filter works on both. `-raw` writes the
+library's own types with every field instead. `-fields app_id,score` keeps
+only the keys you need, and `gpscrape schema <command>` lists a command's
+flags and fields as JSON.
+
+A failed run writes `{"error":{"code","message","retryable"}}` to stderr when
+stderr is not a terminal (`GPSCRAPE_ERRORS=json|text` overrides) and exits
+2 for bad arguments, 3 not found, 4 rate limited, 5 timeout, 1 otherwise; the
+codes are the MCP server's. `catalog sweep` and an unlimited `catalog ids`
+need `-yes` when no terminal is attached.
+
 ### One app, or many
 
 ```bash
@@ -159,7 +174,7 @@ gpscrape reviews com.spotify.music -limit 500 | jq -r .text
 gpscrape reviews com.spotify.music -sort rating -score 1 -limit 100
 gpscrape reviews com.spotify.music -langs en,ru,de -limit 500   # three corpora
 gpscrape reviews com.spotify.music -langs all -limit 500        # every measured corpus
-gpscrape reviews com.spotify.music -limit 500 -fields mcp | jq -r .untrusted_text
+gpscrape reviews com.spotify.music -limit 500 | jq -r .untrusted_text
 ```
 
 Language does not filter reviews, it partitions them: each `hl` code is served
@@ -167,9 +182,7 @@ its own corpus and the corpora do not overlap, so reading all of an app's
 reviews means reading every language. `-limit` applies per language when
 `-langs` is given, and records carry the corpus they came from. There is no
 country filter, because a review carries no country: `ru/kz` and `ru/us` return
-the same reviews id for id. `-fields mcp` names the fields as the
-[MCP server's](mcp/) `play_get_reviews` tool does (`untrusted_text`, `thumbs_up`), so a
-filter written against one works on the other.
+the same reviews id for id.
 
 ### Search and charts
 

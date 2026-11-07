@@ -12,11 +12,26 @@ All notable changes to this project are documented here. The format is based on
 - CI lints and vulnerability-scans the `mcp` module, which, unlike the root,
   has dependencies; dependabot watches them. Every workflow pins its actions
   to a commit SHA, with the version in a comment.
-- `gpscrape reviews -fields mcp` names the fields as the `gpscrape-mcp`
-  `play_get_reviews` tool does (`untrusted_text`, `thumbs_up`, `reply_date`, ...), so
-  a jq filter written against the tool works on the CLI's bulk output. The
-  default stays the library's names. Both sides are tested against one list,
-  `mcp/testdata/review-fields.txt`.
+- `records`, a package with the one output contract the CLI and the MCP
+  server share: the records for an app, a list row, a review, permissions,
+  a data safety declaration, an availability check and a failed batch entry,
+  built from the library's types, with snake_case field names and
+  third-party text in `untrusted_*` fields; and the error codes both report
+  (`invalid_argument`, `not_found`, `not_listed`, `rate_limited`, `timeout`,
+  `busy`, `cancelled`, `confirmation_required`, `store_error`, `internal`).
+  A test pins every field name.
+- `gpscrape schema [command]` writes each command's summary, flags and output
+  fields as JSON, from the same flag sets and record types the commands use.
+- `gpscrape -fields app_id,score` keeps only the named keys of each record,
+  on every command; a list that names none of a record's keys is an error
+  listing the real ones, not a stream of `{}`.
+- `gpscrape mcp` starts an installed `gpscrape-mcp` (next to `gpscrape`, or on
+  `PATH`) and passes stdio and the exit status through; it says how to
+  install the server if it is missing and never downloads it.
+- `-yes` on `catalog sweep` and on an unlimited `catalog ids`: run without a
+  terminal (an agent, a script, cron), these refuse to start their 83,000
+  requests unless it is given, and say what the run costs and the cheaper
+  alternatives.
 - `skills/gpscrape/SKILL.md`, a skill for Claude Code and other agents that
   read `SKILL.md`: when to use the MCP tools and when the CLI, and how to
   filter the CLI's output.
@@ -45,6 +60,19 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **Breaking, `gpscrape`:** `app`, `search`, `list`, `similar`, `developer`,
+  `reviews`, `permissions`, `datasafety` and `availability` write the shared
+  `records` (snake_case, `untrusted_*` for third-party text), the objects the
+  MCP tools return, so one jq filter works on both. `-raw` writes the
+  library's own types as before. A failed id in a batch is
+  `{"app_id","code","error"}` in both modes' default.
+- **Breaking, `gpscrape`:** a failed run writes its error to stderr as one
+  JSON object, `{"error":{"code","message","retryable"}}`, when stderr is not
+  a terminal (or with `GPSCRAPE_ERRORS=json`; `=text` forces a line), and
+  exits with a status that follows the code: 2 bad arguments or confirmation
+  needed, 3 not found, 4 rate limited, 5 timeout, 130 interrupted, 1 other.
+- `gpscrape -h` opens with examples and documents the output, the error
+  format and the exit statuses.
 - **Breaking, `gpscrape-mcp`:** the tools are renamed to `play_` + verb +
   object, as Anthropic's (namespacing) and OpenAI's (action-oriented names)
   tool guidance both ask: `search` → `play_search_apps`, `app` →
@@ -94,6 +122,10 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- The CLI took `/dev/null` for a terminal (it is a character device too):
+  progress lines went to it for nothing, and a guard keyed on "is anyone
+  watching" was fooled by `< /dev/null`, the way agents and cron start
+  commands. It is ruled out by identity now.
 - `gpscrape-mcp` over stdio: a line that is valid JSON but not a JSON-RPC
   message (`{}`, `123`, `null`, `[]`, `"jsonrpc":"1.0"`) ended the session,
   taking every tool away until the client restarted the server. Such lines

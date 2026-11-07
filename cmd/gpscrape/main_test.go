@@ -9,7 +9,6 @@ import (
 	"maps"
 	"net/http"
 	"os"
-	"reflect"
 	"slices"
 	"sort"
 	"strings"
@@ -17,6 +16,7 @@ import (
 	"time"
 
 	googleplayscraper "github.com/kryuchenko/google-play-scraper"
+	"github.com/kryuchenko/google-play-scraper/records"
 )
 
 // parseShards is the only place the CLI interprets a syntax of its own, and
@@ -478,8 +478,8 @@ func appPermissionsStub(t *testing.T, store *fakeStore, ok map[string]string) {
 
 // Batched `app` dropped a failed id from stdout and named it only on stderr, so
 // a caller diffing the ids it asked for against the ids it got back saw apps
-// vanish. `permissions` has emitted {"appId","error"} inline since it was
-// written; that is the shape a script can act on.
+// vanish. Both now emit the shared records.AppError, {app_id, code, error},
+// the shape a script can act on and the one the MCP play_get_apps tool uses.
 func TestAppAndPermissionsAgreeOnTheFailureShape(t *testing.T) {
 	store := newFakeStore(t)
 	useFakeClient(t, store.transport())
@@ -495,12 +495,12 @@ func TestAppAndPermissionsAgreeOnTheFailureShape(t *testing.T) {
 	if len(recs) != 2 {
 		t.Fatalf("stdout has %d lines for 2 ids asked for:\n%s", len(recs), out)
 	}
-	if recs[0]["appId"] != "com.ok" {
+	if recs[0]["app_id"] != "com.ok" {
 		t.Errorf("first record = %v, want com.ok in the position it was asked in", recs[0])
 	}
 	appFailure := recs[1]
-	if appFailure["appId"] != "com.bad" || appFailure["error"] == "" || len(appFailure) != 2 {
-		t.Errorf("failure record = %v, want exactly {appId, error}", appFailure)
+	if appFailure["app_id"] != "com.bad" || appFailure["code"] != "not_found" || appFailure["error"] == "" || len(appFailure) != 3 {
+		t.Errorf("failure record = %v, want exactly {app_id, code, error}", appFailure)
 	}
 	// The stderr line stays: a person watching should not need a jq filter.
 	if !strings.Contains(stderr, "com.bad") {
@@ -599,54 +599,78 @@ func TestReviewLangsRejectsAListInLang(t *testing.T) {
 	}
 }
 
-// -fields mcp promises the gpscrape-mcp reviews tool's field names. The list
-// lives in the mcp module's testdata; this side is the CLI. The file is not
-// in the root module's zip, so a test run from the module cache skips.
-func TestMCPReviewFieldsMatchTheSharedList(t *testing.T) {
-	raw, err := os.ReadFile("../../mcp/testdata/review-fields.txt")
-	if err != nil {
-		t.Skipf("shared list not available: %v", err)
-	}
-	want := strings.Fields(string(raw))
-	want = append(want, "lang") // the CLI says which corpus a review came from
-	slices.Sort(want)
-	var got []string
-	ty := reflect.TypeOf(mcpReviewRecord{})
-	for i := range ty.NumField() {
-		name, _, _ := strings.Cut(ty.Field(i).Tag.Get("json"), ",")
-		got = append(got, name)
-	}
-	slices.Sort(got)
-	if !slices.Equal(got, want) {
-		t.Errorf("mcpReviewRecord fields %v, shared list plus lang %v", got, want)
-	}
-}
-
+// By default reviews are the shared records.Review, the objects the MCP
+// play_get_reviews tool returns; -raw gives the library's own.
 func TestReviewRecordFor(t *testing.T) {
 	r := googleplayscraper.Review{
 		ID: "1", Score: 4, Text: "ok", ThumbsUp: 2, UserName: "u",
 		Date: time.Date(2026, 11, 5, 23, 0, 0, 0, time.UTC),
 	}
-	mcp, err := reviewRecordFor("MCP")
-	if err != nil {
-		t.Fatal(err)
-	}
-	b, _ := json.Marshal(mcp(r, "ru"))
+	b, _ := json.Marshal(reviewRecordFor(false)(r, "ru"))
 	for _, want := range []string{`"untrusted_text":"ok"`, `"thumbs_up":2`, `"date":"2026-11-05"`, `"lang":"ru"`, `"untrusted_user_name":"u"`} {
 		if !strings.Contains(string(b), want) {
-			t.Errorf("-fields mcp: %s lacks %s", b, want)
+			t.Errorf("default record: %s lacks %s", b, want)
 		}
 	}
 	if strings.Contains(string(b), "reply_date") {
-		t.Errorf("-fields mcp: no reply, but %s has a reply_date", b)
+		t.Errorf("no reply, but %s has a reply_date", b)
 	}
-	lib, _ := reviewRecordFor("")
-	b, _ = json.Marshal(lib(r, "ru"))
-	if !strings.Contains(string(b), `"text":"ok"`) {
-		t.Errorf("default fields changed: %s", b)
+	b, _ = json.Marshal(reviewRecordFor(true)(r, "ru"))
+	if !strings.Contains(string(b), `"text":"ok"`) || !strings.Contains(string(b), `"lang":"ru"`) {
+		t.Errorf("-raw record: %s", b)
 	}
-	if _, err := reviewRecordFor("snake"); err == nil {
-		t.Error("-fields snake was accepted")
+}
+
+// -fields keeps the named keys of each record and refuses a list that names
+// none of them, rather than writing a stream of {}.
+func TestProjection(t *testing.T) {
+	defer func() { projection = nil }()
+	projection = []string{"app_id", "score"}
+	got, err := project(map[string]any{"app_id": "a", "score": 4.5, "title": "T"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, _ := json.Marshal(got)
+	if string(b) != `{"app_id":"a","score":4.5}` {
+		t.Errorf("projected %s", b)
+	}
+	projection = []string{"nope"}
+	if _, err := project(map[string]any{"app_id": "a"}); err == nil || !strings.Contains(err.Error(), "app_id") {
+		t.Errorf("unknown field: %v, want an error listing the real fields", err)
+	}
+	if v, err := project("bare string"); err != nil || v != "bare string" {
+		t.Errorf("non-object: %v, %v", v, err)
+	}
+}
+
+// Errors carry the shared codes, and the exit status follows from them.
+func TestReportError(t *testing.T) {
+	f, err := os.CreateTemp(t.TempDir(), "stderr")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GPSCRAPE_ERRORS", "json")
+	reportError(f, records.Invalid("-score 9: bad"), records.CodeInvalid)
+	t.Setenv("GPSCRAPE_ERRORS", "text")
+	reportError(f, googleplayscraper.ErrBlocked, records.Classify(googleplayscraper.ErrBlocked))
+	_ = f.Close()
+	b, _ := os.ReadFile(f.Name())
+	lines := strings.Split(strings.TrimSpace(string(b)), "\n")
+	var obj struct {
+		Error struct {
+			Code      string `json:"code"`
+			Message   string `json:"message"`
+			Retryable bool   `json:"retryable"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal([]byte(lines[0]), &obj); err != nil || obj.Error.Code != "invalid_argument" || obj.Error.Retryable {
+		t.Errorf("json error line %q: %+v %v", lines[0], obj, err)
+	}
+	if !strings.HasPrefix(lines[1], "gpscrape: rate_limited: ") {
+		t.Errorf("text error line %q", lines[1])
+	}
+	if records.Classify(records.Invalid("x")).ExitCode() != 2 || records.Classify(googleplayscraper.ErrNotFound).ExitCode() != 3 {
+		t.Error("exit codes do not follow the codes")
 	}
 }
 
@@ -685,5 +709,57 @@ func TestCommonTrimsLanguageBeforeUse(t *testing.T) {
 	}
 	if c.lang != "ru" {
 		t.Errorf("language sent to store = %q, want ru", c.lang)
+	}
+}
+
+// The CLI writes the shared records, field for field: every line decodes into
+// a records type with no field left over. The MCP server returns the same
+// types, so a parser written against one works on the other.
+func TestOutputIsTheSharedContract(t *testing.T) {
+	store := newFakeStore(t)
+	useFakeClient(t, store.transport())
+	appPermissionsStub(t, store, map[string]string{
+		"com.ok": `[null,[null,null,[["ok"]]]]`,
+	})
+	strict := func(line []byte, into any) error {
+		d := json.NewDecoder(bytes.NewReader(line))
+		d.DisallowUnknownFields()
+		return d.Decode(into)
+	}
+	out, _, err := runVerb(t, cmdApp, "com.ok", "com.bad")
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := bytes.Split(bytes.TrimSpace([]byte(out)), []byte("\n"))
+	if err := strict(lines[0], &records.App{}); err != nil {
+		t.Errorf("app line is not a records.App: %v\n%s", err, lines[0])
+	}
+	if err := strict(lines[1], &records.AppError{}); err != nil {
+		t.Errorf("failure line is not a records.AppError: %v\n%s", err, lines[1])
+	}
+
+	out, _, _ = runVerb(t, cmdApp, "-raw", "com.ok", "com.bad")
+	if !strings.Contains(out, `"appId":"com.ok"`) {
+		t.Errorf("-raw does not give the library's records:\n%s", out)
+	}
+}
+
+// /dev/null is a character device but not a terminal; treating it as one let
+// a full sweep started with `< /dev/null` skip its confirmation.
+func TestDevNullIsNotATerminal(t *testing.T) {
+	f, err := os.Open(os.DevNull)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = f.Close() }()
+	if isTerminal(f) {
+		t.Error("isTerminal(/dev/null) = true")
+	}
+	assumeYes = false
+	defer func() { assumeYes = true }()
+	if err := confirmExpensive(false, "test"); err == nil && !isTerminal(os.Stdin) {
+		t.Error("an expensive run without -yes and without a terminal was allowed")
+	} else if err != nil && records.Classify(err) != records.CodeConfirmation {
+		t.Errorf("refusal code %s, want confirmation_required", records.Classify(err))
 	}
 }
