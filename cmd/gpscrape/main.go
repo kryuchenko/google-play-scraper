@@ -860,6 +860,11 @@ func cmdSearch(args []string) error {
 	if err != nil {
 		return err
 	}
+	if *num > 50 {
+		// Not an error: the run still does what can be done. But -num 250
+		// returning 50 without a word reads as "the store has 50".
+		fmt.Fprintf(os.Stderr, "warning: -num %d is clamped to 50, as many as Google returns for one query\n", *num)
+	}
 
 	ctx, stop := c.context()
 	defer stop()

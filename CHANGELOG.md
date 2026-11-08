@@ -5,6 +5,19 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Security
+
+- Responses are capped at 64MB (`ErrBodyTooLarge`, not retried) and a gzip
+  sitemap shard at 256MB inflated (`ErrInflatedTooLarge`). Before, both were
+  as large as the other end chose: a proxy that never ended a body, or a
+  small gzip bomb, could take all the memory. The largest real bodies are
+  about 3MB, a shard about 8MB inflated.
+
+### Fixed
+
+- `gpscrape search -num` above 50 warns that it is clamped instead of
+  silently returning at most 50.
+
 ### Added
 
 - `gpscrape`: an error caused by Claude Code's sandbox on macOS -- where Go
