@@ -1,12 +1,15 @@
 package main
 
 import (
+	"bufio"
+	"compress/gzip"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"math/rand/v2"
 	"os"
 	"os/exec"
@@ -1677,4 +1680,58 @@ func TestSweepCheckpointsWhileItRuns(t *testing.T) {
 	if m.IDs != 501 {
 		t.Errorf("manifest counts %d ids, want 501", m.IDs)
 	}
+}
+
+// diff walks two sorted lists once. At a few million ids on each side this is
+// the whole reason snapshots are kept sorted.
+func diff(from, to googleplayscraper.Generation, oldIDs, newIDs []string) delta {
+	d := delta{From: from, To: to, Added: []string{}, Removed: []string{}}
+	i, j := 0, 0
+	for i < len(oldIDs) && j < len(newIDs) {
+		switch {
+		case oldIDs[i] == newIDs[j]:
+			i++
+			j++
+		case oldIDs[i] < newIDs[j]:
+			d.Removed = append(d.Removed, oldIDs[i])
+			i++
+		default:
+			d.Added = append(d.Added, newIDs[j])
+			j++
+		}
+	}
+	d.Removed = append(d.Removed, oldIDs[i:]...)
+	d.Added = append(d.Added, newIDs[j:]...)
+	return d
+}
+
+func readSnapshot(path string) ([]string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = f.Close() }()
+
+	var r io.Reader = f
+	if strings.HasSuffix(path, ".gz") {
+		zr, zerr := gzip.NewReader(f)
+		if zerr != nil {
+			return nil, fmt.Errorf("%s: %w", path, zerr)
+		}
+		defer func() { _ = zr.Close() }()
+		r = zr
+	}
+	return scanLines(r)
+}
+
+func scanLines(r io.Reader) ([]string, error) {
+	var out []string
+	sc := bufio.NewScanner(r)
+	sc.Buffer(make([]byte, 0, 64*1024), maxLineBytes)
+	for sc.Scan() {
+		if line := strings.TrimSpace(sc.Text()); line != "" {
+			out = append(out, line)
+		}
+	}
+	return out, sc.Err()
 }

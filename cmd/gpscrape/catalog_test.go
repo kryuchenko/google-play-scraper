@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -12,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"sort"
 	"strings"
 	"testing"
 
@@ -1517,4 +1519,47 @@ func TestWriteGenreLinesLeavesNoTmpBehind(t *testing.T) {
 	if len(table) != 2 {
 		t.Errorf("table has %d rows, want the 2 the failed write must not have touched", len(table))
 	}
+}
+
+// loadGenres reads the whole genre table into a map, for tests that check
+// what a run left behind. The command itself never holds the table.
+func loadGenres(dir string) (map[string]string, string) {
+	path := genresPath(dir)
+	out := map[string]string{}
+	f, err := os.Open(path)
+	if err != nil {
+		return out, path
+	}
+	defer func() { _ = f.Close() }()
+	sc := bufio.NewScanner(f)
+	sc.Buffer(make([]byte, 0, 64<<10), 1<<20)
+	for sc.Scan() {
+		id, genre, ok := strings.Cut(sc.Text(), "\t")
+		if ok {
+			out[id] = genre
+		}
+	}
+	return out, path
+}
+
+func saveGenres(path string, genres map[string]string) error {
+	ids := make([]string, 0, len(genres))
+	for id := range genres {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	return writeGenreLines(path, ids, func(id string) string { return genres[id] })
+}
+
+// writeGenreLines writes a genre table from a sorted id list, for tests that
+// set one up, through the same durable writer the genre pass publishes with.
+func writeGenreLines(path string, ids []string, genreOf func(string) string) error {
+	return writeTableAtomic(path, func(w *bufio.Writer) error {
+		for _, id := range ids {
+			if _, err := fmt.Fprintf(w, "%s\t%s\n", id, genreOf(id)); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 }
