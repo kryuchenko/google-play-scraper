@@ -1443,7 +1443,7 @@ func catalogIDs(args []string) error {
 	shards := c.fs.String("shards", "", `shard range, e.g. "0-99" or "0,5,7" (default: every shard)`)
 	idsOnly := c.fs.Bool("ids-only", false, "print bare ids instead of JSON records")
 	limit := c.fs.Int("limit", 0, "stop after this many ids (0 = no limit)")
-	yes := c.fs.Bool("yes", false, "stream the whole catalog without a terminal (an agent or a script); it is about 83,000 requests")
+	yes := c.fs.Bool("yes", false, "stream the whole catalog without a terminal (an agent or a script); it is about 88,000 requests")
 	if err := c.parse(args); err != nil {
 		return err
 	}
@@ -1457,7 +1457,7 @@ func catalogIDs(args []string) error {
 		return err
 	}
 	if *shards == "" && *limit == 0 {
-		if err := confirmExpensive(*yes, "streaming every id is about 83,000 requests; "+
+		if err := confirmExpensive(*yes, "streaming every id is about 88,000 requests; "+
 			"pass -limit N for a sample or -shards for a range"); err != nil {
 			return err
 		}

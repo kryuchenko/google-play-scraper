@@ -228,7 +228,7 @@ func cmdSync(args []string) error {
 	keep := c.fs.Int("keep", 0, "after a successful sweep, keep only this many of the newest "+
 		"snapshots and delete older ones (0 = keep every generation)")
 	seed := c.fs.Int64("seed", 0, "seed for -sample (0 derives one from the generation)")
-	yes := c.fs.Bool("yes", false, "start a full sweep without a terminal (an agent or a script); it is about 83,000 requests")
+	yes := c.fs.Bool("yes", false, "start a full sweep without a terminal (an agent or a script); it is about 88,000 requests")
 	if err := c.parse(args); err != nil {
 		return err
 	}
@@ -330,7 +330,7 @@ func cmdSync(args []string) error {
 	// Here the work is real. Asked for only now: a sweep with nothing to do
 	// costs two requests and needs no consent.
 	if *sample == 0 || *sample == 100 {
-		if err := confirmExpensive(*yes, "a full catalog sweep is about 83,000 requests and hours of work; "+
+		if err := confirmExpensive(*yes, "a full catalog sweep is about 88,000 requests and hours of work; "+
 			"`gpscrape catalog size` estimates the count in about 900, `-sample 1` sweeps 1%"); err != nil {
 			return err
 		}

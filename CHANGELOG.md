@@ -7,150 +7,104 @@ All notable changes to this project are documented here. The format is based on
 
 ### Security
 
-- Responses are capped at 64MB (`ErrBodyTooLarge`, not retried) and a gzip
-  sitemap shard at 256MB inflated (`ErrInflatedTooLarge`). Before, both were
-  as large as the other end chose: a proxy that never ended a body, or a
-  small gzip bomb, could take all the memory. The largest real bodies are
-  about 3MB, a shard about 8MB inflated.
+- Responses are capped at 64MB (`ErrBodyTooLarge`, not retried) and an inflated
+  sitemap shard at 256MB (`ErrInflatedTooLarge`), so a proxy that never ends a
+  body, or a small gzip bomb, can no longer take all the memory. The largest
+  real bodies are about 3MB, a shard about 8MB inflated.
 
 ### Added
 
 - `gpscrape catalog size -dir` checks its estimate against the complete
   snapshot of the same generation (`snapshot_ids`, `snapshot_agrees`, and a
-  warning when they disagree): the one check that notices ids lost without
-  an error.
+  warning when they disagree). It is the one check that notices ids lost
+  without an error.
+- `gpscrape catalog genres` resumes an interrupted run. It checkpoints every
+  10,000 ids (`genres.tsv.merge`, `genres.tsv.resume.json`); a rerun on the
+  same snapshot, table, `-lang` and `-country` continues after the last
+  checkpoint, or goes straight to the confirm pass if the walk had finished,
+  and publishes the same table byte for byte. `-ids` runs, and runs in which
+  every lookup failed, do not resume.
 - A sweep that cannot diff against the previous snapshot records why in the
   manifest's `delta_error`.
-- `TestSweepSurvivesRealKills` builds gpscrape with `-tags killtest` and kills
-  `catalog sweep` as a real process -- SIGKILL, SIGINT, SIGTERM; by request
-  count, in the retry pass, and between finish's snapshot, delta, manifest and
-  cleanup writes -- then reruns it and compares snapshot, manifest and delta
-  to an uninterrupted run, checking after every kill that no done-log shard is
-  missing ids and no id is torn. Six points run by default;
-  `GPSCRAPE_KILLTEST=1` runs 34 over 4,000 shards plus chains of kills.
-- `gpscrape catalog genres` resumes an interrupted run over the snapshot. It
-  checkpoints every 10,000 ids (`genres.tsv.merge` plus
-  `genres.tsv.resume.json`), and a rerun on the same snapshot, table, `-lang`
-  and `-country` continues after the last checkpoint, or goes straight to
-  the confirm pass if the walk had finished; the absent ids are read back
-  from the merge file's marks. The published table is byte-for-byte the one
-  an uninterrupted run writes. `-ids` runs do not resume, and a run in which
-  every lookup failed leaves nothing to resume.
-- Tests that hold the parsers to allocation budgets and `ReviewsSeq` to a
-  memory ceiling (`alloc_budget_test.go`, run in CI without `-race`). A
-  parser that starts allocating 10% more, or a streaming path that starts
-  keeping what it read, fails a test instead of going unnoticed.
-- CI: govulncheck scans all four modules (`lightfeed` and `apidoc` were not
-  scanned) on every pull request and weekly; CodeQL builds `mcp`; pull
-  requests fuzz each target for 10 s instead of 30 s, and a weekly
-  `fuzz.yml` fuzzes each for 10 minutes, keeping its corpus between runs.
-- The weekly canary runs the whole-catalog games pipeline -- `catalog sweep`,
-  `catalog genres`, `catalog apps -genre 'GAME_*'` -- on a 0.01% sample:
-  about nine shards and 12 seconds. It checks the chain is alive, not that a
-  full 87k-request sweep finishes.
-- `gpscrape`: an error caused by Claude Code's sandbox on macOS -- where Go
-  cannot reach the system trust service and every request fails with
-  `x509: OSStatus -26276` -- carries a `hint` naming the setting that fixes
-  it, and is no longer marked retryable. Found in the routing evaluation,
-  where agents answered "unknown" instead of fixing the setting.
+- `gpscrape`: inside Claude Code's sandbox on macOS, where every request fails
+  with `x509: OSStatus -26276`, the error carries a `hint` naming the setting
+  that fixes it and is no longer marked retryable.
 
 ### Changed
 
-- `gpscrape catalog sweep` and `catalog genres` default to `-adaptive`;
-  `-adaptive=false` restores the fixed interval. Over hours of requests a
-  fixed interval turned a `Retry-After` beyond the retry policy into a failed
-  shard.
-- CI: a benchstat report of base against head on every pull request, in the
-  job summary (Benchmarks workflow; it reports and does not gate). noctx
-  joins the linters, so every request and child process carries a context;
-  lightfeed's port probe and readiness wait now honour the caller's. apidoc
-  is linted like the other modules, with a test that checks every endpoint
-  stub's annotations. `lightfeed.WithThrottle` has a test.
-- CI lints with six more linters: unparam, errorlint, nilerr, wastedassign,
-  makezero and mirror. Their findings are fixed: three parsers that could
-  not fail lose their always-nil error, unused parameters go
-  (`parseSearchPage`'s `num`, `parseDigest`'s `fields`), and two functions
-  only tests called (`observe`, `batchCall`) move into the tests.
-- CI runs deadcode over the binaries and fails on an unexported function
-  none of them reaches. The seven it found -- test oracles, a fixture
-  builder, the buffered gunzip a benchmark compares against, and
-  `saveGenres`, replaced by `saveGenresDelta` -- move into test files.
-- `gpscrape catalog genres` walks the genre table beside the snapshot
-  instead of loading it as a map. At four million ids the table work's peak
-  heap falls from 700MB+ to about 45MB; the ids absent from the first
-  storefront are still held, and with them the confirmation pass's maps, so
-  a run where many are absent uses more. `-ids` lists are sorted and deduplicated first, so
-  each id is looked up once, in id order (ids absent from the first
-  storefront are still reported after the rest, as before). A genre table that is not
-  sorted by app id is now an error rather than silently re-sorted.
-- `gpscrape catalog diff` reads both snapshots side by side instead of
-  whole: 538MB to 4MB at catalog scale.
-- **Breaking, `gpscrape catalog`:** every catalog record is snake_case like
-  the rest of the CLI's output: `app_id`, `genre_id`, `age_hours`,
-  `up_to_date`, `sample_pct`, `completed_at`, `half_width`, `shards_read`
-  and the rest. Catalog files an older version wrote -- manifests, the
-  resumable sweep state, the `catalog new` signal log -- still read; new ones
-  are written snake_case.
+- **Breaking, `gpscrape catalog`:** every catalog record is snake_case like the
+  rest of the CLI's output (`app_id`, `genre_id`, `age_hours`, `up_to_date`,
+  `sample_pct`, `completed_at`, `half_width`, `shards_read` and the rest).
+  Catalog files an older version wrote (manifests, resumable sweep state, the
+  `catalog new` signal log) still read; new ones are written snake_case.
+- `gpscrape catalog sweep` and `catalog genres` default to `-adaptive`, because
+  over hours of requests a fixed interval turned a `Retry-After` beyond the
+  retry policy into a failed shard. `-adaptive=false` restores the fixed
+  interval.
+- `gpscrape catalog genres` uses far less memory: at four million ids the
+  table work peaks at about 45MB instead of 700MB+ (more when many ids are
+  absent from the first storefront). `-ids` lists are sorted and deduplicated,
+  so each id is looked up once. A genre table not sorted by app id is now an
+  error rather than silently re-sorted.
+- `gpscrape catalog diff` reads both snapshots side by side instead of whole:
+  538MB to 4MB at catalog scale.
+- `lightfeed`: the port probe and readiness wait honour the caller's context.
 
 ### Fixed
 
-- `catalog sweep`: a run killed after writing its manifest but before its
-  cleanup left the generation's resume files (about 100MB at catalog scale)
-  that no later run removed until the generation rolled; the next run, finding
-  the generation complete, removes them. Found by the kill-and-resume test.
-- `catalog sweep`: a shard's done line could reach the file before its ids
-  when the done log's smaller buffer filled first, so a kill in between
-  resumed past ids never written. The ids are flushed first whenever the
-  done line would flush.
-- `catalog sweep`: a failure the state file still listed for a shard the
-  done log held was retried, and a failure then refused the snapshot. The
-  done log wins on load.
-- `catalog sweep -force` over a generation already on disk removes its
-  manifest before replacing the snapshot, so a kill partway cannot leave a
-  sampled snapshot under a manifest that says it is complete.
-- The shard end check covers a document whose last `<loc>` runs past the
-  scan window, and trailing whitespace of any length after `</urlset>`.
-- `gpscrape search -num` above 50 warns that it is clamped instead of
-  silently returning at most 50.
-- `gpscrape-mcp`: a batch entry whose error wrapped an already-explained
-  error made `play_get_apps` panic on a type assertion; it now keeps the
-  code. Found by errorlint.
-- `catalog genres -prune` against a sampled snapshot deleted every row
-  outside the sample; it is refused, as it already was with `-ids`.
-- `catalog genres` ignored a read error in its id list: a snapshot cut short
-  by a corrupt gzip stream or an overlong line read as a shorter catalog,
-  and `-prune` deleted every row past the break. It stops before publishing
-  now, and for `-ids` before any request.
-- `gpscrape catalog sweep`, resuming after a hard kill: the partial id file
-  could end in half an id, and appending glued it to the next one
-  (`com.c` + `com.d` became `com.com.d`, an app that does not exist, in the
-  snapshot). The resume now cuts the file back to its last full line; the
-  torn shard is fetched again whole.
-- A shard a previous run recorded as failed, and that succeeded on resume,
-  was fetched again by the retry pass -- and if that fetch failed, the sweep
-  refused to publish ids it already had. It leaves the failed list once it
-  succeeds.
-- A checkpoint that could not be written was logged and skipped, so a disk
-  refusing fsync let a sweep fetch for hours with nothing to resume from. It
-  stops the sweep now.
-- A sweep killed before its first checkpoint, 500 shards in, had no state
-  file, so the next run deleted its work and started over. The state is
-  written before the first shard now.
-- The manifest was written before the delta, so a kill between the two left
-  a generation that every later run took as complete and none ever diffed.
-  The manifest is written last.
-- The done log gets the same torn-line repair as the id file.
-- A sitemap shard whose gzip stream was whole but whose document ended
-  before `</urlset>` parsed as a shard with fewer apps; the sweep marked it
-  done and the missing ids surfaced later as removals. It fails with
-  `ErrShardTruncated` now, so the sweep retries it and will not publish a
-  snapshot without it. Every shard Google serves ends in `</urlset>`.
-- `TestSearchPagination` failed whenever Google returned one page or fewer
-  for its query (17 on some days); it now checks that the continuation RPC
-  is sent and succeeds, which is what it was for.
-- The live CLI canary still checked v1.5's camelCase fields (`appId`, a list
-  of permissions, a country->status map) and would have failed against
-  v1.6.0's shared records. It checks the records now.
+- `catalog sweep` resumes correctly after a kill at any point:
+  - a torn last line in the partial id file or the done log is cut back
+    before appending, so `com.c` + `com.d` no longer becomes `com.com.d` in the
+    snapshot; the torn shard is fetched again whole;
+  - a shard's ids are flushed before its done line, so a resume no longer
+    skips ids that were never written;
+  - the state file is written before the first shard, so a run killed early no
+    longer has its work deleted by the next run;
+  - the manifest is written last, after the delta, so a kill between them no
+    longer leaves a generation that is never diffed;
+  - a run killed after its manifest but before cleanup no longer leaves about
+    100MB of resume files behind; the next run removes them;
+  - `-force` over a generation on disk removes its manifest before replacing
+    the snapshot, so a kill cannot leave a sampled snapshot marked complete.
+- `catalog sweep` no longer refuses to publish ids it already has: a shard that
+  succeeded on resume leaves the failed list, and the done log wins over a
+  stale failure in the state file.
+- `catalog sweep` stops when a checkpoint cannot be written, instead of
+  fetching for hours with nothing to resume from.
+- A sitemap shard whose document ends before `</urlset>` fails with
+  `ErrShardTruncated` and is retried, instead of passing as a shard with fewer
+  apps whose missing ids later surfaced as removals. The end check also covers
+  a last `<loc>` past the scan window and any trailing whitespace.
+- `catalog genres` stops on a read error in its id list (a corrupt gzip stream
+  or an overlong line) before publishing, and for `-ids` before any request;
+  before, the list read as a shorter catalog and `-prune` deleted every row
+  past the break.
+- `catalog genres -prune` against a sampled snapshot is refused, as with
+  `-ids`; it used to delete every row outside the sample.
+- `gpscrape search -num` above 50 warns that it is clamped instead of silently
+  returning at most 50.
+- `gpscrape-mcp`: `play_get_apps` no longer panics on a batch entry whose
+  error wraps an already-explained error; the entry keeps its code.
+
+### Internal
+
+- A kill-and-resume test (`-tags killtest`) kills `catalog sweep` as a real
+  process (SIGKILL, SIGINT, SIGTERM, at many points) and compares the rerun's
+  snapshot, manifest and delta with an uninterrupted run; `GPSCRAPE_KILLTEST=1`
+  runs the long set.
+- Parsers have allocation budgets and `ReviewsSeq` a memory ceiling, checked
+  in CI.
+- CI: govulncheck on all four modules on every pull request and weekly; CodeQL
+  builds `mcp`; pull requests fuzz each target for 10 s and a weekly job for
+  10 minutes; a benchstat report on every pull request (reports, does not
+  gate); new linters (noctx, unparam, errorlint, nilerr, wastedassign,
+  makezero, mirror) and deadcode, with their findings fixed; `apidoc` is
+  linted like the other modules.
+- The weekly canary runs the whole-catalog games pipeline (`catalog sweep`,
+  `catalog genres`, `catalog apps -genre 'GAME_*'`) on a 0.01% sample, and the
+  live CLI canary checks the shared records instead of v1.5's camelCase
+  fields. `TestSearchPagination` no longer fails when Google returns one page
+  or fewer.
 
 ## gpscrape-mcp 0.1.1 (tag `mcp/v0.1.1`) - 2026-11-07
 

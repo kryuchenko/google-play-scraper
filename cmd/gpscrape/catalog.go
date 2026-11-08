@@ -99,7 +99,7 @@ const catalogUsage = `Usage: gpscrape catalog <verb> [flags]
   new      apps the store lists as recently published   17 requests
   size     how many apps there are, give or take 1%     ~900 requests
   genres   genre changes and removals, from a snapshot  ~3.3k requests
-  sweep    the complete id list, and the exact count    83k requests
+  sweep    the complete id list, and the exact count    ~88k requests
   apps     the id list, by genre, from what is on disk  none
   diff     compare two snapshots already on disk        none
   ids      stream ids without keeping any state         as many as you ask for
