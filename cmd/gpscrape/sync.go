@@ -24,6 +24,7 @@ import (
 	"time"
 
 	googleplayscraper "github.com/kryuchenko/google-play-scraper"
+	"github.com/kryuchenko/google-play-scraper/records"
 )
 
 // The catalog is not an operation, it is a dataset.
@@ -215,7 +216,7 @@ func cmdSync(args []string) error {
 	// provided but not defined", which would say nothing about where to go.
 	for _, a := range args {
 		if a == "-check" || a == "--check" {
-			return fmt.Errorf("catalog sweep no longer takes -check; `gpscrape catalog check` " +
+			return records.Invalid("catalog sweep no longer takes -check; `gpscrape catalog check` " +
 				"reports the same thing in 2 requests instead of 3, with built, ageHours and shards")
 		}
 	}
@@ -240,7 +241,7 @@ func cmdSync(args []string) error {
 	// a manifest saying the catalog held nothing, and -sample -5 was ignored
 	// and swept all 83,445 shards. Both exited 0.
 	if *sample != 0 && (*sample < 0 || *sample > 100 || math.IsNaN(*sample)) {
-		return fmt.Errorf("-sample %v: a share of the catalog is above 0 and at most 100, "+
+		return records.Invalid("-sample %v: a share of the catalog is above 0 and at most 100, "+
 			"or 0 for the whole catalog", *sample)
 	}
 	// 0 is the flag's own default and has always meant "all", so it cannot be

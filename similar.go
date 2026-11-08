@@ -31,8 +31,7 @@ func (c *Client) Similar(ctx context.Context, opts SimilarOptions) ([]SearchResu
 	}
 
 	// Step 1: Get app details page to find similar apps cluster URL
-	appURL := fmt.Sprintf("%s/store/apps/details?id=%s&hl=%s&gl=%s",
-		BaseURL, opts.AppID, opts.Lang, opts.Country)
+	appURL := appPageURL(opts.AppID, opts.Lang, opts.Country)
 
 	body, err := c.getPage(ctx, appURL, validateHTMLPage)
 	if err != nil {

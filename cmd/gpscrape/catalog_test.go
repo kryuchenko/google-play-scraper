@@ -1498,8 +1498,8 @@ func TestCatalogNewKeepsGoingPastOneFailedCategory(t *testing.T) {
 // caller who passed -country expecting another storefront got the same table
 // and no warning, and -h is where that caller looks first.
 func TestLocalVerbsRegisterNoNetworkFlags(t *testing.T) {
-	// Never probe by passing the flag: the flag sets use ExitOnError, so an
-	// undefined flag calls os.Exit(2) and takes the test binary with it.
+	// Asked of the flag set rather than probed by passing the flag: what -h
+	// lists is the point.
 	for _, name := range []string{"catalog apps", "catalog diff"} {
 		c := newLocalCommon(name)
 		for _, flagName := range []string{"throttle", "concurrency", "adaptive", "lang", "country", "timeout"} {

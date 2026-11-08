@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"sync"
@@ -295,9 +296,10 @@ func (c *Client) recoverEmpty(ctx context.Context, out []AppResult, opts AppOpti
 
 // appPageURL is the canonical page address for an app. The batched path never
 // fetches it, but App records it in the result and callers rely on it, so a
-// batched result must carry the same value.
+// batched result must carry the same value. The id is escaped: unescaped, an
+// id holding & or = rewrote the query, `x&gl=de` reading another storefront.
 func appPageURL(appID, lang, country string) string {
-	return fmt.Sprintf("%s/store/apps/details?id=%s&hl=%s&gl=%s", BaseURL, appID, lang, country)
+	return fmt.Sprintf("%s/store/apps/details?id=%s&hl=%s&gl=%s", BaseURL, url.QueryEscape(appID), lang, country)
 }
 
 // parseAppRPCPayload feeds a Ws7gDc payload through the same extractor the HTML

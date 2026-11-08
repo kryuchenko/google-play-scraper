@@ -149,6 +149,9 @@ func main() {
 	defer runExitHooks()
 	err := run(os.Args[2:])
 	runExitHooks()
+	if errors.Is(err, flag.ErrHelp) {
+		return // -h: parse has printed the flags
+	}
 	if err != nil {
 		// A cancelled run is how stopping is spelled, not a failure. Whatever
 		// was written before the interrupt is complete lines of valid JSON.
@@ -328,7 +331,12 @@ type common struct {
 // throttle, and an unthrottled client is the blocked address -throttle exists
 // to avoid.
 func newLocalCommon(name string) *common {
-	c := &common{fs: flag.NewFlagSet(name, flag.ExitOnError)}
+	// ContinueOnError, so that a bad flag is an invalid_argument error like
+	// any other: ExitOnError printed prose and the whole usage to stderr and
+	// exited 2 without the error object a script reads. Output is discarded
+	// for the same reason; parse prints the usage itself for -h.
+	c := &common{fs: flag.NewFlagSet(name, flag.ContinueOnError)}
+	c.fs.SetOutput(io.Discard)
 	c.fs.BoolVar(&c.debug, "debug", false,
 		"log every request, response, retry and throttle change to stderr (GPSCRAPE_DEBUG=1 does the same)")
 	c.fs.StringVar(&c.logFile, "log-file", "", "write the -debug log to this file instead of stderr")
@@ -581,14 +589,17 @@ func (c *common) parse(args []string) error {
 		described = c.fs
 		return errDescribing
 	}
-	if err := c.fs.Parse(args); err != nil {
+	if err := c.parseFlags(args); err != nil {
 		return err
 	}
 	for c.fs.NArg() > 0 {
 		c.args = append(c.args, c.fs.Arg(0))
-		if err := c.fs.Parse(c.fs.Args()[1:]); err != nil {
+		if err := c.parseFlags(c.fs.Args()[1:]); err != nil {
 			return err
 		}
+	}
+	if err := c.checkValues(); err != nil {
+		return err
 	}
 	// No count, limit or size is meaningful below zero, and two of them did
 	// harm there: search -num -1 panicked in the library, and reviews
@@ -621,6 +632,67 @@ func (c *common) parse(args []string) error {
 	}
 	return c.diagnostics()
 }
+
+// parseFlags is fs.Parse with its errors coded: invalid_argument for a bad
+// flag, and flag.ErrHelp, after printing the flags, for -h.
+func (c *common) parseFlags(args []string) error {
+	err := c.fs.Parse(args)
+	switch {
+	case err == nil:
+		return nil
+	case errors.Is(err, flag.ErrHelp):
+		c.fs.SetOutput(os.Stderr)
+		c.fs.Usage()
+		c.fs.SetOutput(io.Discard)
+		return err
+	}
+	return records.Invalid("%s: %v; see `gpscrape %s -h`", c.fs.Name(), err, c.fs.Name())
+}
+
+// checkValues refuses what parsed but cannot be meant, before anything is
+// sent. Each of these used to go out as given.
+func (c *common) checkValues() error {
+	for i, a := range c.args {
+		// An empty argument where an id or a term is not checked -- a
+		// developer, a category -- reached the store as given.
+		if strings.TrimSpace(a) == "" {
+			return records.Invalid("%s: argument %d is empty", c.fs.Name(), i+1)
+		}
+	}
+	if c.fs.Lookup("country") != nil {
+		// The -lang trap again: an unknown gl was sent as given and the run
+		// exited 0.
+		c.country = strings.TrimSpace(c.country)
+		if !countryCode.MatchString(c.country) {
+			return records.Invalid("-country %q: want a two-letter country code, such as us or de", c.country)
+		}
+	}
+	// A negative -throttle was no throttle at all, and a negative -timeout no
+	// deadline; 0 says each of those on purpose.
+	for _, d := range []struct {
+		name string
+		v    time.Duration
+	}{{"throttle", c.throttle}, {"timeout", c.timeout}, {"adaptive-min", c.adaptiveMin}} {
+		if c.fs.Lookup(d.name) != nil && d.v < 0 {
+			return records.Invalid("-%s %v: want 0 or more", d.name, d.v)
+		}
+	}
+	if c.adaptiveMin > 0 {
+		// Both were ignored without a word: -adaptive-min only lowers the
+		// floor of -adaptive, and only below -throttle.
+		if !c.adaptive {
+			return records.Invalid("-adaptive-min %v: only -adaptive uses it; add -adaptive", c.adaptiveMin)
+		}
+		if c.adaptiveMin > c.throttle {
+			return records.Invalid("-adaptive-min %v is above -throttle %v; it lets -adaptive go faster "+
+				"than -throttle, so it must be lower", c.adaptiveMin, c.throttle)
+		}
+	}
+	return nil
+}
+
+// countryCode is the shape of a gl value.
+var countryCode = regexp.MustCompile(`^[A-Za-z]{2}$`)
 
 // checkFields refuses -fields names that no record of this command has,
 // before any request: the check in project only ran on the first record, so a
@@ -1251,7 +1323,7 @@ func reviewLangs(langs, single string) ([]string, error) {
 		// Each entry goes out as hl=<entry>, and the store answers a bad one
 		// in English with exit 0, the same trap -lang is checked for.
 		if l == "all" {
-			return nil, fmt.Errorf(`-langs: "all" already covers every corpus; use -langs all with no other codes`)
+			return nil, records.Invalid(`-langs: "all" already covers every corpus; use -langs all with no other codes`)
 		}
 		if !langCode.MatchString(l) {
 			return nil, records.Invalid("-langs: %q is not one language code, such as en or pt-BR", l)
@@ -1384,6 +1456,7 @@ func cmdDeveloper(args []string) error {
 type permissionsRecord struct {
 	AppID       string                         `json:"appId"`
 	Permissions []googleplayscraper.Permission `json:"permissions,omitempty"`
+	Code        records.Code                   `json:"code,omitempty"`
 	Error       string                         `json:"error,omitempty"`
 }
 
@@ -1446,14 +1519,14 @@ func cmdPermissions(args []string) error {
 // that failed must still emit a line for each of its apps: a caller diffing
 // input against output would otherwise see apps silently vanish.
 func permissionsRecords(results []googleplayscraper.PermissionsResult) []permissionsRecord {
-	records := make([]permissionsRecord, len(results))
+	out := make([]permissionsRecord, len(results))
 	for i, r := range results {
-		records[i] = permissionsRecord{AppID: r.AppID, Permissions: r.Permissions}
+		out[i] = permissionsRecord{AppID: r.AppID, Permissions: r.Permissions}
 		if r.Err != nil {
-			records[i].Error = r.Err.Error()
+			out[i].Code, out[i].Error = records.Classify(r.Err), r.Err.Error()
 		}
 	}
-	return records
+	return out
 }
 
 func cmdDataSafety(args []string) error {
@@ -1608,9 +1681,11 @@ func cmdAvailability(args []string) error {
 	// must not exit 0 as if it had an answer. The shared code -- all of them
 	// rate limited, say -- is the exit status.
 	if len(res.Errors) > 0 && res.Checked == 0 {
+		// In country order, so that the example in the message is the same
+		// on every run.
 		errs := make([]error, 0, len(res.Errors))
-		for _, err := range res.Errors {
-			errs = append(errs, err)
+		for _, cc := range slices.Sorted(maps.Keys(res.Errors)) {
+			errs = append(errs, res.Errors[cc])
 		}
 		code := records.Classify(errs[0])
 		for _, err := range errs[1:] {

@@ -167,6 +167,20 @@ All notable changes to this project are documented here. The format is based on
 - The lock file is fsynced, with its directory, so a power loss can no longer
   leave an empty `sweep.lock` that every later run refuses. A failed
   directory fsync after a rename now names the file it was publishing.
+- `gpscrape`: a bad flag value (`-num abc`, an unknown flag) is an
+  `invalid_argument` error object on stderr, exit 2, instead of the flag
+  package's prose and the whole usage. `-h` still exits 0.
+- `gpscrape` refuses as `invalid_argument` a negative `-throttle`, `-timeout`
+  or `-adaptive-min` (no throttle, no deadline), `-adaptive-min` without
+  `-adaptive` or above `-throttle` (both silently ignored), a `-country` that
+  is not two letters, and an empty argument where none is checked yet (a
+  developer, a category).
+- `-langs all,en`, `catalog sweep -sample` out of range, `catalog size
+  -exact` and `catalog sweep -check` are `invalid_argument`, exit 2; they
+  were `store_error`, exit 1.
+- `permissions -raw` error entries carry `code`.
+- `App`, `Similar`, `DataSafety` and `PCApp` escape the app id in the URL: an
+  id holding `&` rewrote the query (`x&gl=de` read the German storefront).
 
 ### Internal
 
@@ -201,6 +215,12 @@ All notable changes to this project are documented here. The format is based on
   live CLI canary checks the shared records instead of v1.5's camelCase
   fields. `TestSearchPagination` no longer fails when Google returns one page
   or fewer.
+- `gpscrape`: an all-pairs test of the command line (command, `-fields`,
+  `-full`, `-lang`, `-country`, `-raw`, `-adaptive`, the id and how many)
+  with its own greedy generator, and a checklist of edge values over every
+  numeric and duration flag, read from the commands' flag sets. Both run the
+  binary against an offline store and check that stdout is JSON lines, that
+  the exit status matches the error code, and that nothing panics.
 
 ## gpscrape-mcp 0.1.1 (tag `mcp/v0.1.1`) - 2026-11-07
 
