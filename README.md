@@ -119,6 +119,12 @@ library's own types with every field instead. `-fields app_id,score` keeps
 only the keys you need, and `gpscrape schema <command>` lists a command's
 flags and fields as JSON.
 
+Inside Claude Code's sandbox on macOS, Go programs cannot verify TLS (the
+sandbox blocks the system trust service), so every request fails with
+`x509: OSStatus -26276`; the error carries a `hint` with the fix. Set
+`"sandbox": {"enableWeakerNetworkIsolation": true}` (with `play.google.com` an
+allowed domain) or add `"gpscrape *"` to `sandbox.excludedCommands`.
+
 A failed run writes `{"error":{"code","message","retryable"}}` to stderr when
 stderr is not a terminal (`GPSCRAPE_ERRORS=json|text` overrides) and exits
 2 for bad arguments, 3 not found, 4 rate limited, 5 timeout, 1 otherwise; the

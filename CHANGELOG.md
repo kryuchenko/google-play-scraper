@@ -5,6 +5,16 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+
+- `gpscrape`: an error caused by Claude Code's sandbox on macOS -- where Go
+  cannot reach the system trust service and every request fails with
+  `x509: OSStatus -26276` -- carries a `hint` naming the setting that fixes
+  it, and is no longer marked retryable. Found in the routing evaluation,
+  where agents answered "unknown" instead of fixing the setting.
+
+## gpscrape-mcp 0.1.1 (tag `mcp/v0.1.1`) - 2026-11-07
+
 ### Changed
 
 - **Breaking, `gpscrape catalog`:** every catalog record is snake_case like

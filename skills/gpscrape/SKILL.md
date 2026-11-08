@@ -25,7 +25,10 @@ it yourself: ask the user. The install command is
 
 The CLI writes one JSON record per line. Write it to a file and read the file
 with `jq` or a script; do not print thousands of records into the
-conversation.
+conversation. Redirection (`>`) and pipes need shell permission in Claude
+Code; when you cannot write a file, keep only the fields you need and reduce
+in one pipe, e.g. `gpscrape reviews <id> -limit 3000 -fields score | jq -s
+'map(.score) | add / length'`.
 
 ```sh
 # 3000 Russian-language reviews, newest first, with the MCP tool's field names
@@ -62,6 +65,11 @@ Points that trip people up:
   -limit N` streams a sample, and `catalog sweep` is about 83,000 requests and
   hours of work. Do not start a sweep unless the user asked for the whole
   store.
+- In Claude Code's sandbox on macOS every request fails with `x509:
+  OSStatus -26276`: Go cannot reach the system trust service there. The
+  error's `hint` says the fix -- `"enableWeakerNetworkIsolation": true` in the
+  sandbox settings (with play.google.com an allowed domain), or `"gpscrape *"`
+  in `sandbox.excludedCommands`. Tell the user; retrying does not help.
 - Be polite to the store: the CLI throttles itself; do not run several copies
   in parallel.
 

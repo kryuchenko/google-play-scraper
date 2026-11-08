@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/chromedp/chromedp"
+	"github.com/chromedp/chromedp/remote"
 	gps "github.com/kryuchenko/google-play-scraper"
 )
 
@@ -40,17 +41,17 @@ const collectAppLinksJS = `
 // until the app set stabilizes, the limit/round cap is hit, or ctx expires. It
 // returns the harvested apps as thin SearchResults.
 //
-// chromedp's RemoteAllocator speaks to Lightpanda's CDP subset; we restrict
+// chromedp's remote allocator speaks to Lightpanda's CDP subset; we restrict
 // ourselves to Page.navigate and Runtime.evaluate, which Lightpanda supports,
 // instead of chromedp's higher-level node actions that assume full CDP.
 func scrollFeed(ctx context.Context, ws string, req gps.FeedRequest, cfg config) ([]gps.SearchResult, error) {
-	allocCtx, cancelAlloc := chromedp.NewRemoteAllocator(ctx, ws)
+	allocCtx, cancelAlloc := remote.NewAllocator(ctx, ws)
 	defer cancelAlloc()
 
 	browserCtx, cancelBrowser := chromedp.NewContext(allocCtx)
 	defer cancelBrowser()
 
-	if err := chromedp.Run(browserCtx, chromedp.Navigate(req.URL)); err != nil {
+	if err := chromedp.Do(browserCtx, chromedp.Navigate(req.URL)); err != nil {
 		return nil, fmt.Errorf("lightfeed: navigate %s: %w", req.URL, err)
 	}
 	// Let the initial grid render before the first scroll.
@@ -70,8 +71,10 @@ func scrollFeed(ctx context.Context, ws string, req gps.FeedRequest, cfg config)
 		}
 
 		before := results.len()
-		if err := chromedp.Run(browserCtx,
-			chromedp.Evaluate(`window.scrollTo(0, document.body.scrollHeight)`, nil),
+		// scrollTo returns undefined, which a typed Evaluate rejects; the
+		// trailing true gives it a value.
+		if _, err := chromedp.Run(browserCtx,
+			chromedp.Evaluate[bool](`window.scrollTo(0, document.body.scrollHeight), true`),
 		); err != nil {
 			return nil, fmt.Errorf("lightfeed: scroll: %w", err)
 		}
@@ -96,8 +99,8 @@ func scrollFeed(ctx context.Context, ws string, req gps.FeedRequest, cfg config)
 
 // harvest runs the collector JS once and folds the result into set.
 func harvest(ctx context.Context, set *linkSet) error {
-	var raw string
-	if err := chromedp.Run(ctx, chromedp.Evaluate(collectAppLinksJS, &raw)); err != nil {
+	raw, err := chromedp.Run(ctx, chromedp.Evaluate[string](collectAppLinksJS))
+	if err != nil {
 		return fmt.Errorf("lightfeed: read app links: %w", err)
 	}
 	set.addRaw(raw)
