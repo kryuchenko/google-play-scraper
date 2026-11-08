@@ -461,6 +461,33 @@ func sweep(
 	if err != nil {
 		return fmt.Errorf("read %s: %w", donePath, err)
 	}
+	// The done log is only worth trusting while the id file still holds what
+	// it vouches for. Removed or cut short between runs, the resume skipped
+	// the shards it lists and their ids were missing from the snapshot, with
+	// nothing to show for it. A checkpoint flushes the ids before it records
+	// state.IDs, so the file holds at least that many lines; fewer -- or none
+	// while the done log lists shards -- means the generation starts over.
+	if resumed {
+		have, err := countLines(partialPath)
+		if err != nil {
+			return fmt.Errorf("read %s: %w", partialPath, err)
+		}
+		if have < state.IDs || (have == 0 && len(finished) > 0) {
+			fmt.Fprintf(os.Stderr, "%s holds %d ids, but the checkpoint recorded %d from %d shards: "+
+				"it was removed or cut short since, so %s is swept again from the start\n",
+				partialPath, have, state.IDs, len(finished), gen.ID())
+			for _, p := range []string{partialPath, donePath} {
+				if err := os.Remove(p); err != nil && !errors.Is(err, os.ErrNotExist) {
+					return fmt.Errorf("remove %s: %w", p, err)
+				}
+			}
+			state = syncState{Generation: gen, SamplePct: samp.Pct, SampleSeed: samp.Seed}
+			finished, resumed = map[string]struct{}{}, false
+			if err := saveState(statePath, state); err != nil {
+				return fmt.Errorf("write %s: %w", statePath, err)
+			}
+		}
+	}
 	// max rather than the bare difference: the two are only guaranteed to be
 	// consistent because loadState now refuses a mismatched sample, and a
 	// capacity hint is not the place to find out that they are not.
@@ -1000,22 +1027,47 @@ func (e errFlushIDs) Unwrap() error { return e.err }
 // next append starts on a line of its own. A missing or empty file, or one
 // that already ends in a newline, is left alone.
 func truncateTornLine(path string) error {
-	f, err := os.OpenFile(path, os.O_RDWR, 0)
+	r, err := os.Open(path)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil
 	}
 	if err != nil {
 		return err
 	}
-	defer func() { _ = f.Close() }()
-	st, err := f.Stat()
+	cut, torn, err := lastLineEnd(r)
+	_ = r.Close()
+	if err != nil || !torn {
+		return err
+	}
+	// The cut is made through the writers' seam, so a failing fsync or a
+	// file swapped underneath is caught here as it is everywhere else.
+	f, err := openWrite(path, os.O_WRONLY, 0)
 	if err != nil {
 		return err
 	}
-	size := st.Size()
-	if size == 0 {
-		return nil
+	if err := f.Truncate(cut); err != nil {
+		_ = f.Close()
+		return err
 	}
+	if err := f.Sync(); err != nil {
+		_ = f.Close()
+		return err
+	}
+	if err := stillOurs(f, path); err != nil {
+		_ = f.Close()
+		return err
+	}
+	return f.Close()
+}
+
+// lastLineEnd returns the size f should be cut to so it ends just after its
+// last newline, and whether that is shorter than it is now.
+func lastLineEnd(f *os.File) (int64, bool, error) {
+	st, err := f.Stat()
+	if err != nil {
+		return 0, false, err
+	}
+	size := st.Size()
 	// Walk back from the end a block at a time to the last newline. An id is
 	// a few hundred bytes at most, so this reads one block in practice.
 	buf := make([]byte, 4096)
@@ -1023,24 +1075,39 @@ func truncateTornLine(path string) error {
 		start := max(0, end-int64(len(buf)))
 		n, err := f.ReadAt(buf[:end-start], start)
 		if err != nil && !errors.Is(err, io.EOF) {
-			return err
+			return 0, false, err
 		}
 		if i := bytes.LastIndexByte(buf[:n], '\n'); i >= 0 {
 			cut := start + int64(i) + 1
-			if cut == size {
-				return nil
-			}
-			if err := f.Truncate(cut); err != nil {
-				return err
-			}
-			return f.Sync()
+			return cut, cut != size, nil
 		}
 		end = start
 	}
-	if err := f.Truncate(0); err != nil {
-		return err
+	return 0, size > 0, nil
+}
+
+// countLines counts the newlines in path; a missing file has none.
+func countLines(path string) (int, error) {
+	f, err := os.Open(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return 0, nil
 	}
-	return f.Sync()
+	if err != nil {
+		return 0, err
+	}
+	defer func() { _ = f.Close() }()
+	buf := make([]byte, 1<<20)
+	n := 0
+	for {
+		k, err := f.Read(buf)
+		n += bytes.Count(buf[:k], []byte{'\n'})
+		if errors.Is(err, io.EOF) {
+			return n, nil
+		}
+		if err != nil {
+			return n, err
+		}
+	}
 }
 
 // diffSnapshots is diff over two snapshot files, read side by side a line at
@@ -1247,7 +1314,10 @@ func writeJSON(path string, v any) error {
 		_ = os.Remove(tmp)
 		return fmt.Errorf("rename %s: %w", tmp, err)
 	}
-	return syncDir(filepath.Dir(path))
+	if err := syncDir(filepath.Dir(path)); err != nil {
+		return fmt.Errorf("publish %s: %w", path, err)
+	}
+	return nil
 }
 
 // syncDir makes a directory entry durable, which is what a rename actually
@@ -1256,7 +1326,9 @@ func writeJSON(path string, v any) error {
 // believes a checkpoint landed when it did not is worse off than one told the
 // truth.
 func syncDir(dir string) error {
-	d, err := os.Open(dir)
+	// Through openWrite, read-only as os.Open would: a test can then fail the
+	// fsync of the directory a write was just renamed into.
+	d, err := openWrite(dir, os.O_RDONLY, 0)
 	if err != nil {
 		return fmt.Errorf("open %s: %w", dir, err)
 	}
@@ -1396,7 +1468,7 @@ func writeSnapshotFile(path string, write func(io.Writer) error) (string, error)
 		return "", fmt.Errorf("rename %s: %w", tmp, err)
 	}
 	if err := syncDir(filepath.Dir(path)); err != nil {
-		return "", err
+		return "", fmt.Errorf("publish %s: %w", path, err)
 	}
 	return hex.EncodeToString(h.Sum(nil)), nil
 }

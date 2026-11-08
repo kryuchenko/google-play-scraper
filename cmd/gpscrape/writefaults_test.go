@@ -40,12 +40,13 @@ const (
 	faultSync                        // fsync reports EIO
 	faultClose                       // close reports EIO
 	faultRename                      // the rename into place is refused
-	faultPermission                  // created in a directory made read-only for it
+	faultPermission                  // created or opened with its directory, and the file, made read-only
 	faultReplaced                    // at its first fsync (or close), another file takes its name
+	faultDirSync                     // the directory's fsync after the rename reports EIO
 )
 
 var faultNames = []string{"no space", "short write", "sync error", "close error",
-	"rename fails", "permission denied", "removed or replaced"}
+	"rename fails", "permission denied", "removed or replaced", "directory sync fails"}
 
 const (
 	expectFail = "fail"
@@ -55,51 +56,81 @@ const (
 // writeRow is one file. match picks it out by base name (filepath.Match),
 // nth says which open of it gets the fault, names is what the error must
 // contain, and cells holds the expectation for each faultKind: expectFail,
-// expectOK, or "n/a: why".
+// expectOK, or "n/a: why". plant, when set, prepares the directory before the
+// run: resume state with a torn last line, for the rows about the repair.
 type writeRow struct {
 	file  string
 	match string
 	nth   int
 	names string
-	cells [7]string
+	cells [8]string
+	plant func(t *testing.T, dir string, f *sitemapFixture)
 }
 
 const (
-	naRename = "n/a: written in place, never renamed"
-	naSync   = "n/a: the lock is never fsynced"
+	naRename  = "n/a: written in place, never renamed"
+	naDirSync = "n/a: nothing is renamed, so there is no new name to make durable"
+	naNoWrite = "n/a: the repair writes nothing; it cuts the file and fsyncs it"
 )
 
-var allFail = [7]string{expectFail, expectFail, expectFail, expectFail, expectFail, expectFail, expectFail}
+var allFail = [8]string{expectFail, expectFail, expectFail, expectFail, expectFail, expectFail, expectFail, expectFail}
 
-func lockCells() [7]string {
+func lockCells() [8]string {
 	// Replaced: the lock is read again only at release, which leaves a lock
 	// it can read as somebody else's and removes one it cannot.
-	return [7]string{expectFail, expectFail, naSync, expectFail, naRename, expectFail, expectOK}
+	return [8]string{expectFail, expectFail, expectFail, expectFail, naRename, expectFail, expectOK, expectFail}
 }
 
-func appendCells(replaced string) [7]string {
-	return [7]string{expectFail, expectFail, expectFail, expectFail, naRename, expectFail, replaced}
+func appendCells(replaced string) [8]string {
+	return [8]string{expectFail, expectFail, expectFail, expectFail, naRename, expectFail, replaced, naDirSync}
 }
+
+var repairCells = [8]string{naNoWrite, naNoWrite, expectFail, expectFail, naRename, expectFail, expectFail, naDirSync}
+
+// plantTorn leaves the state of a sweep of f killed after shard 0, with the
+// last line of the file named by which cut in half.
+func plantTorn(which func(dir string, f *sitemapFixture) string) func(*testing.T, string, *sitemapFixture) {
+	return func(t *testing.T, dir string, f *sitemapFixture) {
+		t.Helper()
+		preFinished(t, dir, f, sampling{}, 0)
+		path := which(dir, f)
+		b, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		writeFixtureFile(t, path, string(b)+"com.tor")
+	}
+}
+
+var (
+	partialOf = func(dir string, f *sitemapFixture) string {
+		return filepath.Join(dir, "partial-"+f.gen.ID()+".txt")
+	}
+	doneOf = func(dir string, f *sitemapFixture) string { return doneLogPath(dir, f.gen) }
+)
 
 var sweepRows = []writeRow{
 	// The ids are read back by name at finish.
-	{"partial id file", "partial-*.txt", 1, "partial-", appendCells(expectFail)},
+	{"partial id file", "partial-*.txt", 1, "partial-", appendCells(expectFail), nil},
 	// Read only by a resume; a finished run deletes it.
-	{"done log", "done-*.log", 1, "done-", appendCells(expectOK)},
+	{"done log", "done-*.log", 1, "done-", appendCells(expectOK), nil},
+	// The open that cuts a torn last line on resume.
+	{"partial id file repair", "partial-*.txt", 1, "partial-", repairCells, plantTorn(partialOf)},
+	{"done log repair", "done-*.log", 1, "done-", repairCells, plantTorn(doneOf)},
 	// The second save is the final checkpoint; the first is before any request.
-	{"state.json", "state.json.tmp", 2, "state.json", allFail},
-	{"manifest", "manifest-*.json.tmp", 1, "manifest-", allFail},
-	{"snapshot", "snapshot-*.txt.gz.tmp", 1, "snapshot-", allFail},
-	{"delta", "delta-*.json.tmp", 1, "delta-", allFail},
-	{"lock", lockName, 1, lockName, lockCells()},
+	{"state.json", "state.json.tmp", 2, "state.json", allFail, nil},
+	{"manifest", "manifest-*.json.tmp", 1, "manifest-", allFail, nil},
+	{"snapshot", "snapshot-*.txt.gz.tmp", 1, "snapshot-", allFail, nil},
+	{"delta", "delta-*.json.tmp", 1, "delta-", allFail, nil},
+	{"lock", lockName, 1, lockName, lockCells(), nil},
 }
 
 var genresRows = []writeRow{
-	{"genre table", "genres.tsv.tmp", 1, "genres.tsv.tmp", allFail},
-	{"first-pass merge file", "genres.tsv.merge", 1, "genres.tsv.merge", appendCells(expectFail)},
+	{"genre table", "genres.tsv.tmp", 1, "genres.tsv", allFail, nil},
+	{"first-pass merge file", "genres.tsv.merge", 1, "genres.tsv.merge", appendCells(expectFail), nil},
 	// The third checkpoint: two earlier ones are there to resume from.
-	{"checkpoint", "genres.tsv.resume.json.tmp", 3, "genres.tsv.resume.json", allFail},
-	{"lock", lockName, 1, lockName, lockCells()},
+	{"checkpoint", "genres.tsv.resume.json.tmp", 3, "genres.tsv.resume.json", allFail, nil},
+	{"lock", lockName, 1, lockName, lockCells(), nil},
 }
 
 // ---- injection ----
@@ -109,10 +140,12 @@ type injector struct {
 	match string
 	nth   int
 
-	mu    sync.Mutex
-	opens int
-	armed string // the path whose rename is refused
-	fired bool
+	mu        sync.Mutex
+	opens     int
+	armed     string // the path whose rename is refused
+	armedDir  string // the directory whose next fsync fails
+	published string // the name a directory-sync fault lets through
+	fired     bool
 }
 
 func (inj *injector) fire() {
@@ -133,6 +166,19 @@ func (inj *injector) install(t *testing.T) (clear func()) {
 	t.Helper()
 	realOpen, realRename := openWrite, renameFile
 	openWrite = func(name string, flag int, perm fs.FileMode) (writeFile, error) {
+		inj.mu.Lock()
+		dirFault := inj.armedDir != "" && name == inj.armedDir
+		if dirFault {
+			inj.armedDir = ""
+		}
+		inj.mu.Unlock()
+		if dirFault {
+			f, err := realOpen(name, flag, perm)
+			if err != nil {
+				return nil, err
+			}
+			return &faultyFile{writeFile: f, name: name, inj: inj}, nil
+		}
 		if ok, _ := filepath.Match(inj.match, filepath.Base(name)); !ok {
 			return realOpen(name, flag, perm)
 		}
@@ -142,8 +188,12 @@ func (inj *injector) install(t *testing.T) (clear func()) {
 		if hit && inj.kind == faultRename {
 			inj.armed = name
 		}
+		if hit && inj.kind == faultDirSync {
+			inj.armedDir = filepath.Dir(name)
+			inj.published = strings.TrimSuffix(filepath.Base(name), ".tmp")
+		}
 		inj.mu.Unlock()
-		if !hit || inj.kind == faultRename {
+		if !hit || inj.kind == faultRename || inj.kind == faultDirSync {
 			return realOpen(name, flag, perm)
 		}
 		if inj.kind == faultPermission {
@@ -172,9 +222,10 @@ func (inj *injector) install(t *testing.T) (clear func()) {
 	return clear
 }
 
-// openInReadOnlyDir makes the file's directory read-only for this one create
-// and gives it back straight after, so the permission error is the
-// operating system's own and the rest of the run is unaffected.
+// openInReadOnlyDir makes the file's directory -- and the file, if it is
+// there already -- read-only for this one open and gives them back straight
+// after, so the permission error is the operating system's own and the rest
+// of the run is unaffected.
 func openInReadOnlyDir(t *testing.T, name string, flag int, perm fs.FileMode,
 	open func(string, int, fs.FileMode) (writeFile, error),
 ) (writeFile, error) {
@@ -187,6 +238,16 @@ func openInReadOnlyDir(t *testing.T, name string, flag int, perm fs.FileMode,
 			t.Errorf("chmod %s back: %v", dir, err)
 		}
 	}()
+	if _, err := os.Stat(name); err == nil {
+		if err := os.Chmod(name, 0o444); err != nil {
+			t.Errorf("chmod %s: %v", name, err)
+		}
+		defer func() {
+			if err := os.Chmod(name, 0o644); err != nil {
+				t.Errorf("chmod %s back: %v", name, err)
+			}
+		}()
+	}
 	return open(name, flag, perm)
 }
 
@@ -215,7 +276,7 @@ func (f *faultyFile) Write(p []byte) (int, error) {
 
 func (f *faultyFile) Sync() error {
 	switch f.inj.kind {
-	case faultSync:
+	case faultSync, faultDirSync: // only a directory is wrapped for faultDirSync
 		f.inj.fire()
 		return &fs.PathError{Op: "sync", Path: f.name, Err: syscall.EIO}
 	case faultReplaced:
@@ -329,7 +390,10 @@ func diffContents(t *testing.T, got, want map[string]string) {
 }
 
 // checkFailed is the fail expectation, before the rerun.
-func checkFailed(t *testing.T, row writeRow, err error, dir string, published map[string]string) {
+//
+// A directory fsync fails after the rename, so the new file is in place,
+// whole, and only its durability is in doubt: that one name may differ.
+func checkFailed(t *testing.T, row writeRow, inj *injector, err error, dir string, published map[string]string) {
 	t.Helper()
 	if err == nil {
 		t.Fatal("the run succeeded")
@@ -342,12 +406,12 @@ func checkFailed(t *testing.T, row writeRow, err error, dir string, published ma
 	}
 	now := dirContents(t, dir)
 	for name, b := range published {
-		if now[name] != b {
+		if now[name] != b && name != inj.published {
 			t.Errorf("published %s changed", name)
 		}
 	}
 	for name := range now {
-		if strings.HasPrefix(name, "manifest-") {
+		if strings.HasPrefix(name, "manifest-") && name != inj.published {
 			if _, was := published[name]; !was {
 				t.Errorf("%s was published by a failed run", name)
 			}
@@ -375,7 +439,7 @@ func sweepShardsB() [][]string {
 // sweepAB sweeps generation A cleanly into dir and publishes B: the cell's
 // run is the sweep of B, with A's snapshot and manifest as the published
 // state it must not damage and a delta to write.
-func sweepAB(t *testing.T) string {
+func sweepAB(t *testing.T) (string, *sitemapFixture) {
 	t.Helper()
 	store := newFakeStore(t)
 	useFakeClient(t, store.transport())
@@ -384,12 +448,11 @@ func sweepAB(t *testing.T) string {
 	if _, stderr, err := runVerb(t, cmdSync, "-dir", dir, "-concurrency", "2"); err != nil {
 		t.Fatalf("sweep A: %v\n%s", err, stderr)
 	}
-	f.roll(t, fixtureGenB, sweepShardsB())
-	return dir
+	return dir, f.roll(t, fixtureGenB, sweepShardsB())
 }
 
 func TestWriteFaultsSweep(t *testing.T) {
-	refDir := sweepAB(t)
+	refDir, _ := sweepAB(t)
 	refOut, stderr, err := runVerb(t, cmdSync, "-dir", refDir, "-concurrency", "2")
 	if err != nil {
 		t.Fatalf("clean sweep B: %v\n%s", err, stderr)
@@ -404,8 +467,11 @@ func TestWriteFaultsSweep(t *testing.T) {
 					t.Skip(reason)
 				}
 				skipCellHere(t, faultKind(kind))
-				dir := sweepAB(t)
+				dir, fB := sweepAB(t)
 				published := dirContents(t, dir)
+				if row.plant != nil {
+					row.plant(t, dir, fB)
+				}
 
 				inj := &injector{kind: faultKind(kind), match: row.match, nth: row.nth}
 				clearFault := inj.install(t)
@@ -414,7 +480,7 @@ func TestWriteFaultsSweep(t *testing.T) {
 				checkAfterRun(t, dir, inj)
 
 				if expect == expectFail {
-					checkFailed(t, row, err, dir, published)
+					checkFailed(t, row, inj, err, dir, published)
 					out, stderr, err = runVerb(t, cmdSync, "-dir", dir, "-concurrency", "2")
 				}
 				if err != nil {
@@ -455,7 +521,7 @@ func TestWriteFaultsGenres(t *testing.T) {
 
 				all := out
 				if expect == expectFail {
-					checkFailed(t, row, err, dir, published)
+					checkFailed(t, row, inj, err, dir, published)
 					out, stderr, err = runResumeGenres(t, dir)
 					all += "\n" + out
 				}
@@ -487,5 +553,59 @@ func TestWriteFaultsGenres(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+// The id file lost between runs -- removed, emptied, cut short -- while the
+// done log still lists the shards whose ids it held. A resume used to skip
+// those shards and publish a snapshot without their ids; it now starts the
+// generation over, and the snapshot is whole.
+func TestSweepRestartsWhenThePartialFileLostIDs(t *testing.T) {
+	for _, c := range []struct {
+		name   string
+		damage func(t *testing.T, dir string, f *sitemapFixture)
+	}{
+		{"removed", func(t *testing.T, dir string, f *sitemapFixture) {
+			if err := os.Remove(partialOf(dir, f)); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{"emptied", func(t *testing.T, dir string, f *sitemapFixture) {
+			writeFixtureFile(t, partialOf(dir, f), "")
+		}},
+		{"cut short", func(t *testing.T, dir string, f *sitemapFixture) {
+			writeFixtureFile(t, partialOf(dir, f), "com.a\n")
+		}},
+		// The checkpoint that would have counted them never landed: the
+		// done log is ahead of state.json, which records no ids at all.
+		{"removed, no count recorded", func(t *testing.T, dir string, f *sitemapFixture) {
+			if err := os.Remove(partialOf(dir, f)); err != nil {
+				t.Fatal(err)
+			}
+			if err := saveState(filepath.Join(dir, "state.json"), syncState{Generation: f.gen}); err != nil {
+				t.Fatal(err)
+			}
+		}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			_, f, dir := newSweepFixture(t)
+			preFinished(t, dir, f, sampling{}, 0, 1)
+			c.damage(t, dir, f)
+
+			_, stderr, err := runVerb(t, cmdSync, "-dir", dir, "-concurrency", "2")
+			if err != nil {
+				t.Fatalf("sweep: %v\n%s", err, stderr)
+			}
+			if !strings.Contains(stderr, "swept again from the start") {
+				t.Errorf("stderr does not say the generation restarted:\n%s", stderr)
+			}
+			ids, err := readSnapshot(filepath.Join(dir, "snapshot-"+f.gen.ID()+".txt.gz"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if want := []string{"com.a", "com.b", "com.c", "com.d", "com.e"}; !slices.Equal(ids, want) {
+				t.Errorf("snapshot = %v, want %v", ids, want)
+			}
+		})
 	}
 }

@@ -738,7 +738,10 @@ func writeTableAtomic(path string, fill func(*bufio.Writer) error) error {
 	}
 	// The rename is what a reader sees, and a rename lives in the page cache
 	// like anything else until the directory entry is durable.
-	return syncDir(filepath.Dir(path))
+	if err := syncDir(filepath.Dir(path)); err != nil {
+		return fmt.Errorf("publish %s: %w", path, err)
+	}
+	return nil
 }
 
 // ---- new ----

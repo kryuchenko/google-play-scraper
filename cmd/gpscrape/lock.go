@@ -139,9 +139,21 @@ func (l *dirLock) create() error {
 		_ = os.Remove(l.path)
 		return err
 	}
+	// Synced, and its name with it: a power loss after an unsynced create
+	// can bring the file back empty, and an empty lock is one the next run
+	// refuses until someone deletes it by hand.
+	if err := f.Sync(); err != nil {
+		_ = f.Close()
+		_ = os.Remove(l.path)
+		return err
+	}
 	if err := f.Close(); err != nil {
 		_ = os.Remove(l.path)
 		return err
+	}
+	if err := syncDir(filepath.Dir(l.path)); err != nil {
+		_ = os.Remove(l.path)
+		return err // lockDir names the lock file
 	}
 	l.owner = owner
 	return nil

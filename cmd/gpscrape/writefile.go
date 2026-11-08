@@ -10,7 +10,8 @@ import (
 // Every file this package writes in a snapshot directory -- the partial id
 // file, the done log, state.json, the manifest, the snapshot, the delta, the
 // genre table, its merge file and checkpoint, the lock -- is opened through
-// openWrite and published through renameFile.
+// openWrite and published through renameFile, and so is the directory
+// syncDir fsyncs after a rename.
 //
 // They are variables for one reason: *os.File offers no way to make a write
 // fail as a full disk does, an fsync report an I/O error, or a rename be
@@ -36,6 +37,7 @@ type writeFile interface {
 	Sync() error
 	Close() error
 	Stat() (fs.FileInfo, error)
+	Truncate(size int64) error
 }
 
 // createFlags are os.Create's.
