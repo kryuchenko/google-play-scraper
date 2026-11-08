@@ -278,3 +278,49 @@ func TestTableMergeRefusesATabInAnID(t *testing.T) {
 		t.Error("an id with a tab was accepted")
 	}
 }
+
+// With no table -- the first run -- the walk finds nothing known and reports
+// no error; a table the scanner cannot read through is an error, not a
+// table that ends early.
+func TestTableMergeWithoutAndWithAnUnreadableTable(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "genres.tsv")
+	prev, err := openTable(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, err := newTableMerge(prev, path+".merge")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if was, known, err := m.lookup("com.a"); err != nil || known || was != "" {
+		t.Fatalf("no table: lookup = %q %v %v", was, known, err)
+	}
+	if err := m.finish(); err != nil {
+		t.Fatalf("no table: finish = %v", err)
+	}
+	m.abandon()
+	prev.close()
+
+	writeTable(t, path, "a\tX", strings.Repeat("b", maxLineBytes+10)+"\tY", "c\tZ")
+	prev, err = openTable(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer prev.close()
+	m, err = newTableMerge(prev, path+".merge")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer m.abandon()
+	_, _, lerr := m.lookup("c")
+	if lerr == nil {
+		lerr = m.finish()
+	}
+	if lerr == nil {
+		t.Error("a table line past the scanner limit read as the end of the table")
+	}
+	if err := checkTableSorted(path); err == nil {
+		t.Error("checkTableSorted passed a table it could not read through")
+	}
+}

@@ -64,3 +64,32 @@ func TestInflateLimit(t *testing.T) {
 		t.Fatalf("under the cap: %q, %v", got, err)
 	}
 }
+
+// The caps are inclusive: a body of exactly maxBodyBytes, and a stream that
+// inflates to exactly maxInflatedBytes, are read whole.
+func TestLimitsAreInclusive(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write(make([]byte, maxBodyBytes))
+	}))
+	defer srv.Close()
+	body, err := NewClient(WithThrottle(0)).get(context.Background(), srv.URL)
+	if err != nil || len(body) != maxBodyBytes {
+		t.Errorf("a body of exactly maxBodyBytes: %d bytes, %v", len(body), err)
+	}
+
+	var buf bytes.Buffer
+	zw := gzip.NewWriter(&buf)
+	zero := make([]byte, 1<<20)
+	for range maxInflatedBytes >> 20 {
+		_, _ = zw.Write(zero)
+	}
+	_ = zw.Close()
+	zr, err := gzip.NewReader(&buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	n, err := io.Copy(io.Discard, limitInflate(zr))
+	if err != nil || n != maxInflatedBytes {
+		t.Errorf("a stream of exactly maxInflatedBytes: %d bytes, %v", n, err)
+	}
+}
