@@ -210,6 +210,9 @@ All notable changes to this project are documented here. The format is based on
 - README lists every error code with its exit status; it named only some
   statuses and none of `not_listed`, `confirmation_required`, `cancelled` or
   `internal`.
+- `catalog sweep` and `catalog genres` on Windows: every publish failed with
+  "sync <dir>: Access is denied", because Windows refuses an fsync of a
+  directory; there it is skipped (NTFS journals the rename).
 - `gpscrape` integer flags are decimal: `-limit 010` is 10, not 8 (the
   flag package read a leading zero as octal), and `0x10`, `0b1` and `1_000`
   are refused as `invalid_argument`.

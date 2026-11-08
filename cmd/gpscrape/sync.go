@@ -1354,7 +1354,14 @@ func writeJSON(path string, v any) error {
 // is present but its name may not survive a power loss, and a caller that
 // believes a checkpoint landed when it did not is worse off than one told the
 // truth.
+//
+// Windows has no directory fsync: FlushFileBuffers on a directory handle is
+// refused ("Access is denied"), and NTFS journals the rename itself. There it
+// is a no-op rather than an error on every publish.
 func syncDir(dir string) error {
+	if runtime.GOOS == "windows" {
+		return nil
+	}
 	// Through openWrite, read-only as os.Open would: a test can then fail the
 	// fsync of the directory a write was just renamed into.
 	d, err := openWrite(dir, os.O_RDONLY, 0)

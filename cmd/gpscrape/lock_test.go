@@ -320,7 +320,14 @@ func TestASecondSweepIsRefusedWhileTheFirstIsRunning(t *testing.T) {
 				firstErr = cmdSync([]string{"-dir", dir, "-concurrency", "2"})
 			}()
 
-			<-inShard // the first sweep is past the lock and fetching
+			// The first sweep is past the lock and fetching -- or it ended
+			// before it got there, and waiting on the shard would hang.
+			select {
+			case <-inShard:
+			case <-firstDone:
+				close(releaseShard)
+				return
+			}
 			secondErr = cmdSync([]string{"-dir", dir, "-concurrency", "2"})
 			close(releaseShard)
 			<-firstDone

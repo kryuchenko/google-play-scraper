@@ -318,6 +318,8 @@ func skipCellHere(t *testing.T, kind faultKind) {
 		t.Skip("directory permissions do not stop this user here")
 	case kind == faultReplaced && runtime.GOOS == "windows":
 		t.Skip("Windows does not let another process remove an open file")
+	case kind == faultDirSync && runtime.GOOS == "windows":
+		t.Skip("Windows has no directory fsync to fail")
 	}
 }
 
