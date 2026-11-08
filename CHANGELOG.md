@@ -110,627 +110,194 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
-- `gpscrape-mcp` returns the shared records of package `records`, the
-  objects `gpscrape` writes: a failed entry of `play_get_apps` gains a `code`
-  field next to its message, and the tool errors use `records.Code`. The
-  tools' field names are otherwise unchanged. `apidoc`, `lightfeed` and `mcp`
-  require v1.6.0.
+- `gpscrape-mcp` returns the shared `records` objects that `gpscrape` writes:
+  a failed `play_get_apps` entry gains a `code` field, and tool errors use
+  `records.Code`. Other field names are unchanged. `apidoc`, `lightfeed` and
+  `mcp` require v1.6.0.
 
 ## [1.6.0] - 2026-11-07
 
 ### Added
 
-- CI lints and vulnerability-scans the `mcp` module, which, unlike the root,
-  has dependencies; dependabot watches them. Every workflow pins its actions
-  to a commit SHA, with the version in a comment.
-- `records`, a package with the one output contract the CLI and the MCP
-  server share: the records for an app, a list row, a review, permissions,
-  a data safety declaration, an availability check and a failed batch entry,
-  built from the library's types, with snake_case field names and
-  third-party text in `untrusted_*` fields; and the error codes both report
-  (`invalid_argument`, `not_found`, `not_listed`, `rate_limited`, `timeout`,
-  `busy`, `cancelled`, `confirmation_required`, `store_error`, `internal`).
-  A test pins every field name.
+- Package `records`: the output contract the CLI and the MCP server share,
+  with snake_case fields, third-party text in `untrusted_*`, and the common
+  error codes (`invalid_argument`, `not_found`, `not_listed`, `rate_limited`,
+  `timeout`, `busy`, `cancelled`, `confirmation_required`, `store_error`,
+  `internal`).
 - `gpscrape schema [command]` writes each command's summary, flags and output
-  fields as JSON, from the same flag sets and record types the commands use.
-- `gpscrape -fields app_id,score` keeps only the named keys of each record,
-  on every command; a list that names none of a record's keys is an error
-  listing the real ones, not a stream of `{}`.
-- `gpscrape mcp` starts an installed `gpscrape-mcp` (next to `gpscrape`, or on
-  `PATH`) and passes stdio and the exit status through; it says how to
-  install the server if it is missing and never downloads it.
-- `-yes` on `catalog sweep` and on an unlimited `catalog ids`: run without a
-  terminal (an agent, a script, cron), these refuse to start their 83,000
-  requests unless it is given, and say what the run costs and the cheaper
-  alternatives.
-- `skills/gpscrape/SKILL.md`, a skill for Claude Code and other agents that
-  read `SKILL.md`: when to use the MCP tools and when the CLI, and how to
-  filter the CLI's output.
-- `gpscrape-mcp` releases (`mcp/v*` tags) build prebuilt binaries, an MCPB
-  bundle and a container image on `ghcr.io/kryuchenko/gpscrape-mcp`, and
-  publish `mcp/server.json` to the official MCP Registry as
-  `io.github.kryuchenko/gpscrape`.
-- A weekly workflow asks Claude Code and Codex to quote the server
-  instructions back, to notice a client release that stops passing them to
-  the model.
-- `gpscrape-mcp`: every tool error starts with a stable code
-  (`invalid_argument`, `not_found`, `not_listed`, `rate_limited`, `timeout`,
-  `busy`, `cancelled`, `store_error`, `internal`), so a program can branch on
-  it; the README says which are worth retrying.
-- `gpscrape-mcp`: `play_check_availability` sends a progress notification
-  per probed country to a client that passes a `progressToken` (stdio).
-- `gpscrape-mcp`: `-token-file` reads the bearer token from a file, for
-  Docker and systemd secrets.
-- `gpscrape-mcp` has an icon, in its server info, `server.json` and the MCPB
-  bundle.
-- Releases carry signed build provenance (GitHub artifact attestations) for
-  the CLI binaries, the server binaries, the MCPB bundle and the image; check
-  one with `gh attestation verify`.
-- The MCPB bundle runs on Linux arm64 too: on Linux it starts a launcher
-  that picks the amd64 or arm64 binary.
+  fields as JSON.
+- `gpscrape -fields app_id,score` keeps only the named keys; a list that names
+  none of a record's keys is an error listing the real ones.
+- `gpscrape mcp` starts an installed `gpscrape-mcp` (next to `gpscrape` or on
+  `PATH`); it never downloads it.
+- `-yes` on `catalog sweep` and an unlimited `catalog ids`: without a
+  terminal, these refuse to start their 83,000 requests unless it is given.
+- `skills/gpscrape/SKILL.md`: a skill telling agents when to use the MCP
+  tools and when the CLI.
+- `gpscrape-mcp` releases (`mcp/v*` tags) ship prebuilt binaries, an MCPB
+  bundle (Linux arm64 included) and the image `ghcr.io/kryuchenko/gpscrape-mcp`,
+  and are listed in the MCP Registry as `io.github.kryuchenko/gpscrape`.
+  Release artifacts carry signed build provenance (`gh attestation verify`).
+- `gpscrape-mcp`: every tool error starts with a stable code, so a program
+  can branch on it.
+- `gpscrape-mcp`: `play_check_availability` sends progress notifications to a
+  client that passes a `progressToken` (stdio).
+- `gpscrape-mcp`: `-token-file` reads the bearer token from a file.
+- `gpscrape-mcp` has an icon.
 
 ### Changed
 
 - **Breaking, `gpscrape`:** `app`, `search`, `list`, `similar`, `developer`,
   `reviews`, `permissions`, `datasafety` and `availability` write the shared
-  `records` (snake_case, `untrusted_*` for third-party text), the objects the
-  MCP tools return, so one jq filter works on both. `-raw` writes the
-  library's own types as before. A failed id in a batch is
-  `{"app_id","code","error"}` in both modes' default.
-- **Breaking, `gpscrape`:** a failed run writes its error to stderr as one
-  JSON object, `{"error":{"code","message","retryable"}}`, when stderr is not
-  a terminal (or with `GPSCRAPE_ERRORS=json`; `=text` forces a line), and
-  exits with a status that follows the code: 2 bad arguments or confirmation
-  needed, 3 not found, 4 rate limited, 5 timeout, 130 interrupted, 1 other.
-- `gpscrape -h` opens with examples and documents the output, the error
-  format and the exit statuses.
-- **Breaking, `gpscrape-mcp`:** the tools are renamed to `play_` + verb +
-  object, as Anthropic's (namespacing) and OpenAI's (action-oriented names)
-  tool guidance both ask: `search` → `play_search_apps`, `app` →
-  `play_get_app`, `apps` → `play_get_apps`, `list` → `play_get_chart`,
-  `reviews` → `play_get_reviews`, `similar` → `play_get_similar_apps`,
-  `developer` → `play_get_developer_apps`, `permissions` →
-  `play_get_permissions`, `datasafety` → `play_get_data_safety`, `suggest` →
-  `play_suggest_queries`, `categories` → `play_list_categories`,
-  `availability` → `play_check_availability`.
-- **Breaking, `gpscrape-mcp`:** the secret path `/mcp/<token>` for ChatGPT is
-  off unless `-secret-path` is given; a token alone opens only the bearer
-  header. A token in a URL ends up in proxy logs and browser history, so only
-  a deployment that needs it should accept it.
-- **Breaking, `gpscrape-mcp`:** the `-token` flag is gone; a secret on the
-  command line is visible to every user of the machine in `ps`. Use
-  `$GPSCRAPE_MCP_TOKEN` or `-token-file`.
-- `gpscrape-mcp`: `tools/list` and `server/discover` say `ttlMs` of an hour
-  instead of 0 ("stale at once"); the tool set never changes while the
-  server runs.
-- `gpscrape-mcp`: a call the client cancelled returns no result even if the
-  work behind it finished, as the spec's cancellation rule asks.
-- `gpscrape-mcp`: at most four calls per concurrency slot wait for one; a
-  call past that is refused at once as `busy` instead of joining a queue that
-  cannot drain before its deadline. String arguments have a maximum length
-  in the input schema.
-- The container's base images are pinned by digest, and dependabot keeps
-  the pins current.
-- Every `gpscrape-mcp` tool publishes an output schema, and the server
-  checks each result against it before sending. OpenAI's MCP guidance asks
-  for one on structured results; `tools/list` grows from about 9.8 KB to
-  17.5 KB. A test runs every tool with full data and with none, concise and
-  detailed, through the schemas.
-- The library now requires Go 1.27 (was 1.25). Go supports its two newest
-  releases, 1.27 and 1.26, and 1.25 gets no more security fixes; the
-  submodules were already on 1.27.
-- `gpscrape-mcp` tells agents about the `gpscrape` CLI. Its instructions
-  point an agent that can run shell commands at `gpscrape reviews … -limit`
-  and `-langs all` for bulk jobs, which the one-page tools are not for, when
-  the CLI is already installed; otherwise the agent pages with the tools or
-  tells the user the job needs the CLI, and it must ask the user before
-  installing it. The `play_get_reviews` description repeats the hint, for
-  clients that do not pass instructions to the model.
-- The server instructions are shorter and open with the untrusted-data
-  warning, and the `play_get_reviews` description puts it first too. Every tool
-  description stays under 1000 bytes, where Codex cuts descriptions for
-  servers installed as plugins.
+  `records`, the objects the MCP tools return. `-raw` writes the library's
+  types as before. A failed id in a batch is `{"app_id","code","error"}`.
+- **Breaking, `gpscrape`:** when stderr is not a terminal (or with
+  `GPSCRAPE_ERRORS=json`; `=text` forces a line), a failed run writes
+  `{"error":{"code","message","retryable"}}` to stderr. Exit status follows
+  the code: 2 bad arguments or confirmation needed, 3 not found, 4 rate
+  limited, 5 timeout, 130 interrupted, 1 other.
+- **Breaking, `gpscrape-mcp`:** tools are renamed to `play_` + verb + object:
+  `search` → `play_search_apps`, `app` → `play_get_app`, `apps` →
+  `play_get_apps`, `list` → `play_get_chart`, `reviews` → `play_get_reviews`,
+  `similar` → `play_get_similar_apps`, `developer` →
+  `play_get_developer_apps`, `permissions` → `play_get_permissions`,
+  `datasafety` → `play_get_data_safety`, `suggest` → `play_suggest_queries`,
+  `categories` → `play_list_categories`, `availability` →
+  `play_check_availability`.
+- **Breaking, `gpscrape-mcp`:** the secret path `/mcp/<token>` (for ChatGPT)
+  is off unless `-secret-path` is given, because a token in a URL leaks into
+  logs and history.
+- **Breaking, `gpscrape-mcp`:** `-token` is removed, since a command-line
+  secret is visible in `ps`. Use `$GPSCRAPE_MCP_TOKEN` or `-token-file`.
+- The library requires Go 1.27 (was 1.25, which no longer gets security
+  fixes).
+- `gpscrape -h` opens with examples and documents the output, error format
+  and exit statuses.
+- `gpscrape-mcp`: every tool publishes an output schema and the server checks
+  each result against it; `tools/list` grows from about 9.8 KB to 17.5 KB.
+- `gpscrape-mcp`: `tools/list` and `server/discover` report a `ttlMs` of an
+  hour instead of 0.
+- `gpscrape-mcp`: a cancelled call returns no result even if its work
+  finished.
+- `gpscrape-mcp`: at most four calls per concurrency slot wait; the next is
+  refused at once as `busy`. String arguments have a maximum length.
+- `gpscrape-mcp` points agents that can run shell commands at the installed
+  `gpscrape` CLI for bulk review jobs (`-limit`, `-langs all`), and tells them
+  to ask before installing it. The server instructions are shorter and open
+  with the untrusted-data warning; every tool description stays under 1000
+  bytes, where Codex truncates.
 
 ### Fixed
 
-- The CLI took `/dev/null` for a terminal (it is a character device too):
-  progress lines went to it for nothing, and a guard keyed on "is anyone
-  watching" was fooled by `< /dev/null`, the way agents and cron start
-  commands. It is ruled out by identity now.
-- `gpscrape-mcp` over stdio: a line that is valid JSON but not a JSON-RPC
-  message (`{}`, `123`, `null`, `[]`, `"jsonrpc":"1.0"`) ended the session,
-  taking every tool away until the client restarted the server. Such lines
-  are now logged and skipped, like lines that are not JSON at all.
-- `gpscrape-mcp` over HTTP checks `Origin` on every method, as the MCP
-  transport spec requires. Go's cross-origin protection skipped GET and
-  trusted `Sec-Fetch-Site` before looking at `Origin`; a request with a
-  foreign or malformed `Origin` now gets 403 whatever else it claims.
-- `gpscrape-mcp`: `play_list_categories` no longer claims `openWorldHint`; it reads a
-  fixed table and makes no request.
-- `gpscrape-mcp`: a tool call cancelled while it waited for a free
-  concurrency slot was logged as "server busy". It is now logged as a
-  cancellation, so client cancels do not read as load.
-- `gpscrape-mcp`: the server instructions now end at a paragraph boundary
-  within the first 512 bytes (OpenAI asks that they stand alone there):
-  the concise/detailed default moved up, and the CLI-hint paragraph starts
-  at byte 512 instead of being cut mid-sentence.
+- The CLI no longer takes `/dev/null` for a terminal, so commands started with
+  `< /dev/null` (agents, cron) are treated as non-interactive.
+- `gpscrape-mcp` over stdio skips a line that is JSON but not JSON-RPC
+  (`{}`, `null`, `"jsonrpc":"1.0"`) instead of ending the session.
+- `gpscrape-mcp` over HTTP checks `Origin` on every method; a foreign or
+  malformed `Origin` gets 403.
+- `gpscrape-mcp`: `play_list_categories` no longer claims `openWorldHint`.
+- `gpscrape-mcp`: a call cancelled while waiting for a slot is logged as a
+  cancellation, not "server busy".
+- `gpscrape-mcp`: the first 512 bytes of the server instructions end at a
+  paragraph boundary instead of mid-sentence.
+- `-lang` is validated by every command: a list or `all` (which Google
+  answered in English, exit 0) is refused and `reviews` points at `-langs`.
+  Values are trimmed, so `-lang " ru "` means `ru`.
 - `gpscrape reviews -langs` rejects malformed entries and `all` mixed with
-  individual codes, rather than fetching reviews under bogus language labels.
-- CLI language values are trimmed before use, so `-lang " ru "` requests and
-  labels the Russian corpus as `ru`.
-- `gpscrape reviews -lang all` and `-lang ru,de` were sent to Google as-is:
-  the store answered in English or in the first language, every record was
-  stamped with the bogus code, and the exit was 0. `-lang` now refuses a
-  list or `all` and points at `-langs`.
-- `-lang` is checked by every command, not only `reviews`: `app -lang all`
-  or `search -lang "ru de"` went to Google as hl=all and hl=ru+de and came
-  back in English, exit 0. A value that is not one language code is refused.
-- `gpscrape catalog -h` failed with "-h is a flag, not a verb", although
-  `gpscrape -h` tells you to run `<command> -h`. It prints the catalog usage.
-- A CLI test that caps file size for the whole process (to make a write
-  fail) also capped the log `go test` writes, and failed the package with
-  "file too large" once the log outgrew 128 KB.
+  individual codes.
+- `gpscrape catalog -h` prints the catalog usage instead of failing.
+
+### Internal
+
+- CI lints and vulnerability-scans the `mcp` module, dependabot watches its
+  dependencies and the container's digest-pinned base images, and workflows
+  pin actions to commit SHAs. A weekly workflow checks that Claude Code and
+  Codex still pass the server instructions to the model. A test pins every
+  `records` field name, and a CLI test no longer fails on a large `go test`
+  log.
 
 ## [1.5.0] - 2026-11-05
 
 ### Added
 
-- `mcp/`, a separate module with `gpscrape-mcp`: an MCP server that gives AI
-  agents the store's quick lookups as twelve read-only tools (search, app,
-  apps, list, reviews, similar, developer, permissions, datasafety, suggest,
-  categories, availability). It speaks stdio for Claude Code, Codex and
-  OpenCode, and stateless Streamable HTTP with a bearer token -- or the token
-  as the last path segment, for ChatGPT, which cannot send one. Results are
-  small by default; store text comes back in `untrusted_*` fields. CI
-  runs the official MCP conformance suite against it. See `mcp/README.md`.
-- `SearchResult.PriceKnown`: whether `Price` and `Free` come from the store.
-  The search grid, similar apps and developer pages carry no price, and their
-  rows always reported `Free: true`, so a paid app (Hitman Absolution, 14.99)
-  came back as free. `PriceKnown` is false on those rows unless `FullDetail`
-  is set, and merging results now prefers a known price over the default.
-- `ErrNoDataSafety` and `ErrNoReviewsPage`, so a caller can tell "nothing to
-  read" from data with `errors.Is`.
-- `App.DeveloperNumericID`: Google's numeric developer id (`[68][2]`). It was
-  a number on all 138 listings checked, also when the listing link uses a
-  name, so it is the field to key on. `DeveloperID` stays the value
-  `Developer` takes.
-- `Client.PCApp` and `gpscrape pcapp`, which read an app's Google Play Games
-  on PC listing (`/pc-store/games/details`). The page carries the same Ws7gDc
-  app record as the details page, in `ds:4` rather than `ds:5`, requested with
-  a PC device context, so the existing record parser reads it: the result has
-  the PC listing's screenshots, trailer (`Video`, `YouTubeID`,
-  `PreviewVideo`), icon, header image, the rating from PC players, and the
-  system requirements from `ds:3`. An app without a PC build is answered with
-  a 302 to the phone listing of the same package and no body. `PCApp` stops at
-  exactly that redirect, after the client's own redirect policy and limit have
-  allowed it, and returns `OnPC: false` with a nil error. Any other 3xx stays a
-  `StatusError`, and other redirects, `google.com/sorry` included, are
-  followed as before.
+- `mcp/`, a separate module with `gpscrape-mcp`: an MCP server exposing the
+  store's quick lookups as twelve read-only tools, over stdio or stateless
+  Streamable HTTP with a bearer token (or the token as the last path segment,
+  for ChatGPT). Store text comes back in `untrusted_*` fields. See
+  `mcp/README.md`.
+- `Client.PCApp` and `gpscrape pcapp` read an app's Google Play Games on PC
+  listing: PC screenshots, trailer (`Video`, `YouTubeID`, `PreviewVideo`),
+  icon, header image, PC rating and system requirements. An app without a PC
+  build returns `OnPC: false` and a nil error.
 - `PCRegions()`: the 141 regions where Google Play Games on PC is offered, a
-  snapshot of Google's help page taken 2026-10-28. The PC store cannot answer
-  this itself: it serves its listings for `gl=ru`, `cu` and `ir`, which are not
-  on the list, redirects every app for `cn`, and answers 404 for `kp` and `sy`.
-  A canary test compares the regions on the live page with the snapshot.
-- Soft-block detection. Every response is classified before the adaptive
-  controller or a hook sees it: a redirect to `google.com/sorry`, a page with
-  no data blocks, or an HTML page served where a `batchexecute` envelope
-  belongs is a refusal and returns a `*SoftBlockError`; a consent or sign-in
-  page is `VerdictInterstitial` and is not retried; a store page without the
-  block its parser reads is `VerdictMalformed`. A search that matched nothing
-  is recognised by Google's own zero-results section and stays an empty
-  result. See `docs/adr/0001-soft-blocks-and-cooldown.md`.
-- A breaker on the adaptive throttle: `AdaptivePolicy.Cooldown`,
-  `MaxCooldown` and `MaxProbes`. After a refusal the whole client pauses,
-  then one probe goes out; refused probes escalate the pause and finally
-  stop the client with `ErrBlocked` until `MaxCooldown` has passed. Requests
-  that were in flight when the block landed never count as failed probes.
-  `Client.Breaker` reports the state and `Hooks.OnBreaker` every change.
+  snapshot of Google's help page from 2026-10-28; the PC store itself serves
+  listings to unsupported regions.
+- `SearchResult.PriceKnown`: false on search, similar and developer rows,
+  which carry no price and used to report every app as free, unless
+  `FullDetail` is set.
+- `App.DeveloperNumericID`: Google's numeric developer id, the stable field
+  to key on.
+- `ErrNoDataSafety` and `ErrNoReviewsPage`, to tell "nothing to read" from
+  data with `errors.Is`.
+- Soft-block detection: a `google.com/sorry` redirect, a page without data
+  blocks, or HTML where a `batchexecute` envelope belongs returns a
+  `*SoftBlockError`; consent and sign-in pages (`VerdictInterstitial`) are not
+  retried. See `docs/adr/0001-soft-blocks-and-cooldown.md`.
+- A breaker on the adaptive throttle (`AdaptivePolicy.Cooldown`,
+  `MaxCooldown`, `MaxProbes`): after a refusal the client pauses and probes;
+  repeated refusals stop it with `ErrBlocked`. `Client.Breaker` reports the
+  state and `Hooks.OnBreaker` each change.
 - A client-wide retry budget: `RetryPolicy.Budget` and `Burst`.
-- `gpscrape -adaptive` turns both on (30s cooldown, one retry per ten
-  requests) and prints breaker changes on stderr; a stopped breaker ends the
-  run.
+- `gpscrape -adaptive` turns on both (30s cooldown, one retry per ten
+  requests) and reports breaker changes on stderr.
 
 ### Changed
 
 - `gpscrape search`, `list`, `similar` and `developer` fetch full details by
-  default (`-full`, one extra batched request per 32 apps; `-full=false`
-  restores the old output). Without it, paid apps printed as free,
-  `developerId` was empty and chart rows had no tagline. `similar` and
-  `developer` gain the `-full` flag.
-- `DataSafety` returns `ErrNoDataSafety` when the page has no section it can
-  read. It used to return an empty `*DataSafety`, which reads as "collects and
-  shares nothing", or `nil, nil` when the block did not parse.
-- An empty reviews payload returns `ErrNoReviewsPage`. Its message keeps the
-  old "data is not a string" prefix and says what it means.
-- A response that used to come back as an empty result with a nil error,
-  because Google served a block page with status 200, now returns a
-  `*SoftBlockError`. `Hooks.OnResponse` fires after the body is read and
-  classified, and gets that error.
-- `Search` returns an error instead of un-enriched results when
-  `FullDetail` lookups are refused.
+  default (one extra batched request per 32 apps), so prices, `developerId`
+  and taglines are filled; `-full=false` restores the old output.
+- `DataSafety` returns `ErrNoDataSafety` instead of an empty `*DataSafety`
+  (which read as "collects nothing") or `nil, nil`.
+- An empty reviews payload returns `ErrNoReviewsPage`.
+- A block page served with status 200 returns a `*SoftBlockError` instead of
+  an empty result. `Hooks.OnResponse` fires after the body is classified.
+- `Search` returns an error when `FullDetail` lookups are refused, instead of
+  un-enriched results.
 
 ### Fixed
 
-- `App.Categories` was never filled. It now lists the genre and the store's
-  tags for the app, e.g. Casual, Puzzle, Match 3, Single player for Candy
-  Crush Saga.
-- `App.Summary` kept HTML entities (`navigation &amp; local suggestions`); it
-  is decoded now, as `Description` already was. So is `SearchResult.Summary`.
-- `List` rows put the whole HTML description in `Summary` (`<br>`, `&#39;`):
-  the chart RPC carries no tagline. They now get the description's first
-  paragraph as plain text; `FullDetail` gives the tagline.
-- `DataSafety` for an id the store does not list reported a block (`blocked
-  response (no-data-blocks)`), which paused an adaptive client for its whole
-  cooldown. The endpoint answers such ids with a 200 "Not Found" page without
-  data blocks; that page is now checked against the details page, and an
-  unknown id returns `ErrNoDataSafety` wrapping `ErrNotFound`.
-- `App.VideoImage` is the trailer thumbnail (`i.ytimg.com`) again. It was read
-  from `[100][1][0]`, which now repeats the feature graphic, so it always
-  equalled `HeaderImage`.
-- `App.DeveloperID` is the developer id, not the listing path. It held
-  `/store/apps/dev?id=…` or `/store/apps/developer?id=…`; it now holds the
-  decoded `id`, a number or a name such as `Verizon Consumer Group`, which
-  `Developer` accepts as is. Search and feed results decode it the same way;
-  they used to return `Verizon+Consumer+Group`, which `Developer` escaped into
-  a different name.
-- `Developer` sends a numeric id to the numeric listing whatever its size. It
-  used `strconv.Atoi` to tell ids from names, and Google's 19-digit ids above
-  the int64 range were sent to the by-name listing instead.
-- `Search` returns more than one page again. Pagination had stopped working:
-  the continuation token was read from a stale path, and the legacy qnKhOb
-  payload it was sent to returns nothing. The web store no longer pages a
-  query at all; the lGYRle RPC behind the search page takes a page size and
-  returns up to about 50 results. `Search` with `Num > 20` now makes one
-  lGYRle call, and `Num` is clamped to 50 instead of 250. A `Price` filter
-  keeps the search page (about 20 results), since only the page applies it.
-  The featured card is found in any section, not just the first: in Germany
-  it follows a small cluster. (#16)
-- `AppsMany` no longer reports an app as missing because Google dropped it from
-  one pack. Empty items are asked for again in a pack of their own, and any
-  still empty are settled with the details page: 404 is the new `ErrNotFound`
-  (not listed in that storefront), anything else is the app. Both steps draw on
-  the retry budget, and neither runs when most of a batch came back empty. In a
-  293-app, 177-country sweep about half of the empty items were transient.
-  (#18)
-- `Search` returns the featured card Google shows above the result grid when
-  one app matches the query outright. The card lives outside the grid, in an
-  app-details block of its own, so the parser never saw it, and the best match
-  for an exact title was missing: "Identity V" returned Call of Duty first, and
-  "minecraft" lost Minecraft itself. The card now comes first and is not
-  repeated in the grid that follows. (#13)
+- `Search` returns up to 50 results again (`Num` above 50 is clamped; was
+  250); a `Price` filter returns about 20. (#16)
+- `Search` returns the featured card for an exact match first, so
+  "minecraft" returns Minecraft. (#13)
+- `AppsMany` no longer reports an app missing because Google dropped it from
+  one pack; such items are asked again, and a 404 returns `ErrNotFound`. (#18)
+- `App.Categories` is filled with the genre and the store's tags.
+- `App.Summary` and `SearchResult.Summary` decode HTML entities.
+- `List` rows' `Summary` is the description's first paragraph as plain text,
+  not the whole HTML description.
+- `DataSafety` for an unlisted id returns `ErrNoDataSafety` wrapping
+  `ErrNotFound` instead of a block that paused an adaptive client.
+- `App.VideoImage` is the trailer thumbnail again, not the header image.
+- `App.DeveloperID` holds the decoded developer id (a number or a name) that
+  `Developer` accepts, not the listing path; search and feed results match.
+- `Developer` sends 19-digit numeric ids to the numeric listing.
 
 ## [1.4.0] - 2026-09-05
 
 ### Added
 
-- `AppsMany`, which fetches details for many apps in a handful of requests.
-
-  `App` reads the `ds:5` script block out of a ~1MB HTML page, one page per
-  app. That block is not authored by the page: it is the response of an RPC the
-  page issues, and every app page carries an `AF_dataServiceRequests` map that
-  names both the RPC — `Ws7gDc` — and the exact request body used to produce
-  it. Calling that RPC directly returns a payload structurally identical to
-  `ds:5`, so the existing extractor parses it unchanged.
-
-  Measured on 32 apps at a 300ms interval: 9.76s over 32 page fetches against
-  146ms over one batched request, the same 29 apps resolving either way. The
-  transfer drops with it — about 20KB per app instead of a megabyte of markup.
-  Against the live store every static field matches the page exactly; only
-  rating and review counters differ, by the few units they genuinely moved in
-  the seconds between the two requests.
-
-  Because the request body is published in every app page, drift is detectable
-  rather than something to discover from empty results:
-  `TestWs7gDcTemplateStillMatchesThePage` re-extracts it live and fails if
-  Google changes it.
-
-  `App` remains the reference for a single app: it reads a rendered page, and a
-  field that only ever appeared in the markup rather than in `ds:5` would not
-  survive the batched path.
-
-- `SuggestMany`, the same packing for search suggestions. This is the operation
-  the batching was measured on: 64 terms took 18.94s one at a time and 0.65s at
-  32 per request.
-
-- `PermissionsMany`, which fetches permissions for many apps in a handful of
-  requests instead of one request per app.
-
-  A `batchexecute` POST has always been able to carry several RPCs -- the
-  `f.req` body is an array of call tuples -- but every method here sent exactly
-  one. That matters because the throttle meters requests, not RPCs: 64 apps at
-  a 200ms interval is 64 intervals one way and 2 the other. Measured against
-  the live endpoint, 64 calls took 18.94s unpacked and 0.65s at 32 per request,
-  with the returned payloads byte-identical to the one-at-a-time fetch.
-
-  The endpoint accepts at least 64 calls per request and will mix different
-  rpcids in one POST; the pack size here is 32, deliberately short of what was
-  seen to work. What is *not* established is how Google's own rate limiting
-  counts a batched request. The wall-clock saving is arithmetic and certain --
-  there really are fewer requests -- but the quota question was not measured,
-  and this release already learnt once that an endpoint tolerating a burst is
-  not an endpoint tolerating sustained load.
-
-  Answers come back in whatever order Google finishes them: a request sending
-  indices 7 and 9 was observed returning 9 then 7. Pairing responses to calls
-  positionally would hand back another app's data, silently and only sometimes,
-  so `decodeBatchFrames` keys frames by the index echoed in the request and
-  `batchCall` restores the caller's order.
-
-  `gpscrape permissions` now takes several app ids and packs them the same way.
-
-- `cmd/gpscrape`, a command-line interface. Newline-delimited JSON on stdout,
-  so the output composes with `jq` and anything else that reads a stream; the
-  paging commands write as they go rather than at the end. SIGINT is a
-  first-class stop rather than an abort — a catalog sweep is 83k requests, and
-  what was already written stays valid.
+- `cmd/gpscrape`, a command-line interface that writes newline-delimited JSON.
+  Paging commands write as they go, and Ctrl-C stops a run without discarding
+  what it has written.
 
       gpscrape app com.spotify.music
       gpscrape reviews com.spotify.music -limit 500 | jq -r .text
       gpscrape availability com.spotify.music -countries us,de,jp
       gpscrape catalog ids -shards 0-99 -ids-only > ids.txt
 
-  `gpscrape catalog sweep` maintains a catalog snapshot directory as a batch
-  job rather than a call. Shard filenames carry the id of the generation that
-  produced them, so noticing that nothing has changed costs two requests
-  instead of 83k — and Google does not regenerate daily. Within a generation
-  shards are immutable, which is what makes a sweep resumable: an interrupted
-  run continues from the shards it has not reached, and a 404 mid-sweep means
-  the generation rolled and the run restarts.
-
-  Each completed sweep writes a sorted, deduplicated snapshot, a manifest with
-  the generation id and a checksum, and a delta against the previous snapshot.
-  The delta is the point: "which apps appeared in the store since last time" is
-  a few hundred kilobytes against a snapshot's tens of megabytes.
-
-  The final phase of a sweep -- reading the collected ids, sorting,
-  deduplicating, compressing and diffing -- is where the person who ran a
-  one-shot crawl is actually sitting and watching. Measured at 3.7 million ids
-  it was 3.1s and peaked at 535MB; it is now around 1s and peaks at about half
-  that. Compression is split across cores by concatenating independent gzip
-  members -- legal per RFC 1952 and read as one stream by both stdlib and the
-  system gunzip -- which is 5.4x faster at exactly the same 18.0MB, rather than
-  buying speed by lowering the compression level. Reading the partial file whole and slicing it avoids 3.7 million
-  per-line allocations; the delta streams the previous snapshot instead of
-  loading it; and the sort is an in-place parallel American Flag Sort.
-
-  The sort is worth a note because the obvious answer was wrong. Radix sorting
-  measured *slower* than `slices.Sort` single-threaded on this data (903ms
-  against 845ms) -- package ids share only three or four leading bytes, not
-  enough to repay the bucket setup. What it wins is that its top-level buckets
-  are disjoint ranges of the same array, so they sort concurrently with no
-  merge step: 300ms and **zero allocation**, against 290ms and 178MB for a
-  parallel merge sort.
-
-  Those three figures were measured on the real catalog and none of them can be
-  re-run from this repository: there is no benchmark in `cmd/gpscrape`, and the
-  merge sort they were compared against was never committed. Treat the
-  single-threaded comparison in particular as data-dependent rather than
-  settled -- against synthetic ids of the same shape it comes out 13% the other
-  way. The claim that survives without the numbers is the structural one, and
-  it is the reason for the choice: disjoint buckets parallelise without a merge,
-  and `TestSortStringsDoesNotAllocate` and `TestSortStringsMatchesSlicesSort`
-  hold the implementation to that.
-
-  stdlib-only, and inside the root module, so it ships and versions with the
-  library and does not disturb the zero-dependency invariant.
-- `WithRetry(RetryPolicy)`. Nothing retried before: a caller who wanted to
-  survive a transient 503 wrote the loop themselves, and that loop almost
-  certainly did not re-enter the throttle — which made the *next* failure more
-  likely rather than less. Exponential backoff with full jitter, optional
-  `Retry-After`, and a `Retryable` predicate that by default repeats transport
-  errors, 429 and 5xx but never a 404, because a 404 is an answer.
-
-  Retry sits outside the throttle and inside the caller: every attempt reserves
-  its own slot, so a run of failures spreads out instead of punching through
-  the rate limit exactly when the server is asking for less.
-
-- `WithAdaptiveThrottle(AdaptivePolicy)`, which finds a safe request rate
-  instead of asking the caller to guess one.
-
-  The guess mattered more than it looked. A live measurement against Google
-  found the sitemap CDN accepting **2,880 requests at a sustained 32 rps for 90
-  seconds with no failures and p95 flat at ~100ms**. The 200ms this package
-  used as its example is six times more conservative than that, which turns a
-  catalog sweep into four and a half hours of mostly waiting.
-
-  The details endpoint is a different matter, and finding out how different was
-  worth more than the speedup. A 48-request burst was clean to 12 rps; seven
-  hundred requests over a few minutes were not, costing seven to ten countries
-  of a 177-country sweep to fetch errors and driving the controller back to its
-  ceiling. A sweep that took 16 seconds on a fresh quota took over three
-  minutes on a used one. Both numbers are real; only one of them is a limit.
-
-  Additive increase, multiplicative decrease, driven by what the server says.
-  An explicit 429 or 503 gets the full decrease; an unexplained 5xx or a
-  transport error gets a gentler one, since it is as likely to be a fault as
-  capacity feedback; latency gets the gentlest, and only after a streak.
-
-  That grading is the correction of a mistake. Delay-based control assumes the
-  queue it measures is one the sender created -- LEDBAT is built on exactly
-  that premise -- and a crawler is one of thousands of clients of a large CDN,
-  where an inflated round-trip time is more likely somebody else's traffic, a
-  route change or a cache miss. The first version treated one slow response as
-  congestion and throttled itself from 1.06s to 1.91s against Google with no
-  rejection anywhere in the run.
-
-  `Retry-After` overrides the controller's estimate, but only upwards -- a
-  shorter one must never speed a client up. Bounds are the caller's and `Max`
-  is never exceeded.
-
-  It starts from whatever `WithThrottle` set rather than from `Max`. That was
-  not the first design, and the first design was worse than useless: beginning
-  at the cautious end, it finished a 300-shard run **5x slower** than the fixed
-  interval it was meant to improve on, because climbing back took more clean
-  responses than the run contained. Started from the caller's number instead,
-  the same run takes 19s against 60s -- **3.2x** -- and settles at the floor.
-
-  `gpscrape -adaptive` turns it on for the CLI, where `-throttle` becomes the
-  floor rather than the interval.
-
-- `WithHooks(Hooks)` — `OnRequest`, `OnResponse`, `OnRetry`. Enough to hang
-  OpenTelemetry, a metrics registry or a structured logger off the client
-  without this package depending on any of them.
-
-- `WithLogger(*slog.Logger)` and `LevelTrace`. The client is silent unless
-  given a logger and never writes above Debug: one record per request,
-  response and retry, the throttle wait behind each attempt, and every change
-  the adaptive controller makes to the interval, with the signal that caused
-  it. At `LevelTrace`, one level below Debug, each request also reports its
-  `net/http/httptrace` timings -- DNS, connect, TLS, first byte, and whether
-  the connection was reused -- which is what tells a slow server from a slow
-  network. Bodies and headers are never logged: a details page is a megabyte
-  and a reviews page carries people's names. Attributes are built only after
-  the handler has said it wants the record, so a logger left installed at
-  Info costs one `Enabled` call per request.
-
-  `gpscrape -debug`, or `GPSCRAPE_DEBUG=1` for a script, turns all of it on
-  to stderr; `-log-file` sends it to a file instead. `-trace FILE` keeps a
-  `runtime/trace` flight recording of the run's last minutes in memory and
-  writes it at exit, after SIGINT too, for `go tool trace`. A continuous
-  trace of a four-hour sweep would be a file nothing can open; the recording
-  is bounded at 64MB and holds what happened before the run stopped.
-
-- `Client.ReviewsSeq` and `Client.CatalogSeq`: iterator forms of reviews
-  pagination and the catalog sweep. Both let the caller stop where it actually
-  wants to, which the shapes they replace could not express — a callback
-  cannot end a sweep, and a slice has to be sized in advance.
-
-      for pkg, err := range c.CatalogSeq(ctx, opts) {
-          if err != nil {
-              return err
-          }
-          if seen(pkg) {
-              break
-          }
-      }
-
-  The error slot carries terminal errors only. Per-shard failures still go to
-  `opts.OnShardError` and do not end the sweep; the two kinds are different and
-  collapsing them would lose information.
-- Execution tracing through `runtime/trace`. Operations that issue more than
-  one request open a task and the request path opens regions, so `go tool
-  trace` can show how much of an operation was the client's own throttle rather
-  than Google. The task id travels in the context and so reaches the worker
-  goroutines, which makes every request attributable to the call that caused
-  it. Costs nothing while tracing is off, and adds no dependency.
-- Package documentation. `go doc` and pkg.go.dev previously showed nothing
-  above the symbol index.
-- `Client.CatalogSize` and `gpscrape catalog size` — how many apps the store
-  lists, to a stated error, in ninety seconds rather than four and a half
-  hours: 3,549,110 +/- 35,366 at 95% from 866 of 83,445 shards.
-
-  Nothing cheaper than a full pass is exact, and that is a theorem rather than
-  a limitation: Charikar, Chaudhuri, Motwani and Narasayya (PODS 2000) show any
-  estimator reading r of n rows suffers ratio error at least
-  sqrt((n-r)/2r log(1/d)) on some input. This catalog is the easy corner of
-  that result — an app is listed in exactly one shard, checked over 63,305 ids
-  with zero duplicates — so the Horvitz-Thompson estimator applies and its
-  variance is computable rather than merely bounded.
-
-  The assumption underneath is measured rather than asserted. Shards are
-  hash-partitioned, so per-shard counts should be Poisson and their variance
-  should equal their mean; over 900 shards, variance/mean = 0.938. The result
-  carries that ratio and declines to vouch for an estimate when it drifts.
-
-  There is no `-exact` flag: exactness costs a full pass however it is spelled,
-  and `catalog sweep` already makes that pass and keeps the ids as well.
-- `gpscrape catalog apps` — the app list by genre, read from the genre table
-  with no network at all. `catalog apps -genre 'GAME_*' -ids-only` is the game
-  index; the pipeline is sweep for the ids, `genres` to resolve them, `apps` to
-  read the answer, and only the last step is free.
-- `gpscrape reviews -langs en,ru,de` and `-langs all`, and `ReviewLanguages`,
-  a list of 71 language codes each of which was exercised against the live
-  store.
-
-  Reviews are the one place where the language parameter does not filter but
-  *partitions*: hl selects which corpus is served and the corpora do not
-  overlap. Fifty codes returned 1,991 reviews of which 1,991 were distinct,
-  with no id under two codes. Reading one language reads one slice of an app's
-  reviews; the union is how to read all of them. Every record now carries the
-  corpus it came from, and ids are deduplicated because some codes are aliases
-  — tg and tk are served the Russian corpus verbatim, 30 of 30 identical.
-
-  The country parameter does nothing here, which is worth stating plainly
-  because the opposite is widely assumed. Checked on kz.kaspi.mobile, a bank
-  used almost entirely from Kazakhstan: ru/kz, ru/ru and ru/us return the same
-  reviews id for id, and there is no country anywhere in a review's seventeen
-  fields. Looping over country codes and labelling each review with the country
-  it was "fetched from" — which several published datasets do — invents that
-  column. The ratings histogram *is* per-country and strongly so, which is
-  probably where the belief comes from.
-
-- `Generation` in the library, and `Client.SitemapGeneration` — two requests to
-  learn whether Google has republished the catalog at all. Parsing a shard URL,
-  ordering two builds and reading the build time out of the run id are
-  knowledge about Google's naming, not about how anybody stores snapshots, so
-  `cmd/gpscrape` no longer keeps its own copy of them.
-
-  Ordering compares the run id numerically. It grows without padding, so as
-  text "999999999" sorts after "1787500934" and the newest snapshot silently
-  stops being recognised as newest. `Built` reads the run id as a Unix
-  timestamp — run 1787500934 is 2026-08-23 16:02:14 UTC, matching both the date
-  in the same filename and the shards' `Last-Modified` — and reports failure
-  rather than quietly returning a moment in 1970 when it is not one.
-
-  `GenerationOf` refuses a shard list that spans two builds, which is what a
-  list read during a republish looks like. Sweeping that produces a catalog
-  that existed at no moment.
-
-- `Client.CatalogShardSeq` and `CatalogOptions.ShardURLs`, which make the shard
-  the unit of a sweep rather than the package.
-
-  The unit of *resumability* was always the shard: a sweep is 83,445 requests
-  over hours, and an interrupted one has to restart from the URLs it did not
-  reach, which cannot be worked out from a flat stream of ids. `cmd/gpscrape`
-  had to bypass this package and drive `SitemapShardPackages` itself to get
-  that, and so would any other batch consumer. A failed shard now arrives in
-  the stream carrying its URL, rather than only through a callback, because a
-  caller that means to retry it needs it where the rest of its bookkeeping is.
-
-  `CatalogSeq` is a flattening of it, so there is one sweep engine rather than
-  two. `ShardURLs` skips discovery entirely: an index names a shard only within
-  one generation, so anything resumable records URLs.
-
-- `gpscrape catalog sweep -sample PCT`, which sweeps a fraction of the shards.
-
-  Shards are hash-partitioned — any one has the same mix of apps, books and
-  films, and the same spread of release dates, as any other — so a uniform
-  subset is an unbiased sample of the catalog. That makes "how big is it, what
-  share are games, how many ids are already dead, how fast is it growing"
-  answerable for 834 requests instead of 83,445. Measured: a 0.01% sweep took
-  eight shards and two seconds, and its 350 ids extrapolate to 3.65M against
-  the 3.67M a full sweep finds.
-
-  The seed is recorded in the manifest and derived from the generation when not
-  given, so a re-run samples the same shards and a new build samples afresh. An
-  unreproducible sample cannot be compared with anything, including itself.
-
-  `catalog diff` refuses two snapshots swept at different coverage. They are the
-  same shape — a sorted list of ids — so nothing about the files stops the
-  comparison, and its answer, "99% of the store was removed", is
-  indistinguishable from a real catastrophe.
-
-- `Client.DigestsSeq`, which resolves a few fields for very many apps.
-
-  The details RPC carries a field selector, and trimming it to the genre alone
-  returns 178-243 bytes per app against 15,880 for the whole record — so a
-  genre pass over 3.36M apps moves from 62GB to 0.8GB, and from 6.4 hours to
-  about fourteen minutes at eight workers. Which field carries the genre was
-  found by asking for each of the 49 the app page requests, one at a time.
-
-  It takes an `iter.Seq[string]` rather than a slice: the intended input is the
-  whole catalog, and 3.36M ids is 160MB before any work starts. Fed from a file
-  or a cursor, peak memory is one pack per worker whatever the catalog's size.
-
-  `Listed` is a field rather than an error, because an app the store will not
-  serve is an answer and not a failure. Absence becomes a *removal* only
-  against a previous snapshot, which is the caller's business. A frame that
-  never arrived is an error, though: at a thousand lookups per request,
-  reporting that as absence would announce a thousand deletions at once.
-
-- `gpscrape catalog` became a group of verbs, since keeping a local copy of the
-  store's app list is not one job but several that differ by two orders of
-  magnitude in cost:
+- `gpscrape catalog`, a group of verbs for keeping a local copy of the store's
+  app list:
 
       gpscrape catalog check     2 requests       has Google republished?
       gpscrape catalog new       17 requests      what the store lists as new
@@ -741,607 +308,259 @@ All notable changes to this project are documented here. The format is based on
       gpscrape catalog diff      none             compare two snapshots
       gpscrape catalog ids       as asked         stream ids, keep no state
 
-  `genres` re-reads apps already known, so it finds removals and genre changes
-  within a day for a few minutes' work — about 3,400 requests over a full
-  snapshot, plus roughly 310 per extra `-confirm-gone` storefront; it cannot
-  find an app never heard of. `new` finds those, but reads ranked lists, so an
-  app with no traction never appears. Only `sweep` is complete. `diff` prints
-  how much of what the sweep found the cheap signal had already reported — the
-  recall figure that decides how often the expensive pass has to run, printed
-  unasked because a metric behind a flag is a metric nobody has.
-
-- Three more collections: `CollectionNewFree`, `CollectionNewPaid` and
-  `CollectionMoversShakers`, plus a `gpscrape list` command, which the CLI had
-  no equivalent of at all — top charts were reachable from Go and from nowhere
-  else.
-
-  `NEW_FREE` is the useful one. Across the seventeen `GAME_*` categories it
-  returns 1,230 distinct apps in 17 requests and 14 seconds, of which 99% were
-  published within thirty days and 12% within seven. For anyone tracking what
-  has appeared in the store, that is a signal costing seventeen requests
-  against the 83,445 of a full catalog sweep — though it is ranked, so an app
-  with no traction never enters it. High precision, unmeasured recall.
-
-  The cluster identifiers are undocumented and were found by asking the
-  endpoint: it answers to `topselling_new_free`, `topselling_new_paid` and
-  `movers_shakers`, and returns nothing for `new_free`, `topselling_trending`,
-  `topselling_rising` or `topselling_new_grossing`. A retired name would not
-  error, it would return an empty list, so `TestCanary/Collections` exercises
-  every one of them weekly.
-
-- A snapshot directory takes one writer at a time. Two `catalog sweep` runs
-  against the same `-dir` used to interleave their writes to the resume state,
-  the partial file and the genre table, and nothing said so. `sweep` and
-  `genres` now hold a `sweep.lock` in the directory -- `{"pid","host","started"}`
-  -- for as long as they run; a second run is refused with the holder's pid,
-  host and start time, and a lock left behind by a process that has died on
-  this host is cleared on the next run with a line on stderr. `check`, `new`,
-  `size`, `apps`, `diff` and `ids` do not take it; `new` only appends to its
-  own signal log.
-
-- A second Ctrl-C exits at once. The first cancels the run and lets it unwind,
-  which is what keeps everything already written valid; a run that is stuck is
-  exactly when a person presses it again, and that used to be absorbed. The
-  second prints `gpscrape: interrupted again, exiting now`, exits 130 without
-  unwinding, and deliberately leaves `sweep.lock` behind for the next run to
-  clear.
+  `genres` costs about 3,400 requests over a full snapshot, plus roughly 310
+  per extra `-confirm-gone` storefront, and finds removals and genre changes
+  but not unknown apps. `new` reads ranked lists, so it misses apps with no
+  traction; only `sweep` is complete. `diff` prints how much of the sweep the
+  cheap signal had already reported.
+- `catalog sweep` maintains a snapshot directory. It skips the sweep when the
+  generation has not changed (two requests), resumes an interrupted run from
+  the shards it has not reached, and restarts if the generation rolls
+  mid-sweep. Each completed sweep writes a sorted, deduplicated snapshot, a
+  manifest with the generation id and a checksum, and a delta against the
+  previous snapshot.
+- `catalog sweep -sample PCT` sweeps a uniform fraction of the shards, an
+  unbiased sample of the catalog (a 0.01% sweep: eight shards, two seconds).
+  The seed is recorded in the manifest and derived from the generation by
+  default, so a rerun samples the same shards. `catalog diff` refuses two
+  snapshots swept at different coverage.
+- `Client.CatalogSize` and `gpscrape catalog size`: the app count to a stated
+  error in about ninety seconds (3,549,110 +/- 35,366 at 95% from 866 of 83,445
+  shards). The result carries the variance/mean check behind the interval and
+  declines to vouch for an estimate when it drifts. An exact count needs
+  `catalog sweep`.
+- `gpscrape catalog apps`: the app list by genre from the genre table, offline;
+  `catalog apps -genre 'GAME_*' -ids-only` is the game index.
+- A snapshot directory takes one writer at a time: `sweep` and `genres` hold
+  `sweep.lock` (`{"pid","host","started"}`), a second run is refused with the
+  holder's pid, host and start time, and a lock left by a dead process on this
+  host is cleared on the next run. Other catalog verbs take no lock.
+- A second Ctrl-C exits at once with status 130, printing
+  `gpscrape: interrupted again, exiting now`, and leaves `sweep.lock` for the
+  next run to clear.
+- `AppsMany`, `PermissionsMany` and `SuggestMany` pack up to 32 lookups into one
+  request. The throttle meters requests, so 32 apps take 146ms instead of 9.76s,
+  at about 20KB per app instead of a megabyte of markup. Results are returned
+  in the caller's order whatever order Google answers in. `App` remains the
+  reference for a single app. `gpscrape permissions` takes several app ids.
+- `WithRetry(RetryPolicy)`: exponential backoff with full jitter, optional
+  `Retry-After`, and a `Retryable` predicate that by default retries transport
+  errors, 429 and 5xx but never 404. Every attempt goes back through the
+  throttle.
+- `WithAdaptiveThrottle(AdaptivePolicy)` finds a safe request rate: additive
+  increase, multiplicative decrease, with the full decrease for 429/503, a
+  gentler one for other 5xx and transport errors, and the gentlest for latency
+  after a streak. It starts from the `WithThrottle` interval, never exceeds
+  `Max`, and lets `Retry-After` only slow it down. `gpscrape -adaptive` turns
+  it on, with `-throttle` as the floor.
+- `WithHooks(Hooks)` (`OnRequest`, `OnResponse`, `OnRetry`), for metrics or
+  tracing without a dependency.
+- `WithLogger(*slog.Logger)` and `LevelTrace`. The client is silent by default
+  and logs at Debug at most: requests, responses, retries, throttle waits and
+  adaptive interval changes; `LevelTrace` adds `httptrace` timings. Bodies and
+  headers are never logged. `gpscrape -debug` (or `GPSCRAPE_DEBUG=1`) logs to
+  stderr, `-log-file` to a file, and `-trace FILE` writes a bounded (64MB)
+  flight recording of the run's last minutes at exit, for `go tool trace`.
+- `runtime/trace` tasks and regions, so `go tool trace` attributes each request
+  to its call and separates throttle time from Google's. Free while tracing is
+  off.
+- `Client.ReviewsSeq` and `Client.CatalogSeq`, iterators that let a caller stop
+  early. The error slot carries terminal errors only; per-shard failures still
+  go to `opts.OnShardError`.
+- `Client.CatalogShardSeq` and `CatalogOptions.ShardURLs`: a sweep with the shard
+  as its unit, so a caller can resume from the URLs it did not reach. A failed
+  shard arrives in the stream with its URL.
+- `Client.DigestsSeq` resolves a few fields (genre, and whether the app is
+  `Listed`) for very many apps, a thousand per request at 178 to 243 bytes per
+  app; it takes an `iter.Seq[string]`, so memory stays flat. A frame that never
+  arrived is an error, not an absence.
+- `Generation` and `Client.SitemapGeneration`: whether Google has republished
+  the catalog, in two requests. Builds order numerically, `Built` reads the
+  build time from the run id, and `GenerationOf` refuses a shard list that
+  spans two builds.
+- `gpscrape reviews -langs en,ru,de` and `-langs all`, and `ReviewLanguages`
+  (71 codes). Each language serves its own review corpus and the corpora do not
+  overlap, so reading all reviews means reading every language; records carry
+  their corpus and ids are deduplicated across aliases. The country parameter
+  does not affect reviews.
+- `CollectionNewFree`, `CollectionNewPaid` and `CollectionMoversShakers`, and a
+  `gpscrape list` command for collections. `NEW_FREE` across the seventeen
+  `GAME_*` categories returns about 1,230 apps in 17 requests, 99% published
+  within thirty days.
+- Package documentation for `go doc` and pkg.go.dev.
 
 ### Changed
 
-- Page parsing is **7 to 36 times faster** and allocates 51–96% less.
-
-  Two parsers were pathologically slow rather than inherently expensive. The
-  script-block extractor was a regular expression with two lazy quantifiers
-  backtracking across a megabyte of HTML, and it copied the page into a string
-  to feed it and each payload back out again. The sitemap shard parser built a
-  document tree of ~400 entries to read the one field in eight that is an app.
-  Both are substring scans now.
-
-  | | before | after | | allocated |
-  | --- | ---: | ---: | ---: | ---: |
-  | app details page | 9.72 ms | 0.27 ms | 36x | -96% |
-  | search page | 20.89 ms | 2.86 ms | 7.3x | -58% |
-  | top charts page | 56.11 ms | 6.92 ms | 8.1x | -51% |
-  | sitemap shard | 0.60 ms | 0.048 ms | 12.6x | -90% |
-
-  Both columns are reproducible from the repository, which the first published
-  version of this table was not: `BenchmarkOracle*` in `bench_test.go` runs the
-  replaced implementations -- the regex and the XML document tree kept as fuzz
-  oracles -- against the same fixtures as the current ones.
-
-      go test -run '^$' -bench 'Oracle|ParseAppPage|ParseSearchPage|ParseListPage|SitemapShard' -benchtime 300x .
-
-  That matters because the earlier numbers were not reproducible and one of
-  them had silently stopped being true: the top charts row read 3.69 ms, which
-  was correct for a fixture regenerated in this same release. Against the page
-  that actually ships, 53% larger, it is 6.92 ms.
-
-  This does not make much difference to wall-clock time, and saying so is more
-  useful than the multipliers: the library is network-bound at every step, and
-  parsing was 5% of the time spent fetching one page and 0.3% of a catalog
-  sweep. What it does buy is the memory, the garbage collector, and the
-  removal of a backtracking failure mode that a page of unusual shape could
-  have made far worse than the fixtures suggest.
-
-  Locating a block and decoding it are now separate, so a caller that wants one
-  `ds:N` no longer builds trees for the other twelve. That is 4.8x faster and
-  allocates 7.6x less on the path an `Availability` sweep repeats once per
-  country: over the default 177 countries, 228ms of parsing becomes 47ms and
-  107MB of garbage becomes 14MB.
-
-  `App` was moved onto it too, and should have been from the start. It reads
-  `ds:5` and nothing else -- `extractAppData` touches no other key -- yet
-  `parseAppPage` decoded all thirteen blocks and threw twelve away, on the
-  highest-volume operation in the library. Fixing that is the 36x row in the
-  table above; on its own, separately from the scanner, it is 4.7x faster and
-  allocates 6.7x less. `TestParseAppPageNeedsOnlyDS5` pins the results as
-  identical so the shortcut cannot silently start dropping a field.
-
-  `Search` genuinely needs every block, and the cluster walkers iterate them by
-  design.
-
-  Both replacements are held against the implementations they replaced by
-  differential fuzz tests. That is not ceremony: the fuzzer found a real
-  divergence within a minute -- the scanner accepted any quoted key where the
-  expression required `ds:N`, so a malformed page would have produced a block
-  under an empty key.
-
-- Minimum Go version is 1.25 (was 1.24). Upstream supports the two most recent
-  releases; `GOTOOLCHAIN=auto`, the default, fetches a newer toolchain
-  automatically, so only `GOTOOLCHAIN=local` builds are affected.
-- `ReviewsComprehensive` streams each rating instead of collecting it, since
-  the cross-rating de-dup discards most of what each returns anyway.
-- Modernised with the `go fix` modernizers under the Go 1.27 toolchain: mostly
-  `interface{}` to `any` across the payload parsers, plus `strings.SplitSeq`
-  in loops that never needed the intermediate slice.
-
-- The sitemap index parser was the last one still building a document tree.
-  An index is 6MB of XML holding 50,000 `<loc>` entries and nothing else worth
-  reading, so unmarshalling it allocated **94MB to produce 7.2MB of strings**,
-  paid before a sweep fetches its first shard — 81% of the total cost of a
-  ten-shard sampled run. It is a substring scan now, the same shape as the
-  shard parser, and held against the tree it replaced by
-  `FuzzIndexScanMatchesXML`: 35MB, and 1.6 million fuzz executions with no
-  divergence.
-
-- Sitemap shards are scanned as a stream instead of being decompressed into a
-  buffer first. A shard decompresses to about 7.5MB, of which the `<loc>`
-  elements are 0.6%: 46KB of URLs wrapped in hreflang alternates, roughly 43
-  apps among 400 locs. Reading it as a stream took allocation from 15.34MB to
-  0.73MB per shard, measured live, at identical wall time — decompression
-  dominates and is unchanged. Over a full sweep that is 60GB of garbage
-  against 1250GB.
-
-  It is held against the buffered scan it replaced by differential fuzzing
-  over 2.4 million executions, by readers that hand out one byte at a time so
-  every marker is split across a read, and live on 20 real gzipped shards with
-  byte-identical id lists.
-
-- `gpscrape` buffers its NDJSON output when writing to a pipe or a file.
-  `json.Encoder` issues one `Write` per value, so writing straight to stdout
-  cost a syscall per record: measured over 100,000 records, 74ms against 12ms
-  buffered, and a catalog sweep emits 3.7 million of them.
-
-  Terminals stay unbuffered. What makes the paging commands watchable is a line
-  appearing when it is produced, and a 64KB buffer would hold thousands back; a
-  pipe has no such expectation and wants the throughput.
-
-- Review parsing builds each review's URL by concatenation instead of
-  `fmt.Sprintf`. One call per review, and at a thousand reviews a page the
-  formatter was 262k allocations in the profile for a string whose shape never
-  varies. Worth 2.4% of the parse's allocations and 1.6% of its time -- small,
-  but free.
-
-  Two larger ideas were profiled and rejected. Decoding through a
-  `json.Decoder` to skip `Unmarshal`'s separate validation pass -- 25% of parse
-  CPU -- makes it *worse*: the reader's buffering took allocated bytes from
-  6.9MB to 10.3MB. And Go 1.27's json v2, re-tested here on a payload six times
-  larger than the benchmark that prompted the earlier retraction, is 0.4%
-  different with allocation counts identical to the unit (82,511 either way).
-  The retraction stands.
-
-  What remains is inherent: half the allocations are `arrayInterface`, the cost
-  of decoding Google's positional arrays into `any` trees. A month of one app's
-  reviews spends 93ms parsing against 4s of network.
-
-- Review pagination asks for 1000 per request instead of 150. The 150 carried
-  the comment "Google Play limit per request" and was not one: asked for 200,
-  300, 500, 1000, 2000 and 3000, the endpoint returns exactly that many.
-
-  It cost a request every 150 reviews, and the operation is throttle-bound --
-  a month of one busy app's reviews is 5,785 of them, which was **39 requests
-  and 19.3s, and is now 6 requests and 4.3s**. Compared by id across both runs:
-  nothing missing in either direction, and no shared review differing by a
-  character.
-
-  Not set higher because of how it fails. 3000 works; 5000 and 10000 come back
-  as a null payload, which is also Google's "no more reviews" signal -- so
-  overshooting does not error, it silently truncates the sweep. 1000 keeps a
-  third of the last size known to work. `Reviews`, where the page size is
-  visible to the caller in the slice they get back, still defaults to 150.
-
-- `Availability` reads the RPC the details page is built from instead of the
-  page. A sweep is still one request per country -- the country is a query
-  parameter so it cannot be batched, and nothing in the payload enumerates
-  countries -- so **this does not make it faster**, and saying so is the point:
-  under a throttle the wall clock is `countries x interval` and no amount of
-  concurrency or lighter requests moves it. Measured over 24 countries at
-  300ms, 7.07s became 6.98s.
-
-  What changes is weight. Over 20 countries, 25.6MB of markup becomes 400KB,
-  so the default 177-country sweep drops from about 227MB to 3.5MB. Round-trip
-  time roughly halves (162ms to 101ms), which shows up only when the throttle
-  is not the binding constraint -- at one worker the same sweep is 1.5x faster,
-  at four it is identical.
-
-  The three outcomes map exactly onto what the page returned, verified live on
-  each, including an embargoed country (`kp`), where page and RPC agree on
-  `StatusNotFound`. `TestCanary/AvailabilityClasses` holds that mapping, since
-  a collapse of two signals into one would silently reclassify every unknown
-  app rather than fail.
-
-- `genres.tsv` is cumulative: "everything ever resolved, minus what was seen to
-  disappear", not "what the last run resolved". The merge is what stops a
-  transient error deleting an app, and it means an id that falls out of the
-  sitemap without ever being observed as gone keeps its row until `-prune`
-  removes it — that is the removal path, and it is not automatic. To spot the
-  drift between runs that did not prune, compare `wc -l genres.tsv` against
-  `ids` in the manifest.
-
-- `Availability.Status` marshals as its name. `gpscrape availability` wrote
-  `"statuses":{"cn":2,"de":1}`, which asks the reader to know the order of a
-  const block; it now writes `{"cn":"not_in_region","de":"available"}`, the
-  words `String()` has always returned — `available`, `not_in_region`,
-  `not_found`, `error`, `unknown`. A record written with the numbers still
-  reads back: `UnmarshalJSON` accepts both spellings.
-
-- `catalog sweep -check` is removed in favour of `catalog check`. It was a
-  second surface over the same question with a poorer answer — three requests
-  instead of two, and no `built`, `ageHours` or `shards` — which is the
-  argument that already removed `sync`. The flag now fails with a message
-  naming `gpscrape catalog check`.
-
-- `catalog sweep` with nothing to do emits the manifest of the snapshot that is
-  already current, instead of exit 0 and an empty stdout. A sweep exiting 0
-  now always means exactly one manifest record describing the snapshot on
-  disk; `completedAt` tells "swept just now" from "already had it".
-
+- **Breaking:** `Availability.Status` marshals as its name (`available`,
+  `not_in_region`, `not_found`, `error`, `unknown`) instead of a number, so
+  `gpscrape availability` writes `{"cn":"not_in_region"}`. `UnmarshalJSON`
+  still reads the numbers.
+- **Breaking:** `catalog sweep -check` is removed in favour of `catalog check`;
+  the flag fails with a message naming it.
+- Minimum Go version is 1.25 (was 1.24); only `GOTOOLCHAIN=local` builds are
+  affected.
+- Page parsing is 7 to 36 times faster and allocates 51 to 96% less (app page
+  9.72 to 0.27 ms, search 20.89 to 2.86 ms, charts 56.11 to 6.92 ms, sitemap
+  shard 0.60 to 0.048 ms). Wall-clock gains are small because the library is
+  network-bound; the gain is memory and GC load. `App` decodes only `ds:5`.
+- Catalog sweeps use far less memory: the sitemap index is scanned instead of
+  unmarshalled (94MB of allocation down to the 7.2MB of strings it holds), and
+  shards stream instead of being buffered (15.34MB to 0.73MB per shard). The
+  final phase of a sweep at 3.7 million ids runs in about 1s instead of 3.1s at
+  half the peak memory.
+- Review pagination asks for 1000 reviews per request instead of 150: a busy
+  app's month of reviews takes 6 requests and 4.3s instead of 39 and 19.3s.
+  `Reviews` still defaults to 150.
+- `Availability` reads the details RPC instead of the page and asks for the one
+  field it needs: a 177-country sweep moves about 3.5MB instead of 227MB.
+  It is not faster under a throttle, which stays one request per country.
 - `AppsMany`, `PermissionsMany` and `SuggestMany` send their packs over
-  `WithConcurrency` workers instead of one after another. Results stay
-  positional and a failed pack still costs only its own items; under a fixed
-  throttle this changes little, and for a hundred thousand ids it stops one
-  request's latency from setting the floor.
-
-- `ReviewLanguages` is a function returning a copy, not an exported slice. It
-  was added in this release, so nothing published depends on the variable, and
-  a caller can no longer corrupt the list for the whole process.
-
-- An availability probe asks the details RPC for the one field it reads
-  instead of all forty-nine. Measured live: 268 bytes per app in place of
-  about 20KB, with the same answer for an available app, one not offered in a
-  country, and one that does not exist. The one-field response is a
-  positional array of nulls with the field in place, which is not how the
-  digest's one-field request comes back (a map keyed by field number); both
-  readers go through the same decoder, which knows both shapes.
+  `WithConcurrency` workers.
+- `gpscrape` buffers NDJSON output to a pipe or file; terminals stay
+  unbuffered so lines appear as they are produced.
+- `catalog sweep` with nothing to do prints the current snapshot's manifest
+  instead of nothing; `completedAt` tells a fresh sweep from an existing one.
+- `genres.tsv` is cumulative: an id that leaves the sitemap without being seen
+  gone keeps its row until `-prune`. Compare `wc -l genres.tsv` with `ids` in
+  the manifest to spot drift.
+- `ReviewsComprehensive` streams each rating instead of collecting it.
+- `ReviewLanguages` is a function returning a copy, not an exported slice.
 
 ### Deprecated
 
-Both of these will be **removed in v2**. They keep working for the whole of the
-v1 line; nothing breaks until you change the import path, and that is a
-deliberate act rather than something `go get -u` does to you.
+Both will be removed in v2 and keep working throughout v1; `go fix` does not
+migrate them.
 
-- `Client.ReviewsAll` in favour of `Client.ReviewsSeq`. It buffers the whole
-  run before returning anything, and stops at 500 by default — a ceiling the
-  caller can neither see nor raise except by guessing a larger number.
-- `Client.EnumerateCatalog` in favour of `Client.CatalogSeq`. A full sweep is
-  83k requests, so being unable to walk away early is not a small thing.
-
-  Neither is automated by `go fix`: that requires the old API to be expressible
-  as a single call to the new one, and both migrations turn a result into a
-  loop. Both remain and keep working.
+- `Client.ReviewsAll`, in favour of `Client.ReviewsSeq`. It buffers the whole run
+  and stops at 500 by default.
+- `Client.EnumerateCatalog`, in favour of `Client.CatalogSeq`, which can stop
+  early.
 
 ### Removed
 
-- `PermissionsOptions.Short`. Documented as "return only permission names"
-  since 1.0.0, threaded through to the parser and never read — a promise with
-  no implementation. The return type is `[]Permission`, so the only thing it
-  could have meant is the same slice with `Type` blanked, which is one line for
-  a caller to write. Deleted rather than implemented.
+- **Breaking:** `PermissionsOptions.Short`. It was never implemented.
 
 ### Fixed
 
-- The legacy HTML listing path answered any collection it did not recognise
-  with the top-free chart and a nil error. The page lays out the three original
-  charts in a fixed order and says nothing about the others, and the section
-  was chosen by a switch with an implicit default — so a collection outside
-  those three read section 0. `List` falls back to that path whenever the RPC
-  errors *or returns nothing*, so a single transient failure on "what is new"
-  returned the most popular apps, labelled as new releases, with no error.
-
-  That is the worst shape a failure can take for a caller tracking new
-  releases: it looks like data. The path now refuses a collection it cannot
-  locate, before spending the request, and `TestCanary/Collections` asserts
-  that distinct collections return distinct lists rather than merely non-empty
-  ones — a check that would have caught this.
-
-- A sampled snapshot was treated as the generation it sampled. Four separate
-  places ask "do we already have this build?" and only `catalog diff` consulted
-  the manifest, so after a `catalog sweep -sample 0.001` the full sweep never
-  ran and nothing said so, `catalog check` reported `upToDate: true`, and
-  `catalog genres` rewrote its table from the sample. `manifest.complete()` now
-  exists and every reader of a snapshot directory asks it, including
-  `catalog apps`; a test walks them rather than naming the ones that existed
-  when it was written.
-- Resuming a sweep onto a different sample panicked. The resume state was keyed
-  to the generation alone, but a shard list is a function of the generation and
-  the sampling together: an interrupted run followed by a narrower `-sample`
-  sized the pending slice `len(shards)-len(finished)`, which went negative.
-  When it did not panic it produced a manifest claiming a coverage its snapshot
-  did not have. The state now carries the sampling and refuses a mismatch,
-  which makes the existing clean-restart path do the right thing.
-- `catalog ids 0-9` swept all 83,445 shards. The argument parsed cleanly and
-  was discarded, leaving `-shards` empty — four hours instead of ten shards.
-  Every catalog verb that takes no positional arguments now refuses them.
-- `catalog check` defaulted `-dir` to `""` while every sibling defaults to
-  `catalog`, so it answered `upToDate: false` unconditionally and a consumer
-  following the usage text ran 83,445 requests a day instead of one per
-  generation.
-- `catalog genres` rebuilt its table from what one run saw, so a transient 503
-  dropped an app from it and `-ids` over a subset shrank it to that subset;
-  either way the app returned as `first_seen` — a change that did not happen.
-- `reviews -langs ALL` scraped one nonexistent corpus instead of seventy-one.
-  The keyword was matched before the normalisation every real language code
-  goes through, so it was sent as `hl=all`: one record, exit 0, no warning.
-- `-throttle` did not apply between languages. The client was rebuilt on every
-  call and throttle state lives in the client, so each language's first request
-  fired immediately and `-langs all` was 71 requests back to back at any
-  throttle setting. One client per run now.
-- `reviews -score 6` returned unfiltered data under a flag that said it was
-  filtered. Out-of-range ratings are refused.
-- `-sample 100` wrote a manifest saying the catalog held no apps: the sampler
-  declines to sample everything and returned an empty shard list, which the
-  sweep took as its work. 100 now means the whole catalog, as 0 always has;
-  anything else outside (0,100] is refused, and a sweep that collected nothing
-  no longer publishes a manifest at all.
-- `-shards " "` and `-shards ","` swept all 83,445 shards. Every part parsed to
-  nothing, the result was an empty slice, and an empty slice means "every
-  shard". A `-shards` that names none is now an error. Ranges are bounded, so
-  `-shards 0-9999999999` is refused rather than allocating its way to an OOM,
-  and repeats are collapsed — `-shards 3,3,3` fetched shard 3 three times.
-- `catalog apps -genre game_puzzle` and `catalog new -categories NOT_A_CATEGORY`
-  produced empty output and exit 0, which a pipeline cannot tell from "there
-  are none". Both are validated now, as `-collection` already was.
-- `catalog diff` guarded on the filename rather than the manifest, so a sampled
-  snapshot renamed to a well-formed generation id read as a complete one and
-  diffed against a real sweep reported the whole catalog as removed.
-- `catalog size -precision NaN` passed the range check — NaN fails every
-  comparison — and returned a real-looking measurement against a target nobody
-  could name.
-- `catalog genres` published an empty table and exited 0 when every lookup
-  failed. Found by running the game-index pipeline end to end while rate
-  limited: all 1,740 lookups errored, the summary still read "1740 apps", and
-  the table was overwritten with nothing. A run in which nothing resolved is
-  refused, and one in which some lookups failed says how many.
-- `gpscrape sync`, which pre-release builds offered as a second name for
-  `catalog sweep`, does not ship. It was not an alias, it was the same function
-  under two names -- `catalog sweep -h` printed `Usage of sync:` -- so the group
-  had two surfaces and one implementation. No released version ever had it.
-- `catalog sweep` printed nothing to stdout. The flagship command was the only
-  one with no machine-readable answer: a consumer had to parse stderr or go
-  reading files out of a directory whose layout this tool asks nobody to
-  depend on. It now emits its manifest as one NDJSON record.
-- `catalog ids` emitted bare ids while the tool documents newline-delimited
-  JSON, so `gpscrape catalog ids | jq .` failed. It emits records now, with
-  `-ids-only` for the bare form, matching `catalog apps`. Asking for shards
-  that do not exist is an error rather than an empty stream at exit 0.
-- `catalog genres -prune` drops rows for ids the snapshot no longer lists.
-  The merge that stops a transient error deleting an app also meant nothing
-  ever removed a row for an app that left the sitemap without being seen to
-  go, so the table grew monotonically away from the catalog it describes.
-  Refused with `-ids`: a list you chose cannot tell you what is gone.
-- `signalStats.precision` divided matches from one generation window by every
-  id the signal log had ever held, so it fell as the log aged whatever the
-  signal was doing -- a ratio with its two halves measured over different
-  periods. Each record already carried the time it was seen; the window now
-  uses it.
-- `catalog diff` reported that ids had changed without saying which. A summary
-  is not something a database can act on, and keeping a local copy current is
-  the whole point of the verb; the ids existed in `delta-<generation>.json` but
-  reaching them meant computing a filename inside a directory whose layout this
-  tool calls its own business. `-changes` emits one record per changed id.
-- `catalog genres` called an app gone when one storefront could not see it.
-  "Not listed in the country this run used" is not "removed from the store":
-  probing 200 ids the pipeline had classified as dead found two alive
-  elsewhere -- one listed only in Russia, and one listed in Brazil, Germany,
-  India, Japan, Kazakhstan, Russia and Turkey, every market checked except the
-  United States it had been run from. Across 316,400 apparently dead ids that
-  is thousands of live listings buried.
-
-  Apparent removals are now re-asked in other storefronts before being
-  believed, and an app that answers anywhere keeps its genre from wherever it
-  answered. `-confirm-gone` names the storefronts and can be emptied to trust
-  `-country` alone. It costs only the ids that came back absent, and the
-  digest packs a thousand per request: about 310 requests per extra storefront
-  against the 3,400 the main pass costs.
-
-  A `gone` record now names the storefronts that answered, so the claim
-  carries its own scope rather than implying the whole store.
-- `catalog genres` held two copies of the genre table. It cloned the table so
-  a failed lookup would leave the old value in place -- correct, and at catalog
-  scale two maps of 3.2M entries live at once, measured at 766MB resident for
-  the command that runs daily. A delta says the same thing in the space the
-  changes take, which on an ordinary day is a few thousand entries: 609MB. The
-  remaining 307MB is the table itself, which this design needs in order to
-  name a change; walking the sorted snapshot and the sorted table together
-  would remove it, and is left for after the release.
-- `catalog apps` held the whole genre table in memory to filter it. Measured on
-  the real catalog: 422MB resident to turn a 115MB table into 9MB of ids, and
-  the table only grows. It now streams the file and keeps only what matches --
-  347,340 rows instead of 3,209,964, and 83MB instead of 422MB, with output
-  byte-identical to the old path.
-- Nothing ever deleted resume state from a generation that had rolled. A done
-  log names shard URLs, and republishing replaces every one of them, so the
-  files could never be read again -- but only the current generation's were
-  cleaned, so an interrupted sweep left about 99MB behind on every roll, on
-  the order of 9GB a year. A sweep now removes them and says how much it
-  freed. Snapshots are the caller's data and go only when asked: `-keep N`
-  keeps the newest N and deletes older ones.
-- `catalog apps` refused a sampled table with no way to say "I know". Reading a
-  sample as a sample is how the share of the catalog that is games was
-  measured, and the guard had made it impossible; `-allow-sample` does it, and
-  reports the coverage on every run.
-- `catalog size` used 1.96 as its multiplier whatever the sample size, so a
-  small `-pilot` reported an interval far narrower than the truth: at `-pilot 2`
-  it claimed 4.2% where the correct figure is 27%. Student's t is used below
-  thirty degrees of freedom. The command also now reports whether it met the
-  precision it was asked for; missing is an ordinary outcome, because the
-  sample size is solved from the pilot's spread and the pilot's spread is
-  itself an estimate.
-- `FullDetail` fetched one HTML page per result. `Search`, `List`, `Similar`
-  and `Developer` all enrich through the same path, and all four were an N+1:
-  a listing of 32 cost 33 requests and about thirty megabytes of markup, and
-  `List` accepts `Num` up to 660. Enrichment now goes through the batched RPC
-  the details page is itself built from.
-
-  Measured against the live store at a 300ms throttle, a 32-result listing with
-  `FullDetail` went from **9.73s over 33 requests to 0.44s over 2**. This was
-  the batching work of this release not being applied to its largest caller.
-
-  `WithConcurrency` no longer affects enrichment: the work is two requests, and
-  under a fixed throttle concurrency cannot make requests start faster anyway.
-
-- A missing app reported success from `Permissions` and `PermissionsMany`: an
-  empty payload returned `(nil, nil)`, so a caller auditing a list of ids could
-  not tell "this app declares no permissions" from "this app does not exist" —
-  and an app legitimately can declare none. It is an error now, matching the
-  sibling parser for app details, which always treated it as one.
-
-- `AppsMany`, `PermissionsMany` and `SuggestMany` sent an empty id or term to
-  Google instead of rejecting it, spending an RPC slot to get back an error
-  naming nothing. The singular forms had always validated up front.
-
-- A cancelled context produced different errors for the same action depending
-  on when the cancellation landed — `context.Canceled` if it arrived during a
-  retry backoff, `unexpected status: NNN` if it arrived during the request.
-  Both causes are wrapped now, so `errors.Is` finds the cancellation and the
-  last status stays reachable.
-
-- `gpscrape permissions` changed its JSON shape with the number of arguments:
-  bare permission objects for one app, per-app records for several. A pipeline
-  written against one id silently produced nulls the day someone passed two.
-  It is one record per app now, matching `gpscrape app`.
-
-- `catalog sweep -check` created the snapshot directory as a side effect of
-  asking a question, and printed a sentence to stdout while its sibling branch
-  printed to stderr. That was fixed, and then the flag was removed altogether:
-  it duplicated `catalog check` with a poorer record and one more request (see
-  Changed).
-
-- The `lightfeed` and `apidoc` submodules could not be resolved from outside
-  this repository at all — both required the root module at a version that was
-  never tagged, and papered over it with a `replace`, which is ignored outside
-  the module that declares it. A CI job now resolves all three from the proxy
-  the way a consumer does.
-- The catalog crawler ignored both `Flush` and `Close` on its output file, so
-  a full disk at the end of an hours-long sweep would have produced a silently
-  truncated result indistinguishable from a smaller catalog.
-- `parseTimestamp` discarded the error from parsing the sub-second part.
-- Three parser tests contained an `if err != nil` whose body was only a
-  comment: they counted toward coverage while asserting nothing.
-
-- `DigestsSeq` hung a caller that stopped early. The producer's only escape
-  from a full output buffer was the context, and the iterator never derived a
-  cancellable one, so a `break` parked the consumer, the workers and the
-  producer permanently — reachable from `catalog genres` on any emit error.
-  The iterator now cancels its own context before waiting for its workers, the
-  way `CatalogShardSeq` already did.
-
-- A `batchexecute` frame that never arrived was read as an answer.
-  `Availability` turned it into `StatusNotFound`, and since `GloballyRemoved`
-  is "not found everywhere", dropped frames could report a live app delisted;
-  `Suggest` and `SuggestMany` reported it as "no suggestions", and
-  `Permissions` described it as the app's own empty answer. All of them now go
-  through the frame-aware path `DigestsSeq` already used: a missing frame is
-  an error (`StatusFetchError`, and the country lands in `Result.Errors`), and
-  only a frame that arrived empty is ever interpreted as data.
-
-- `WithAdaptiveThrottle` promised that `Max` is never exceeded "regardless of
-  option order" and did not enforce it at construction: `WithThrottle(5s)`
-  after a policy with `Max: 2s` started at 5s, and a `Start` outside
-  `[Min, Max]` was never clamped. Both are clamped once in `NewClient`, after
-  every option has run, so the bounds hold from the first request rather than
-  from the first adjustment.
-
-- `ReviewsAll` fetched a 1000-review page to return ten. It delegates to
-  `ReviewsSeq`, which asks for the largest page there is because for it a
-  page is purely a request count; `ReviewsAll` has a ceiling and now pages at
-  `min(Count, 1000)`, so `Count: 10` is one small request rather than a
-  megabyte of transfer.
-
-- `ReviewsComprehensive` could only return a nil error: five failed rating
-  passes gave an empty slice and no explanation. A partial result is still
-  success — four ratings out of five is a useful answer — but nothing
-  collected and every pass failed now returns the last error.
-
-- `List` returned `(nil, nil)` for `NEW_FREE`, `NEW_PAID` and `MOVERS_SHAKERS`
-  when the batch path came back empty and the HTML fallback refused the
-  collection, which it has no section for. The refusal is returned as the
-  error it is; the one remaining empty-and-nil outcome is a genuinely empty
-  collection.
-
-- `WithTimeout` set `Timeout` on the `*http.Client` a caller passed in through
-  `WithHTTPClient`, changing every other request that program makes with it.
-  The client is shallow-copied first; `Transport`, `Jar` and `CheckRedirect`
-  are still shared, as they are meant to be.
-
-- A `-sample` sweep after a complete one wrote a delta calling every id outside
-  the sample removed — 3,260 of 5,000 in the repro, about 3.5M in production.
-  The delta was gated on the generation id alone; it now applies the two
-  refusals `catalog diff` already makes (different coverage, or either side a
-  sample) and says on stderr why no delta was written. A `delta-*.json` now
-  exists only between two complete snapshots of two different generations.
-
-- `catalog genres` treated a failed request in the confirm pass as proof of
-  removal. An id whose lookup errored in every extra storefront was reported
-  `"change":"gone"` and its row deleted — a live app struck from the table on
-  the strength of a 503. Such an id is now `"change":"error"`, keeps its row,
-  and counts toward the guard that refuses a run in which nothing resolved. A
-  genuine `gone` record's `country` lists the primary storefront once and then
-  only the storefronts that answered; it used to list `-country` twice and
-  storefronts that never replied.
-
-- `catalog new` exited 0 with an empty stdout when every category failed,
-  indistinguishable from "the store published nothing new". One failed
-  category is an ordinary day; all of them is a run that observed nothing,
-  and it now exits 1 naming the count and the last error.
-
-- `-keep` never deleted a delta. The sweep writes `delta-<from>-to-<to>.json`
-  and the pruner looked for `delta-<generation>.json`, a name that has never
-  existed, so snapshots and manifests went and every delta stayed for good;
-  the test fixture had been written to the pruner's spelling and agreed with
-  it. One name builder serves both, and the pruner removes every delta that
-  names the generation at either end.
-
-- The snapshot was the one file written without tmp + fsync + rename, and the
-  manifest carrying its sha256 was written after it. A crash between the two
-  left a manifest describing hours of work as a file that might be truncated.
-  Both snapshot writers now go through the durable tail the manifest already
-  used; the bytes and the hash are unchanged for a given id list. The genre
-  table's writer, which had the rename, no longer leaves a `.tmp` behind on
-  failure and syncs the directory too.
-
-- A write failure inside a sweep was logged per shard and the sweep carried
-  on. `bufio` errors are sticky, so after the disk filled every remaining
-  shard — up to 83,000 requests — was fetched, parsed and thrown away, and
-  the run reported the error hours later at the final flush. The first write
-  failure now cancels the sweep; it exits 1 naming the file, keeps its done
-  log, and is not mistaken for an interrupt.
-
-- `-sample 0` means the whole catalog, as the flag's help has always said, but
-  the range error said "above 0 and at most 100" and this changelog said
-  `(0,100]`. The error now says `0` or `(0,100]`, and a `-sample 0` typed on
-  purpose is announced on stderr as sweeping every shard, because to at least
-  one reader it looked like a request for a tiny sample. A sweep resuming a
-  partial snapshot also said "sweeping it in full" when it was itself sampled;
-  it now says at what coverage.
-
-- `catalog apps` and `catalog diff` accepted `-lang`, `-country`, `-throttle`,
-  `-concurrency`, `-timeout` and `-adaptive` and ignored all six: both verbs
-  read files already on disk and make no requests, so `-country de` returned
-  the same table with no warning. The flags are no longer registered for
-  those two verbs, so `-h` tells the truth and a stray one is an error.
-
-- `gpscrape version` printed plain text on stdout, the one line of output in
-  the tool that was not newline-delimited JSON, and printed `devel` for anyone
-  who had installed a tagged release with `go install ...@latest`, because the
-  version is stamped only by the release workflow's ldflags. It emits
-  `{"version":"v1.4.0"}` and falls back to the module version the toolchain
-  recorded in the binary.
-
-- Two help strings. `-trace`'s usage line read `-trace go tool trace`, because
-  `flag` takes the first backquoted word of a usage string as the operand
-  name; it reads `-trace FILE` now. `search -full` said "one request each" for
-  an enrichment that has been batched since the `FullDetail` fix above.
-
-- `app` with several ids dropped a failed id from stdout and mentioned it on
-  stderr only, while `permissions` emitted `{"appId":…,"error":…}` in its
-  place. A caller diffing the ids asked for against the ids returned should
-  not have to reconcile two streams; both commands now emit the inline error
-  record, in position, and a batched run always produces one line per id
-  asked for. A single `gpscrape app ID` still reads the details page, so its
-  fields are unchanged.
-
-- The differential fuzz tests could fail on an input Google never serves.
-  `<sitemapindex><loc>0</loc></sitemapindex>` parses as XML, the oracle reads
-  only a `<loc>` inside its `<sitemap>` (or `<url>`) wrapper, and the scanners
-  read every `<loc>` — so CI hit a divergence once before the tag, on an input
-  that was never committed. The scanners are deliberately not element-aware:
-  tracking the enclosing element would add state to a streaming hot path that
-  has to survive chunk boundaries, to change the answer for documents that do
-  not occur. So the contract is stated on `indexShards` and `shardPackages`,
-  an unwrapped `<loc>` is excluded from the property the way an unterminated
-  tail already was, and the input is committed under `testdata/fuzz/` as a
-  seed for both targets.
+- `List` no longer returns the top-free chart, with no error, for a collection
+  the HTML fallback cannot locate. A transient RPC failure on "what is new"
+  used to return the most popular apps labelled as new releases; the fallback
+  now refuses such a collection before spending the request, and for
+  `NEW_FREE`, `NEW_PAID` and `MOVERS_SHAKERS` returns that refusal as the error
+  instead of `(nil, nil)`.
+- Sampled snapshots are no longer mistaken for complete ones. After
+  `catalog sweep -sample`, the full sweep never ran, `catalog check` reported
+  up to date, `catalog genres` rebuilt its table from the sample, and
+  `catalog diff` trusted a renamed sample's filename. Every reader of a
+  snapshot directory, `catalog apps` included, now checks the manifest.
+- `catalog sweep`:
+  - resuming onto a different `-sample` panicked or wrote a manifest claiming
+    coverage it lacked; the resume state carries the sampling and restarts
+    cleanly on a mismatch;
+  - `-sample 100` wrote a manifest saying the catalog held no apps; 100 now
+    means the whole catalog, as 0 does, other values outside (0,100] are
+    refused, and a sweep that collected nothing publishes no manifest. The
+    range error now says `0` or `(0,100]`, `-sample 0` is announced as
+    sweeping every shard, and a sampled resume states its coverage;
+  - a `-sample` sweep after a complete one wrote a delta calling every id
+    outside the sample removed (about 3.5M in production); a delta is now
+    written only between two complete snapshots of different generations,
+    and stderr says why when it is not;
+  - the first write failure (a full disk) now stops the sweep with exit 1
+    naming the file, instead of fetching up to 83,000 more shards for nothing;
+  - the snapshot is written durably (tmp, fsync, rename) like the manifest, so
+    a crash cannot leave a manifest describing a truncated file; the genre
+    table's writer no longer leaves a `.tmp` behind and syncs the directory;
+  - resume state from rolled generations (about 99MB per roll) is removed, and
+    the sweep reports how much it freed; `-keep N` keeps the newest N
+    snapshots, and now also deletes their deltas, which it never matched;
+  - it prints its manifest as one NDJSON record instead of nothing on stdout;
+  - a resumed sweep no longer fetches failed shards twice or reports a negative
+    remaining count, a panic no longer skips the exit hooks (trace and log
+    file), and the partial file is no longer leaked when the done log fails
+    to open.
+- `catalog ids`: a positional argument (`catalog ids 0-9`) was ignored and all
+  83,445 shards swept; catalog verbs without positional arguments now refuse
+  them. It emits JSON records (`-ids-only` for bare ids), and asking for
+  shards that do not exist is an error.
+- `-shards " "` or `-shards ","` swept every shard; a `-shards` that names
+  none is an error, ranges are bounded (`-shards 0-9999999999` is refused),
+  and repeats are collapsed.
+- `catalog check` defaulted `-dir` to `""` instead of `catalog`, so it always
+  answered not up to date and a consumer swept daily.
+- `catalog genres`:
+  - a transient error or an `-ids` subset dropped apps from the table, which
+    then came back as `first_seen`; rows now persist, and `-prune` (refused
+    with `-ids`) drops rows the snapshot no longer lists;
+  - an app invisible from one storefront was called gone; apparent removals
+    are re-checked in the `-confirm-gone` storefronts (about 310 requests per
+    storefront, against 3,400 for the main pass; empty trusts `-country`
+    alone), and a `gone` record names the storefronts that answered;
+  - a lookup that failed in every confirm storefront was reported `gone` and
+    its row deleted; it is now `"change":"error"` and keeps its row;
+  - a run in which every lookup failed published an empty table at exit 0; it
+    is refused, and a partly failed run says how many lookups failed;
+  - memory at catalog scale fell from 766MB to 609MB by keeping a delta
+    instead of a second copy of the table.
+- `catalog apps` streams the genre table instead of loading it: 83MB instead of
+  422MB on the real catalog, same output. `-allow-sample` reads a sampled
+  table and reports its coverage.
+- `catalog apps` and `catalog diff` no longer accept the network flags
+  (`-lang`, `-country`, `-throttle`, `-concurrency`, `-timeout`, `-adaptive`)
+  they ignored; a stray one is an error.
+- `catalog apps -genre`, `catalog new -categories` and `reviews -score` reject
+  invalid values instead of returning empty or unfiltered output at exit 0.
+- `catalog new` exits 1 when every category failed, instead of an empty stdout
+  that looked like "nothing new".
+- `catalog diff -changes` emits one record per changed id; before, it reported
+  only that ids had changed.
+- `catalog size`: `-precision NaN` is refused; small samples use Student's t
+  instead of 1.96 (at `-pilot 2` it claimed 4.2% where the true figure is
+  27%); the record says whether it met the requested precision.
+- `catalog new`'s signal precision is computed over one generation window
+  rather than the whole log, so it no longer falls as the log ages; an emit
+  failure flushes the signal log.
+- `reviews -langs ALL` sent `hl=all` and read one empty corpus; it now reads
+  all 71. `-throttle` now applies between languages (one client per run).
+- `gpscrape sync`, a pre-release second name for `catalog sweep`, is not
+  shipped.
+- `FullDetail` in `Search`, `List`, `Similar` and `Developer` uses the batched
+  RPC instead of one page per result: a 32-result listing went from 9.73s over
+  33 requests to 0.44s over 2. `WithConcurrency` no longer affects enrichment.
+- `Permissions` and `PermissionsMany` return an error for a missing app
+  instead of `(nil, nil)`, which looked like an app declaring no permissions.
+- `AppsMany`, `PermissionsMany` and `SuggestMany` reject an empty id or term
+  up front, as the singular forms do.
+- A `batchexecute` frame that never arrived is an error (`StatusFetchError`,
+  the country in `Result.Errors`) rather than an empty answer, so dropped
+  frames no longer report a live app as delisted (`Availability`,
+  `GloballyRemoved`), no suggestions, or no permissions.
+- A cancelled context wraps both the cancellation and the last status, so
+  `errors.Is(err, context.Canceled)` works whenever it lands.
+- `DigestsSeq` no longer hangs a caller that breaks out early.
+- `WithAdaptiveThrottle` bounds are enforced from the first request: a
+  `WithThrottle` above `Max` or a `Start` outside `[Min, Max]` is clamped in
+  `NewClient` whatever the option order.
+- `WithTimeout` no longer changes the `*http.Client` passed to
+  `WithHTTPClient`; the client is shallow-copied first.
+- `ReviewsAll` pages at `min(Count, 1000)`, so `Count: 10` is one small
+  request. `ReviewsComprehensive` returns the last error when every rating
+  pass failed and nothing was collected.
+- `gpscrape app` and `gpscrape permissions` with several ids emit one line per
+  id, in position, with an inline error record for a failure;
+  `gpscrape permissions` is one record per app even for a single id. A single
+  `gpscrape app ID` keeps its fields.
+- `catalog sweep -check` is removed (see Changed); it duplicated
+  `catalog check`.
+- `gpscrape version` emits `{"version":"v1.4.0"}` and reports the module
+  version for `go install ...@latest` builds instead of `devel`.
+- Help text: `-trace FILE` instead of `-trace go tool trace`, and `search -full`
+  no longer says "one request each".
+- The `lightfeed` and `apidoc` submodules can be resolved from outside this
+  repository; they required an untagged root version.
+- The catalog crawler checks `Flush` and `Close` on its output file, so a full disk no
+  longer yields a silently truncated result.
+- `parseTimestamp` no longer discards the sub-second parse error.
 
 ### Security
 
@@ -1350,299 +569,126 @@ deliberate act rather than something `go get -u` does to you.
 
 ### Internal
 
-- Every operation that makes a request now opens its own `runtime/trace`
-  task: `Reviews`, `CatalogSize` and the sitemap helpers open theirs, and the
-  batched `AppsMany`, `PermissionsMany` and `SuggestMany` are named apart from
-  their singular forms. `CatalogSize`'s ~900 requests used to be attributed to
-  "CatalogSeq", so a size run and a sweep looked alike in a trace. A test now
-  runs a trace against the mock transport and checks the task name each public
-  method opens.
-
-- `Reviews` rides the shared batch layer -- `rpcCall`, `buildFReq`,
-  `decodeBatchFrames` -- instead of building its own `batchexecute` URL,
-  escaping its own `f.req` and walking the envelope by hand. It was the last
-  request path off that layer. Held identical live: 1,500 reviews by
-  helpfulness and 600 across two languages came back id for id before and
-  after, and the payload-level parser with its lazy skip is unchanged.
-
-- A non-200 response body is drained before the connection is released, up to
-  32KB: enough for HTTP/1.1 to reuse the connection, and a ceiling so a
-  rate-limit page cannot cost bandwidth at exactly the wrong moment. Over
-  HTTP/2, which Google negotiates, it changes nothing.
-
-- The in-place radix sort falls back to `slices.Sort` past a shared prefix of
-  64 bytes rather than recursing once per byte without bound, and the partial
-  file reader refuses a line over 1MB -- the limit every `bufio.Scanner` in the
-  tool already applied -- naming the file and line. Both are guards against
-  corrupt input the tool did not write; ids from Google's own sitemap never
-  reach either.
-
-- GitHub Actions moved to their Node 24 majors: `codeql-action` v4,
-  `setup-node` v7 and `upload-artifact` v7. The v3 CodeQL action and the
-  Node 20 runtime it targets are deprecated, and every run said so.
-
-- Benchmarks over the recorded fixtures, and fuzz targets for every parser.
-
-  An earlier draft of this entry claimed Go 1.27's json v2 was worth +21%
-  throughput on the batchexecute paths at the cost of +31% allocation count,
-  measured against `GOEXPERIMENT=nojsonv2`. **That does not reproduce and is
-  withdrawn.** Re-run six times each way at `-benchtime 400x`, the two settle
-  at 2.2504 ms and 2.2526 ms -- a 0.1% difference, inside the noise -- with
-  **identical** allocation counts (14,319 either way) and bytes agreeing to
-  four significant figures. The experiment does take effect; the difference
-  simply is not there on this code. No baseline was ever committed, which is
-  why a number that "the benchmarks settle" survived without any benchmark
-  settling it.
-
-  They do locate the cost: parsing a details page is 0.27ms, of which the
-  scan and decode of the one block that is read dominates and extracting the
-  fields from the result is 3.7µs.
-
-  Benchmark numbers are comparable within one toolchain only. Coverage
-  instrumentation already moved by six points between 1.26 and 1.27 on
-  identical code; the allocator and collector changed at least as much. A
-  baseline gets rewritten on a toolchain bump rather than read as a regression.
-
-  The fuzz targets pin one narrow contract: no input may panic. Everything
-  here is parsed from an undocumented third-party format via chains of type
-  assertions, and a panic takes down a caller that is usually sweeping
-  thousands of pages where one bad response should cost one page. 2.4 million
-  executions across six targets found none. CI runs 30 seconds per target.
-- The catalog sweep moved into an unexported engine that both entry points
-  share. `CatalogSeq` calls it directly rather than going through the
-  deprecated `EnumerateCatalog`: building the supported API on top of the
-  deprecated one would mean the deprecated path could not be removed later
-  without rewriting the supported one.
-- The package example and the live integration and canary tests exercise the
-  iterators. The deprecated methods are thin wrappers now and keep their own
-  offline coverage.
-- `lightfeed` is now built, vetted and tested in CI. No workflow touched it
-  before.
-- Dependabot on all three modules and on the workflows, with `go-openapi`/
-  `pb33f`/`swaggo` and the `chromedp`/`cdproto` pair grouped — they move as
-  families, and separate PRs per module would be noise nobody reads.
-- CodeQL with the `security-and-quality` queries, built explicitly rather than
-  by autobuild, which would either miss the submodules or trip over the
-  committed `go.work`.
-- A release workflow that cross-compiles `gpscrape` for linux, darwin and
-  windows on amd64 and arm64, stamps the version, and publishes checksums.
-  stdlib-only and `CGO_ENABLED=0`, so this is a loop over GOOS/GOARCH rather
-  than a build matrix.
-- `SECURITY.md`, including what is explicitly *not* a vulnerability here:
-  Google rate-limiting a caller, and fields going missing after an upstream
-  payload change.
-- `.golangci.yml` with no exclusions — everything the default set reported was
-  either fixed or made explicit at the call site. Both `golangci-lint` and
-  `staticcheck -checks=all` are clean.
-- The coverage badge measures the library rather than the demo binaries. Their
-  statement counts move between Go releases far more than the library's: on one
-  commit, go1.26.4 reports 74.3% over the full profile and go1.27.0 reports
-  68.5%, purely because coverage instrumentation changed.
-- A committed `go.work` wires the three modules together for local
-  development; `TestRootIsZeroDependency` forces `GOWORK=off` so the invariant
-  is about this module rather than the workspace.
-- `CONTRIBUTING.md` documents the layout, why `replace` is not an option here,
-  and the tag order a release must follow.
-
-- CI now lints the generated OpenAPI spec with Redocly (recommended ruleset) and
-  Spectral (`spectral:oas`, failing on warnings) on the stable leg, pinned for
-  reproducibility, so a future change cannot reintroduce a deprecation or lint
-  warning unnoticed (the Go drift test only guards the schema `example`
-  keyword). Ships the `apidoc/.spectral.yaml` ruleset.
-
-- Three functions the batching migration left behind — `parseSuggestResponse`,
-  `parsePermissionsResponse` and `buildURL` — were alive only through their
-  own tests. `buildURL` also iterated a map, so its parameter order was
-  nondeterministic, and did no percent-encoding. Deleted with those tests.
-
-- Four small ones in `cmd/gpscrape`: a resumed sweep re-appended URLs already
-  in its failed list, so the retry pass fetched them twice and the "remaining"
-  count could go negative; the partial file was leaked when opening the done
-  log failed; a panic in a command skipped the exit hooks, so the flight
-  recorder wrote nothing and the log file was never closed; and `catalog new`
-  returned from an emit failure without flushing the signal log's buffer.
-
-- CI. The workflow token is read-only everywhere except the job that pushes
-  the coverage badge; it used to run golangci-lint, govulncheck and two `npx`
-  linters with a write-scoped token on disk. `FuzzShardStreamMatchesBuffer`
-  joins the fuzz list, which had run nine of the ten targets. And `apidoc`
-  gets the same second pass against this branch that `lightfeed` had: with
-  `GOWORK=off` its drift test regenerated the spec from the previous release's
-  types and could not see a change made here.
+- Every request-making operation opens its own `runtime/trace` task, so a
+  trace tells `CatalogSize` from a sweep and batched calls from singular ones.
+- `Reviews` uses the shared batch layer (identical results live); non-200
+  bodies are drained up to 32KB for HTTP/1.1 connection reuse; the radix sort
+  and partial file reader guard against corrupt input (64-byte prefix, 1MB
+  line).
+- Benchmarks over recorded fixtures and fuzz targets for every parser (no
+  panics in 2.4 million executions). An earlier claim that json v2 gave +21%
+  throughput did not reproduce and is withdrawn: the difference is 0.1%,
+  inside the noise.
+- Tooling: a release workflow cross-compiling `gpscrape` for linux, darwin
+  and windows on amd64 and arm64 with checksums; CodeQL; Dependabot;
+  `.golangci.yml` with no exclusions; Redocly and Spectral lint of the
+  generated OpenAPI spec (`apidoc/.spectral.yaml`); `lightfeed` built and
+  tested in CI; read-only workflow tokens except the coverage badge job;
+  GitHub Actions on their Node 24 majors.
+- `SECURITY.md` (including what is not a vulnerability: rate limiting, fields
+  lost to upstream changes) and `CONTRIBUTING.md`; a committed `go.work` for
+  local development; the coverage badge measures the library only.
+- The catalog sweep shares one engine between `CatalogSeq` and the deprecated
+  `EnumerateCatalog`; dead helpers left by the batching migration are deleted;
+  parser tests that asserted nothing are fixed; the differential fuzz tests
+  no longer fail on an unwrapped `<loc>` Google never serves.
+- Live drift and canary checks for the batched details request and the new collections and availability classes; differential fuzz tests hold each new scanner against the parser it replaced.
+- Benchmarks (`BenchmarkOracle*`) reproduce the parsing table; source modernised with `go fix` (`any`, `strings.SplitSeq`); review URLs built by concatenation.
 
 ## [1.3.1] - 2026-06-15
 
 ### Internal
 
-- The generated OpenAPI 3.1 spec (`apidoc/`) now uses the JSON Schema 2020-12
-  `examples` array for schema-level examples instead of the deprecated singular
-  `example` keyword that swag v2 emits. A deterministic post-processor
-  (`apidoc/internal/specfix`, run by `gen.sh` and shared with the freshness
-  test) rewrites every `example` under `components.schemas` to `examples`,
-  leaving the still-valid Parameter Object `example` fields under `paths`
-  untouched. A drift test asserts no deprecated schema `example` survives. This
-  is a docs-only artifact change; the Go library API is unaffected.
-- The generated spec now lints clean under both Redocly (recommended ruleset)
-  and Spectral (`spectral:oas`): global `tags` and an `info.contact` were added
-  to the generator, and the Redocly config was renamed to `redocly.yaml` (with a
-  quoted `"off"` severity) so it is auto-discovered. No deprecation warnings
-  remain.
+- The generated OpenAPI spec (`apidoc/`) uses the JSON Schema 2020-12
+  `examples` array instead of the deprecated `example`, and lints clean under
+  Redocly and Spectral. The Go API is unaffected.
 
 ## [1.3.0] - 2026-06-15
 
 ### Added
 
-- Full-catalog enumeration via Google Play's public sitemaps — the one
-  anonymous channel that lists the *entire* store rather than the
-  commercially-visible top of it. `EnumerateCatalog(ctx, emit, CatalogOptions)`
-  sweeps every shard and calls `emit` once per app package id (on the order of 3
-  million). `robots.txt` advertises two sitemap indexes covering ~83k gzipped
-  shards; each shard is a `<urlset>` of whole-store URLs (books/movies/music and
-  apps interleaved) from which only the `/store/apps/details?id=` locs are kept.
-  The lower-level steps are exported too — `SitemapIndexURLs`,
-  `SitemapShards`/`AllSitemapShards`, and `SitemapShardPackages` — so callers can
-  drive or resume the crawl themselves. `CatalogOptions` exposes `Concurrency`, a
-  `Shards` subset (sampling/resume), and serialized `OnShardDone`/`OnShardError`
-  callbacks. The sweep reuses the client throttle (no new `Client` field), is
-  context-cancellable into a partial result, and skips a failed shard rather than
-  aborting. Ships with the `examples/catalog-crawler` CLI (writes ids to a file,
-  optional `-resolve` sanity check) and `apidoc` stubs for `/robots.txt`,
-  `/sitemaps/sitemaps-index-{n}.xml`, and `/sitemaps/{shard}.xml.gz`. Zero new
-  dependencies (`encoding/xml` + `compress/gzip`).
-
-### Internal
-
-- Locked the unified row decoder's byte-equivalence in CI: golden tests assert
-  the full `SearchResult` for each of the four row layouts
-  (cluster/list/search-grid/qnKhOb) plus the `requireAppID` and
-  no-price-path edge rules, so a future path-map or candidate-priority change is
-  caught offline rather than only by the live canary.
+- Full-catalog enumeration through Google Play's public sitemaps, the only
+  anonymous channel that lists the whole store (about 3 million apps in ~83k
+  gzipped shards). `EnumerateCatalog(ctx, emit, CatalogOptions)` calls `emit`
+  once per package id; it uses the client throttle, skips a failed shard
+  instead of aborting, and returns a partial result on cancellation.
+  `CatalogOptions` takes `Concurrency`, a `Shards` subset for sampling or
+  resuming, and `OnShardDone`/`OnShardError` callbacks. The lower-level steps
+  are exported (`SitemapIndexURLs`, `SitemapShards`/`AllSitemapShards`,
+  `SitemapShardPackages`), and `examples/catalog-crawler` writes the ids to a
+  file. No new dependencies.
 
 ## [1.2.0] - 2026-06-13
 
 ### Added
 
-- `ClusterOptions.FeedMode` (and `CoverageOptions.ClusterFeedMode`) selects how a
-  category/cluster page's recommendation feed is followed: `FeedNone` (initial
-  grid only), `FeedLightweight` (the stateless +1 page, what `FollowFeed: true`
-  did — kept), or `FeedBrowser` (browser-driven deep scroll). `FollowFeed bool`
-  is deprecated and maps to `FeedLightweight`.
-- `FeedBrowser` reaches depth a stateless client cannot — the feed's deeper
-  continuation cursor is computed by the page's JS from render state and is not
-  recoverable from the network responses (verified exhaustively). It is driven
-  through the optional `lightfeed` submodule, which runs **Lightpanda** (a 64 MB
-  headless browser, no Chromium) over CDP: a GAME_ACTION category page yields
-  ~130–149 apps vs ~77 with `FeedLightweight`. In a full `CategoryApps` sweep it
-  adds ~16–24 genuinely new apps beyond the core/cluster/search phases.
-- The `lightfeed` submodule keeps its `chromedp` dependency out of the root: the
-  root module stays zero-dependency, and `FeedBrowser` requires the caller to
-  inject a `FeedPaginator` (else `ErrFeedPaginatorRequired`) — no silent
-  fallback, so the chosen strategy is always explicit.
-- `Availability(ctx, appID, opts)` and `AvailableCountries(ctx, appID, opts)`:
-  probe an app's region availability across many Google Play countries and
-  report a per-country `Status` (`StatusAvailable`, `StatusNotInRegion`,
-  `StatusNotFound`, `StatusFetchError`). Each probe is lightweight — it fetches
-  the listing and reads only the availability node, skipping the full parse —
-  and runs through the shared throttle and an opt-in worker pool. A single
-  country's failure never aborts the sweep; only context cancellation does,
-  returning the partial result. The result's `GloballyRemoved` flag is set when
-  every conclusively-probed country returned 404. Ships with `AllCountries` (a
-  snapshot of Play country codes) and the `examples/app-availability` CLI.
-- `CategoryApps` coverage orchestrator: unions many independent slices of a
-  category (collections × locales × age buckets × a search-term dictionary × a
-  `Similar`/`Developer` graph walk), deduplicating by `AppID` with a saturation
-  stop, to collect far more than the ~200-app single-request ceiling. A measured
-  `GAME_ACTION` run reached ~1,800 unique apps. Ships with `CoverageLocales`, a
-  per-category search-term dictionary, and the `examples/category-coverage` CLI.
-  This maximizes coverage of the commercially visible layer of a category; it
-  does not (and anonymously cannot) enumerate the full catalog.
-- 15 new `App` fields parsed from the detail page: monetization (`AdSupported`,
-  `OffersIAP`, `IAPRange`, `OriginalPrice`, `DiscountEndDate`), distribution
-  (`IsAvailableInPlayPass`, `Preregister`, `EarlyAccessEnabled`), media
-  (`Video`, `VideoImage`, `HeaderImage`, `PreviewVideo`), changelog
-  (`RecentChanges`), and EU-DSA trader info (`DeveloperLegal*`).
-- `WithHTTPClient`, `WithConcurrency`, and a typed `StatusError{Code}` (branch on
-  404 vs 429 via `errors.As`); offline parser fixtures so `go test -short` runs
-  fully without network.
+- `ClusterOptions.FeedMode` (and `CoverageOptions.ClusterFeedMode`) chooses how
+  a category page's feed is followed: `FeedNone` (initial grid only),
+  `FeedLightweight` (one stateless extra page, what `FollowFeed: true` did) or
+  `FeedBrowser` (deep scroll in a browser). `FollowFeed` is deprecated and maps
+  to `FeedLightweight`.
+- `FeedBrowser` runs through the optional `lightfeed` submodule, which drives
+  Lightpanda over CDP and reaches ~130 to ~149 `GAME_ACTION` apps where
+  `FeedLightweight` reaches ~77. The root module stays dependency-free:
+  `FeedBrowser` needs an injected `FeedPaginator`, otherwise
+  `ErrFeedPaginatorRequired`.
+- `Availability` and `AvailableCountries` report a per-country `Status`
+  (`StatusAvailable`, `StatusNotInRegion`, `StatusNotFound`, `StatusFetchError`)
+  across `AllCountries`. A failed country does not abort the run; cancellation
+  returns the partial result. `GloballyRemoved` is set when every conclusively
+  probed country returned 404. Example: `examples/app-availability`.
+- `CategoryApps` unions many slices of a category (collections, locales, age
+  buckets, search terms, the `Similar`/`Developer` graph) to get past the
+  ~200-app ceiling; one `GAME_ACTION` run reached ~1,800 unique apps. It covers
+  the commercially visible layer, not the full catalog. Ships with
+  `CoverageLocales` and `examples/category-coverage`.
+- 15 new `App` fields: `AdSupported`, `OffersIAP`, `IAPRange`, `OriginalPrice`,
+  `DiscountEndDate`, `IsAvailableInPlayPass`, `Preregister`,
+  `EarlyAccessEnabled`, `Video`, `VideoImage`, `HeaderImage`, `PreviewVideo`,
+  `RecentChanges` and the EU DSA trader fields `DeveloperLegal*`.
+
+### Changed
+
+- **Breaking:** `App.Released` is an `int64` Unix time in seconds (`0` when
+  absent), like `App.Updated`, instead of a string such as
+  `"1.401196337e+09"`. In JSON, `released` is a number.
+- **Behavior change:** `App.Available` was always `true`; it now reflects the
+  listing, and is `false` for a region-locked or pre-registration app.
+- `AvailabilityResult.Errors` serializes as `country → message` instead of
+  empty objects; in Go it stays `map[string]error`.
 
 ### Fixed
 
-- `App.Histogram` was decoded with a wrong index mapping: the 5-star bucket (the
-  largest for most apps) was always 0 and the 1–4-star counts were reversed and
-  mislabeled, so the buckets did not sum to `Ratings`. It now correctly maps the
-  `[null, 1★, 2★, 3★, 4★, 5★]` node to `hist[0]=1-star .. hist[4]=5-star`;
-  verified live that the buckets sum to `Ratings`.
-- `Search` now picks the data array with the most app entries instead of the
-  first depth-first match, fixing queries that returned a single garbage result.
-
-### Behavior change (soft break)
-
-- `App.Available` was hardcoded to `true` and never reflected reality. It is now
-  derived from the listing's availability node (`[18][0]`): `true` only when the
-  app is installable in the requested country, `false` for a region-locked
-  listing or a pre-registration (unreleased) entry. Callers that read
-  `App.Available` will now see `false` where they previously always saw `true` —
-  the field compiles unchanged but its value is no longer a constant.
-
-### Changed
-
-- `App.Released` changed type from `string` to `int64`. It previously held a
-  stringified float in scientific notation (e.g. `"1.401196337e+09"`); it is now
-  a Unix epoch in seconds (e.g. `1401196337`), `0` when absent — symmetric with
-  `App.Updated`. This is a typed break: callers that read `Released` as a string
-  must update to the integer field. The JSON `released` value is now a number
-  rather than an exponential string.
+- `App.Histogram` was mis-indexed: the 5-star bucket was always 0 and the
+  1-to-4-star counts were reversed. `hist[0]` is now 1 star through `hist[4]`
+  5 stars, and the buckets sum to `Ratings`.
 
 ### Internal
 
-- `AvailabilityResult` now serializes its `Errors` map as `country → string`
-  (via `err.Error()`) instead of empty `{}` objects, making the JSON output and
-  the OpenAPI `object,string` schema truthful. The Go-side `Errors` field stays
-  `map[string]error`, so typed errors remain available to Go callers.
-- The four RPC row parsers (cluster/list/search-grid/qnKhOb) now share one
-  table-driven `decodeResultRow`, each declaring its own field→path map, so a
-  Google layout shift is fixed in one place. The request throttle was reworked
-  into a fair, context-cancellable token reservation. The `apidoc` submodule
-  publishes an OpenAPI 3.1 spec of Google's private endpoints (validated in CI);
-  PR CI runs `-short` (deterministic offline) with live drift checks in a
-  scheduled canary workflow.
+- One table-driven decoder for the four RPC row layouts; the `apidoc` OpenAPI
+  spec of Google's private endpoints, validated in CI; pull-request CI runs
+  offline with `-short`, and a scheduled canary checks the live store.
 
 ## [1.1.0] - 2026-06-10
 
-### Behavior change (soft break)
-
-- `Search` no longer returns an error for `Num` > 250; the value is clamped to
-  250, matching the clamping behavior already used by `List` (660) and
-  `Cluster` (5000). Callers that relied on the error to detect oversized
-  requests should check their own bounds before calling. This only *removes* a
-  previously returned error, so it is released as a minor version rather than a
-  full `/v2` module migration; the only affected callers are those matching the
-  old `"can't exceed 250"` error string.
-
 ### Added
 
-- `WithConcurrency(n)` client option to fetch `App()` details in parallel when
-  a listing is requested with `FullDetail: true`. Default is 1 (sequential), so
-  existing behavior is unchanged unless opted in. Result order is preserved and
-  the `WithThrottle` interval still bounds the request rate across workers.
-- `WithHTTPClient(*http.Client)` client option for supplying a custom HTTP
-  client (proxy pools, custom transports, tests). Must follow redirects and
-  keep cookies like the default.
-- `StatusError{Code int}` returned by failed requests so callers can branch on
-  the HTTP status (e.g. 404 vs 429) via `errors.As`. The error string is
-  unchanged (`unexpected status: %d`) for backward compatibility.
-- Offline parser unit tests backed by saved Google responses in `testdata/`;
-  all live-network tests are now gated behind `testing.Short()`, so
-  `go test -short` runs fully offline.
+- `WithConcurrency(n)` fetches `App()` details in parallel for listings with
+  `FullDetail: true`. The default is 1; order is preserved and `WithThrottle`
+  still bounds the rate.
+- `WithHTTPClient(*http.Client)` for proxies, custom transports and tests. The
+  client must follow redirects and keep cookies.
+- Failed requests return `StatusError{Code int}`, so callers can tell 404 from
+  429 with `errors.As`. The error string is unchanged.
+- `go test -short` runs fully offline against saved responses in `testdata/`.
 
 ### Changed
 
-- The request throttle now reserves start slots on a monotonic schedule under a
-  short lock instead of sleeping while holding the lock. Concurrent callers no
-  longer serialize on a shared sleep; the minimum interval between request
-  starts is enforced fairly and remains cancellable via context.
-- `Search` result extraction now picks the data array with the most app entries
-  instead of the first depth-first match, fixing queries that previously
-  returned a single garbage result.
-- Internal: the duplicated `AF_initDataCallback` parsing block is extracted into
-  a single `parseDataBlocks` helper (no behavior change).
+- **Behavior change:** `Search` clamps `Num` above 250 to 250, like `List`
+  (660) and `Cluster` (5000), instead of returning an error. Callers that
+  matched the `"can't exceed 250"` error should check bounds themselves.
+- The throttle no longer sleeps while holding its lock, so concurrent callers
+  do not serialize; the minimum interval is enforced fairly and stays
+  cancellable.
+- `Search` picks the data array with the most apps instead of the first match,
+  fixing queries that returned a single garbage result.
