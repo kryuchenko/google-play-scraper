@@ -614,3 +614,34 @@ func unterminatedBeyondCarry(body []byte) bool {
 		rest = after[j+len(locClose):]
 	}
 }
+
+// The end check holds for trailing whitespace of any length, and for a
+// document whose last <loc> runs past the scan window.
+func TestShardEndEdgeCases(t *testing.T) {
+	loc := "<url><loc>https://play.google.com/store/apps/details?id=com.a</loc></url>"
+	long := "<loc>" + strings.Repeat("x", shardScanCarryMax+10)
+	for name, c := range map[string]struct {
+		body   string
+		closed bool
+	}{
+		"200 spaces after":     {"<urlset>" + loc + "</urlset>" + strings.Repeat(" ", 200), true},
+		"newlines after":       {"<urlset>" + loc + "</urlset>\n\n\r\n", true},
+		"cut":                  {"<urlset>" + loc + "</urls", false},
+		"split by spaces":      {"<urlset>" + loc + "</url" + strings.Repeat(" ", 70) + "set>", false},
+		"long loc then closed": {"<urlset>" + loc + long + "</urlset>", true},
+		"long loc then cut":    {"<urlset>" + loc + long, false},
+	} {
+		for _, r := range []io.Reader{strings.NewReader(c.body), iotest.OneByteReader(strings.NewReader(c.body))} {
+			pkgs, err := shardPackagesFrom(r)
+			if (err == nil) != c.closed {
+				t.Errorf("%s: err = %v, want closed=%v", name, err, c.closed)
+			}
+			if !slices.Equal(pkgs, []string{"com.a"}) {
+				t.Errorf("%s: pkgs = %v", name, pkgs)
+			}
+		}
+		if shardClosed([]byte(c.body)) != c.closed {
+			t.Errorf("%s: shardClosed disagrees", name)
+		}
+	}
+}

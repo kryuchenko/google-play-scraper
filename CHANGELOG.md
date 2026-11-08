@@ -13,28 +13,6 @@ All notable changes to this project are documented here. The format is based on
   small gzip bomb, could take all the memory. The largest real bodies are
   about 3MB, a shard about 8MB inflated.
 
-### Fixed
-
-- `gpscrape search -num` above 50 warns that it is clamped instead of
-  silently returning at most 50.
-### Fixed
-
-- `gpscrape-mcp`: a batch entry whose error wrapped an already-explained
-  error made `play_get_apps` panic on a type assertion; it now keeps the
-  code. Found by errorlint.
-
-### Changed
-
-- CI lints with six more linters: unparam, errorlint, nilerr, wastedassign,
-  makezero and mirror. Their findings are fixed: three parsers that could
-  not fail lose their always-nil error, unused parameters go
-  (`parseSearchPage`'s `num`, `parseDigest`'s `fields`), and two functions
-  only tests called (`observe`, `batchCall`) move into the tests.
-- CI runs deadcode over the binaries and fails on an unexported function
-  none of them reaches. The seven it found -- test oracles, a fixture
-  builder, the buffered gunzip a benchmark compares against, and
-  `saveGenres`, replaced by `saveGenresDelta` -- move into test files.
-
 ### Added
 
 - Tests that hold the parsers to allocation budgets and `ReviewsSeq` to a
@@ -49,26 +27,65 @@ All notable changes to this project are documented here. The format is based on
   `catalog genres`, `catalog apps -genre 'GAME_*'` -- on a 0.01% sample:
   about nine shards and 12 seconds. It checks the chain is alive, not that a
   full 87k-request sweep finishes.
+- `gpscrape`: an error caused by Claude Code's sandbox on macOS -- where Go
+  cannot reach the system trust service and every request fails with
+  `x509: OSStatus -26276` -- carries a `hint` naming the setting that fixes
+  it, and is no longer marked retryable. Found in the routing evaluation,
+  where agents answered "unknown" instead of fixing the setting.
+
 ### Changed
 
+- CI lints with six more linters: unparam, errorlint, nilerr, wastedassign,
+  makezero and mirror. Their findings are fixed: three parsers that could
+  not fail lose their always-nil error, unused parameters go
+  (`parseSearchPage`'s `num`, `parseDigest`'s `fields`), and two functions
+  only tests called (`observe`, `batchCall`) move into the tests.
+- CI runs deadcode over the binaries and fails on an unexported function
+  none of them reaches. The seven it found -- test oracles, a fixture
+  builder, the buffered gunzip a benchmark compares against, and
+  `saveGenres`, replaced by `saveGenresDelta` -- move into test files.
 - `gpscrape catalog genres` walks the genre table beside the snapshot
-  instead of loading it as a map: peak heap at four million ids falls from
-  700MB+ to about 45MB. `-ids` lists are sorted and deduplicated first, so
-  their records come out in id order, once each. A genre table that is not
+  instead of loading it as a map. At four million ids the table work's peak
+  heap falls from 700MB+ to about 45MB; the ids absent from the first
+  storefront are still held, and with them the confirmation pass's maps, so
+  a run where many are absent uses more. `-ids` lists are sorted and deduplicated first, so
+  each id is looked up once, in id order (ids absent from the first
+  storefront are still reported after the rest, as before). A genre table that is not
   sorted by app id is now an error rather than silently re-sorted.
 - `gpscrape catalog diff` reads both snapshots side by side instead of
   whole: 538MB to 4MB at catalog scale.
+- **Breaking, `gpscrape catalog`:** every catalog record is snake_case like
+  the rest of the CLI's output: `app_id`, `genre_id`, `age_hours`,
+  `up_to_date`, `sample_pct`, `completed_at`, `half_width`, `shards_read`
+  and the rest. Catalog files an older version wrote -- manifests, the
+  resumable sweep state, the `catalog new` signal log -- still read; new ones
+  are written snake_case.
 
 ### Fixed
 
+- `catalog sweep`: a shard's done line could reach the file before its ids
+  when the done log's smaller buffer filled first, so a kill in between
+  resumed past ids never written. The ids are flushed first whenever the
+  done line would flush.
+- `catalog sweep`: a failure the state file still listed for a shard the
+  done log held was retried, and a failure then refused the snapshot. The
+  done log wins on load.
+- `catalog sweep -force` over a generation already on disk removes its
+  manifest before replacing the snapshot, so a kill partway cannot leave a
+  sampled snapshot under a manifest that says it is complete.
+- The shard end check covers a document whose last `<loc>` runs past the
+  scan window, and trailing whitespace of any length after `</urlset>`.
+- `gpscrape search -num` above 50 warns that it is clamped instead of
+  silently returning at most 50.
+- `gpscrape-mcp`: a batch entry whose error wrapped an already-explained
+  error made `play_get_apps` panic on a type assertion; it now keeps the
+  code. Found by errorlint.
 - `catalog genres -prune` against a sampled snapshot deleted every row
   outside the sample; it is refused, as it already was with `-ids`.
 - `catalog genres` ignored a read error in its id list: a snapshot cut short
   by a corrupt gzip stream or an overlong line read as a shorter catalog,
   and `-prune` deleted every row past the break. It stops before publishing
   now, and for `-ids` before any request.
-### Fixed
-
 - `gpscrape catalog sweep`, resuming after a hard kill: the partial id file
   could end in half an id, and appending glued it to the next one
   (`com.c` + `com.d` became `com.com.d`, an app that does not exist, in the
@@ -88,8 +105,6 @@ All notable changes to this project are documented here. The format is based on
   a generation that every later run took as complete and none ever diffed.
   The manifest is written last.
 - The done log gets the same torn-line repair as the id file.
-### Fixed
-
 - A sitemap shard whose gzip stream was whole but whose document ended
   before `</urlset>` parsed as a shard with fewer apps; the sweep marked it
   done and the missing ids surfaced later as removals. It fails with
@@ -98,26 +113,6 @@ All notable changes to this project are documented here. The format is based on
 - `TestSearchPagination` failed whenever Google returned one page or fewer
   for its query (17 on some days); it now checks that the continuation RPC
   is sent and succeeds, which is what it was for.
-
-### Added
-
-- `gpscrape`: an error caused by Claude Code's sandbox on macOS -- where Go
-  cannot reach the system trust service and every request fails with
-  `x509: OSStatus -26276` -- carries a `hint` naming the setting that fixes
-  it, and is no longer marked retryable. Found in the routing evaluation,
-  where agents answered "unknown" instead of fixing the setting.
-
-### Changed
-
-- **Breaking, `gpscrape catalog`:** every catalog record is snake_case like
-  the rest of the CLI's output: `app_id`, `genre_id`, `age_hours`,
-  `up_to_date`, `sample_pct`, `completed_at`, `half_width`, `shards_read`
-  and the rest. Catalog files an older version wrote -- manifests, the
-  resumable sweep state, the `catalog new` signal log -- still read; new ones
-  are written snake_case.
-
-### Fixed
-
 - The live CLI canary still checked v1.5's camelCase fields (`appId`, a list
   of permissions, a country->status map) and would have failed against
   v1.6.0's shared records. It checks the records now.

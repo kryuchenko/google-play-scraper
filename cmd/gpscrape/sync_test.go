@@ -1880,3 +1880,52 @@ func TestSweepTreatsATruncatedShardAsFailed(t *testing.T) {
 		t.Error("a manifest was written over a truncated shard")
 	}
 }
+
+// A failure the state file still lists, for a shard the done log says was
+// fetched -- a resume that succeeded on it and was killed before the state
+// caught up -- is dropped on load: the retry pass does not fetch it again,
+// and a failure there cannot refuse a snapshot that already has its ids.
+func TestSweepDropsFailuresTheDoneLogContradicts(t *testing.T) {
+	store, f, dir := newSweepFixture(t)
+	preFinished(t, dir, f, sampling{}, 0, 1)
+	stale := googleplayscraper.BaseURL + f.shardPath(1) // done, but listed failed
+	if err := saveState(filepath.Join(dir, "state.json"), syncState{
+		Generation: f.gen, IDs: len(f.ids[0]) + len(f.ids[1]), Failed: []string{stale},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	store.set(f.shardPath(1), 500, nil) // a retry would fail
+
+	if _, _, err := runVerb(t, cmdSync, "-dir", dir, "-concurrency", "2"); err != nil {
+		t.Fatalf("sweep: %v", err)
+	}
+	if got := store.hitCount(f.shardPath(1)); got != 0 {
+		t.Errorf("a shard the done log holds was fetched %d times", got)
+	}
+}
+
+// Rewriting a generation already on disk removes its manifest before the
+// snapshot is replaced, so a failure partway leaves no manifest describing a
+// snapshot that is no longer there.
+func TestFinishDropsTheOldManifestBeforeReplacingTheSnapshot(t *testing.T) {
+	_, f, dir := newSweepFixture(t)
+	if _, _, err := runVerb(t, cmdSync, "-dir", dir, "-concurrency", "2"); err != nil {
+		t.Fatal(err)
+	}
+	man := filepath.Join(dir, "manifest-"+f.gen.ID()+".json")
+	snap := filepath.Join(dir, "snapshot-"+f.gen.ID()+".txt.gz")
+	// A directory where the snapshot goes makes the rewrite fail after the
+	// manifest step.
+	if err := os.Remove(snap); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(snap, "x"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := runVerb(t, cmdSync, "-dir", dir, "-concurrency", "2", "-force"); err == nil {
+		t.Fatal("the rewrite was expected to fail")
+	}
+	if _, err := os.Stat(man); err == nil {
+		t.Error("the old manifest survived a failed rewrite of its snapshot")
+	}
+}

@@ -466,6 +466,21 @@ func sweep(
 		return fmt.Errorf("open %s: %w", donePath, err)
 	}
 	dw := bufio.NewWriterSize(doneLog, 1<<16)
+	// markDone writes url's done line. A shard's ids must reach the file
+	// before its done line does, or a kill in between resumes past a shard
+	// whose ids were never written. Checkpoints flush in that order, but a
+	// buffer also flushes itself when full, and the done log's is the
+	// smaller: with long URLs and few ids it fills first. So when this line
+	// is about to flush the done log, the ids go out first.
+	markDone := func(url string) error {
+		if len(url)+1 > dw.Available() {
+			if err := w.Flush(); err != nil {
+				return err
+			}
+		}
+		_, err := fmt.Fprintln(dw, url)
+		return err
+	}
 
 	// checkpoint makes progress durable in the only order that cannot lose
 	// work: the ids first, then the record saying the shard is finished. A
@@ -508,6 +523,14 @@ func sweep(
 	// was incremented twice, and remaining = len(pending) - done went
 	// negative. The set is kept beside the slice rather than replacing it,
 	// because the state file's order is what the retry pass walks.
+	// A failure the state file still lists may have been fetched since: a
+	// resume that succeeded on it and checkpointed the done log, then was
+	// killed before the state file caught up. The done log is the record of
+	// what is fetched, so it wins.
+	state.Failed = slices.DeleteFunc(state.Failed, func(u string) bool {
+		_, ok := finished[u]
+		return ok
+	})
 	failedSeen := make(map[string]struct{}, len(state.Failed))
 	for _, u := range state.Failed {
 		failedSeen[u] = struct{}{}
@@ -564,7 +587,7 @@ func sweep(
 			}
 		}
 		state.IDs += len(pkgs)
-		if _, werr := fmt.Fprintln(dw, url); werr != nil {
+		if werr := markDone(url); werr != nil {
 			failWrite("write "+donePath, werr)
 			return
 		}
@@ -654,7 +677,7 @@ func sweep(
 				}
 			}
 			state.IDs += len(pkgs)
-			if _, werr := fmt.Fprintln(dw, url); werr != nil {
+			if werr := markDone(url); werr != nil {
 				failWrite("write "+donePath, werr)
 				return
 			}
@@ -739,6 +762,14 @@ func finish(
 	ids = slices.Compact(ids)
 
 	snapPath := filepath.Join(dir, "snapshot-"+gen.ID()+".txt.gz")
+	// Rewriting a generation already on disk (-force, or another -sample of
+	// it) replaces the snapshot the old manifest describes. The old manifest
+	// goes first, so a kill partway leaves a generation with no manifest --
+	// incomplete, swept again next time -- rather than a 1% snapshot under a
+	// manifest that says it is the whole catalog.
+	if err := os.Remove(filepath.Join(dir, "manifest-"+gen.ID()+".json")); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
 	sum, err := writeSnapshot(snapPath, ids)
 	if err != nil {
 		return err
@@ -798,6 +829,9 @@ func finish(
 	// later run took as complete and no run ever diffed. Written after, the
 	// same kill leaves the resume state in place, and the next run finishes
 	// again -- snapshot, delta, manifest -- from the files it already has.
+	// What this does not cover: a delta that cannot be computed at all (the
+	// previous snapshot missing or corrupt) is warned about above and skipped,
+	// and the manifest is still written; `catalog diff` can be run by hand.
 	if err := writeJSON(filepath.Join(dir, "manifest-"+gen.ID()+".json"), m); err != nil {
 		return err
 	}

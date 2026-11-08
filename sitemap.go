@@ -686,9 +686,21 @@ func shardPackagesFrom(r io.Reader) ([]string, error) {
 			if len(tail) > shardScanCarryMax {
 				// A <loc> still unclosed after more bytes than any URL runs
 				// to. shardPackages stops at an unterminated marker, so this
-				// stops too: the two must not disagree about a document, and
-				// growing the window instead is the unbounded allocation the
-				// bound exists to prevent.
+				// stops collecting too: the two must not disagree about a
+				// document, and growing the window instead is the unbounded
+				// allocation the bound exists to prevent. It does not stop
+				// reading: whether the document ends in </urlset> is still
+				// the question, and returning here used to skip it.
+				for err == nil {
+					n, err = r.Read(chunk)
+					end.see(chunk[:n])
+				}
+				if !errors.Is(err, io.EOF) {
+					return pkgs, err
+				}
+				if !end.closed() {
+					return pkgs, ErrShardTruncated
+				}
 				return pkgs, nil
 			}
 			// copy handles the overlap: tail is a suffix of buf.
@@ -717,14 +729,30 @@ var ErrShardTruncated = errors.New("sitemap shard ended before </urlset>")
 
 var urlsetClose = []byte("</urlset>")
 
-// shardEnd remembers the last bytes of a stream, enough to tell whether it
-// ended in </urlset> with nothing but whitespace after it.
+// shardEnd tells, as a stream goes by, whether it ends in </urlset> with
+// nothing but whitespace after it. tail is the last bytes of the stream up to
+// its last non-whitespace byte; ws is the whitespace after that, held back
+// until something follows it. Trailing whitespace of any length therefore
+// cannot push the closing tag out of the window, and whitespace inside the
+// document is kept in order.
 type shardEnd struct {
 	tail [64]byte
 	n    int
+	ws   []byte
 }
 
 func (e *shardEnd) see(b []byte) {
+	last := bytes.LastIndexFunc(b, func(r rune) bool { return !isXMLSpace(r) })
+	if last < 0 {
+		e.ws = lastN(append(e.ws, b...), len(e.tail))
+		return
+	}
+	e.push(e.ws)
+	e.push(b[:last+1])
+	e.ws = append(e.ws[:0], lastN(b[last+1:], len(e.tail))...)
+}
+
+func (e *shardEnd) push(b []byte) {
 	if len(b) >= len(e.tail) {
 		e.n = copy(e.tail[:], b[len(b)-len(e.tail):])
 		return
@@ -734,9 +762,20 @@ func (e *shardEnd) see(b []byte) {
 	e.n = keep + copy(e.tail[keep:], b)
 }
 
-func (e *shardEnd) closed() bool { return shardClosed(e.tail[:e.n]) }
+func lastN(b []byte, n int) []byte {
+	if len(b) > n {
+		return b[len(b)-n:]
+	}
+	return b
+}
 
-func shardClosed(b []byte) bool { return bytes.HasSuffix(bytes.TrimSpace(b), urlsetClose) }
+func (e *shardEnd) closed() bool { return bytes.HasSuffix(e.tail[:e.n], urlsetClose) }
+
+func isXMLSpace(r rune) bool { return r == ' ' || r == '\t' || r == '\n' || r == '\r' }
+
+func shardClosed(b []byte) bool {
+	return bytes.HasSuffix(bytes.TrimRightFunc(b, isXMLSpace), urlsetClose)
+}
 
 // scanLocs consumes every complete <loc>…</loc> in buf, appending the app
 // package ids it finds, and returns the bytes it could not yet interpret.

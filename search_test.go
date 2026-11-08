@@ -134,6 +134,13 @@ func TestSearchPagination(t *testing.T) {
 	if !rpcOK.Load() {
 		t.Error("asking for 60 did not send a successful continuation RPC")
 	}
+	// And the live RPC's answer parses: Search keeps the page's results when
+	// the RPC fails, so a status alone could not show that. Parsing and
+	// merging a known answer is TestSearchAboveOnePageUsesTheRPC's job.
+	more, err := c.searchRPC(context.Background(), SearchOptions{Term: "social", Num: 50, Lang: "en", Country: "us"})
+	if err != nil || len(more) == 0 {
+		t.Errorf("the continuation RPC did not parse: %d results, %v", len(more), err)
+	}
 
 	// Validate all results
 	for _, r := range results {
