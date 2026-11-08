@@ -35,6 +35,7 @@ import (
 	"io"
 	"log/slog"
 	"maps"
+	"net/url"
 	"os"
 	"os/signal"
 	"regexp"
@@ -89,7 +90,8 @@ Commands:
   mcp [flags]           start the gpscrape-mcp server (installed separately)
   version               print the build version
 
-Output: one JSON object per line on stdout. app, search, list, reviews,
+Output: one JSON value per line on stdout -- an object per record, a bare
+string per suggestion or category. app, search, list, reviews,
 similar, developer, permissions, datasafety and availability write the
 snake_case records the gpscrape-mcp tools return; -raw writes the library's
 own types instead. Text written by third parties is in untrusted_* fields.
@@ -332,7 +334,7 @@ func newLocalCommon(name string) *common {
 	c.fs.StringVar(&c.traceFile, "trace", "",
 		"write a Go execution trace to `FILE` for go tool trace; a long run keeps its last minutes")
 	c.fs.StringVar(&c.fields, "fields", "",
-		"keep only these comma-separated keys of each record, e.g. app_id,score (see `gpscrape schema`)")
+		"keep only these comma-separated keys of each record, e.g. app_id,score (gpscrape schema lists them)")
 	return c
 }
 
@@ -572,6 +574,20 @@ func (c *common) parse(args []string) error {
 			return err
 		}
 	}
+	// No count, limit or size is meaningful below zero, and two of them did
+	// harm there: search -num -1 panicked in the library, and reviews
+	// -limit -1 read as "no limit" and downloaded every review.
+	var negative error
+	c.fs.Visit(func(f *flag.Flag) {
+		if g, ok := f.Value.(flag.Getter); ok && negative == nil {
+			if n, isInt := g.Get().(int); isInt && n < 0 {
+				negative = records.Invalid("-%s must not be negative (got %d)", f.Name, n)
+			}
+		}
+	})
+	if negative != nil {
+		return negative
+	}
 	if c.fs.Lookup("lang") != nil {
 		c.lang = strings.TrimSpace(c.lang)
 		if err := checkLang(c.fs.Name(), c.lang); err != nil {
@@ -584,7 +600,45 @@ func (c *common) parse(args []string) error {
 			projection = append(projection, f)
 		}
 	}
+	if err := c.checkFields(); err != nil {
+		return err
+	}
 	return c.diagnostics()
+}
+
+// checkFields refuses -fields names that no record of this command has,
+// before any request: the check in project only ran on the first record, so a
+// misspelt field cost a live request first. Commands whose records are not
+// listed in commandRecords, and -raw output (the library's own types), are
+// left to project.
+func (c *common) checkFields() error {
+	if len(projection) == 0 {
+		return nil
+	}
+	if r := c.fs.Lookup("raw"); r != nil && r.Value.String() == "true" {
+		return nil
+	}
+	recs, ok := commandRecords[c.fs.Name()]
+	if !ok {
+		return nil
+	}
+	known := map[string]bool{}
+	for _, r := range recs {
+		for _, f := range recordSchema(r).Fields {
+			known[f.Name] = true
+		}
+	}
+	var unknown []string
+	for _, f := range projection {
+		if !known[f] {
+			unknown = append(unknown, f)
+		}
+	}
+	if len(unknown) > 0 {
+		return records.Invalid("-fields %s: not a field of %s records; they have %s",
+			strings.Join(unknown, ","), c.fs.Name(), strings.Join(slices.Sorted(maps.Keys(known)), ","))
+	}
+	return nil
 }
 
 // langCode is the shape of an hl value: a language, optionally a region or
@@ -617,7 +671,42 @@ func (c *common) arg(what string) (string, error) {
 		return "", records.Invalid("%s: missing %s\n\nusage: gpscrape %s [flags] <%s>",
 			c.fs.Name(), what, c.fs.Name(), what)
 	}
+	if what == "appID" {
+		// Every id, not only the first: the batch commands read c.args
+		// after this. A name sent where an id belongs reached Google, came
+		// back as an HTTP 400, and was reported as a retryable store_error;
+		// it is the caller's mistake, said before any request.
+		for i, raw := range c.args {
+			id, err := checkAppID(raw)
+			if err != nil {
+				return "", err
+			}
+			c.args[i] = id
+		}
+	}
+	if what == "term" && strings.TrimSpace(c.args[0]) == "" {
+		return "", records.Invalid("%s: the term is empty", c.fs.Name())
+	}
 	return c.args[0], nil
+}
+
+// packageID is the shape of an Android package name, the same pattern the
+// MCP server checks.
+var packageID = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z0-9_]+)+$`)
+
+// checkAppID accepts a package id or a store link carrying one (its id=
+// parameter), and refuses anything else as invalid_argument.
+func checkAppID(raw string) (string, error) {
+	id := strings.TrimSpace(raw)
+	if u, err := url.Parse(id); err == nil && u.Host != "" {
+		if q := u.Query().Get("id"); q != "" {
+			id = q
+		}
+	}
+	if !packageID.MatchString(id) {
+		return "", records.Invalid("%q is not a package id (like com.spotify.music); find it with `gpscrape search`", raw)
+	}
+	return id, nil
 }
 
 // progressTo returns the writer for human-facing progress, or nil when stderr
@@ -700,6 +789,17 @@ func project(v any) (any, error) {
 			out[f] = x
 		}
 	}
+	// A failed entry keeps what says it failed. Projected to -fields
+	// app_id,title, {"app_id","code","error"} became {"app_id"} -- a record
+	// whose fields were simply missing, which is exactly what one line per
+	// id with the failure in it exists to prevent.
+	if _, failed := m["error"]; failed {
+		for _, k := range []string{"app_id", "appId", "code", "error"} {
+			if x, ok := m[k]; ok {
+				out[k] = x
+			}
+		}
+	}
 	if len(out) == 0 {
 		return nil, records.Invalid("-fields %s: none of these is a field of this record; its fields are %s (`gpscrape schema` lists them per command)",
 			strings.Join(projection, ","), strings.Join(slices.Sorted(maps.Keys(m)), ","))
@@ -736,8 +836,27 @@ func (e *emitter) flush() error {
 // must not have to reconcile stdout with stderr, and `permissions` has emitted
 // the same shape since it was written.
 type appErrorRecord struct {
-	AppID string `json:"appId"`
-	Error string `json:"error"`
+	AppID string       `json:"appId"`
+	Code  records.Code `json:"code"`
+	Error string       `json:"error"`
+}
+
+func newAppErrorRecord(id string, err error) appErrorRecord {
+	return appErrorRecord{AppID: id, Code: records.Classify(err), Error: err.Error()}
+}
+
+// batchFailed is the error for a batch in which every id failed. When the
+// entries agree on a code -- every id not found, say -- the run carries that
+// code, and its exit status, rather than a generic retryable store_error
+// that would send a caller retrying ids that do not exist.
+func batchFailed(errs []error) error {
+	code := records.Classify(errs[0])
+	for _, err := range errs[1:] {
+		if records.Classify(err) != code {
+			return records.Errorf(records.CodeStore, "all %d apps failed", len(errs))
+		}
+	}
+	return records.Errorf(code, "all %d apps failed (%s): %w", len(errs), code, errs[0])
 }
 
 func cmdApp(args []string) error {
@@ -775,10 +894,10 @@ func cmdApp(args []string) error {
 	e := newEmitter(os.Stdout)
 	defer func() { _ = e.flush() }()
 
-	var failed int
+	var failed []error
 	for _, r := range c.client().AppsMany(ctx, c.args, opts) {
 		if r.Err != nil {
-			failed++
+			failed = append(failed, r.Err)
 			// Both: the record so the stream stays one line per id asked for,
 			// the stderr line so a person watching sees it without a jq
 			// filter. Dropping the id from stdout meant a caller diffing what
@@ -786,7 +905,7 @@ func cmdApp(args []string) error {
 			_, _ = fmt.Fprintf(os.Stderr, "%s: %v\n", r.AppID, r.Err)
 			var rec any = records.NewAppError(r.AppID, r.Err)
 			if *raw {
-				rec = appErrorRecord{AppID: r.AppID, Error: r.Err.Error()}
+				rec = newAppErrorRecord(r.AppID, r.Err)
 			}
 			if err := e.emit(rec); err != nil {
 				return err
@@ -801,8 +920,9 @@ func cmdApp(args []string) error {
 			return err
 		}
 	}
-	if failed == len(c.args) {
-		return fmt.Errorf("all %d apps failed", failed)
+	if len(failed) == len(c.args) {
+		_ = e.flush()
+		return batchFailed(failed)
 	}
 	return e.flush()
 }
@@ -830,7 +950,7 @@ func cmdPCApp(args []string) error {
 	e := newEmitter(os.Stdout)
 	defer func() { _ = e.flush() }()
 
-	var failed int
+	var failed []error
 	for _, id := range c.args {
 		pc, err := c.client().PCApp(ctx, id, opts)
 		if err != nil {
@@ -839,9 +959,9 @@ func cmdPCApp(args []string) error {
 			if len(c.args) == 1 || ctx.Err() != nil {
 				return err
 			}
-			failed++
+			failed = append(failed, err)
 			_, _ = fmt.Fprintf(os.Stderr, "%s: %v\n", id, err)
-			if err := e.emit(appErrorRecord{AppID: id, Error: err.Error()}); err != nil {
+			if err := e.emit(newAppErrorRecord(id, err)); err != nil {
 				return err
 			}
 			continue
@@ -850,8 +970,9 @@ func cmdPCApp(args []string) error {
 			return err
 		}
 	}
-	if failed == len(c.args) {
-		return fmt.Errorf("all %d apps failed", failed)
+	if len(failed) == len(c.args) {
+		_ = e.flush()
+		return batchFailed(failed)
 	}
 	return e.flush()
 }
@@ -987,8 +1108,14 @@ func cmdReviews(args []string) error {
 	// One language is the ordinary case and stays exactly as it was.
 	if len(list) == 1 {
 		opts.Lang = list[0]
-		if _, _, err := emitReviews(ctx, c, e, appID, opts, *limit, nil, record); err != nil {
+		n, _, err := emitReviews(ctx, c, e, appID, opts, *limit, nil, record)
+		if err != nil {
 			return err
+		}
+		if n == 0 {
+			if err := confirmListed(ctx, c, appID); err != nil {
+				return err
+			}
 		}
 		return e.flush()
 	}
@@ -1026,7 +1153,21 @@ func cmdReviews(args []string) error {
 		_, _ = fmt.Fprintf(progress,
 			"%d reviews already seen under another language (aliased corpora)\n", dups)
 	}
+	if total == 0 {
+		if err := confirmListed(ctx, c, appID); err != nil {
+			return err
+		}
+	}
 	return e.flush()
+}
+
+// confirmListed tells an app with no reviews from an id the store does not
+// know: Google answers both with an empty page, so `reviews com.typo` exited
+// 0 with nothing printed. One details request settles it, and only when no
+// review came back. It is the check the MCP reviews tool makes.
+func confirmListed(ctx context.Context, c *common, appID string) error {
+	_, err := c.client().App(ctx, appID, googleplayscraper.AppOptions{Lang: c.lang, Country: c.country})
+	return err
 }
 
 // emitReviews streams one corpus. seen, when non-nil, suppresses ids already
@@ -1273,14 +1414,14 @@ func cmdPermissions(args []string) error {
 	}
 	// Every app still gets its line; the exit code is what tells a script the
 	// run produced nothing usable, matching `app`.
-	failed := 0
+	var failed []error
 	for _, r := range results {
 		if r.Err != nil {
-			failed++
+			failed = append(failed, r.Err)
 		}
 	}
-	if failed == len(results) {
-		return fmt.Errorf("all %d apps failed", failed)
+	if len(failed) == len(results) {
+		return batchFailed(failed)
 	}
 	return nil
 }
@@ -1400,9 +1541,25 @@ func cmdAvailability(args []string) error {
 	ctx, stop := c.context()
 	defer stop()
 
+	// Validated the way the MCP tool validates them. An unknown code is not
+	// a country Google answers for -- `zz` used to come back "available",
+	// because the store serves a default storefront for any gl -- and an
+	// empty list after the commas meant zero probes and exit 0.
 	var list []string
 	if *countries != "" {
-		list = strings.Split(*countries, ",")
+		for _, cc := range strings.Split(*countries, ",") {
+			cc = strings.ToLower(strings.TrimSpace(cc))
+			if cc == "" {
+				continue
+			}
+			if !slices.Contains(googleplayscraper.AllCountries, cc) {
+				return records.Invalid("-countries: %q is not a Play Store country (markets without one, such as cn, are not probed)", cc)
+			}
+			list = append(list, cc)
+		}
+		if len(list) == 0 {
+			return records.Invalid("-countries: no country codes in %q", *countries)
+		}
 	}
 
 	// The default sweep is one request per country, so progress goes to stderr
@@ -1424,10 +1581,31 @@ func cmdAvailability(args []string) error {
 	if err != nil {
 		return err
 	}
+	var out any = records.FromAvailability(appID, res)
 	if *raw {
-		return emitOne(res)
+		out = res
 	}
-	return emitOne(records.FromAvailability(appID, res))
+	if err := emitOne(out); err != nil {
+		return err
+	}
+	// Every country failed: the record lists them under errors, and the run
+	// must not exit 0 as if it had an answer. The shared code -- all of them
+	// rate limited, say -- is the exit status.
+	if len(res.Errors) > 0 && res.Checked == 0 {
+		errs := make([]error, 0, len(res.Errors))
+		for _, err := range res.Errors {
+			errs = append(errs, err)
+		}
+		code := records.Classify(errs[0])
+		for _, err := range errs[1:] {
+			if records.Classify(err) != code {
+				code = records.CodeStore
+				break
+			}
+		}
+		return records.Errorf(code, "every country failed (%d), for example: %v", len(errs), errs[0])
+	}
+	return nil
 }
 
 // idRecord is what `catalog ids` emits: an id and nothing else, because that

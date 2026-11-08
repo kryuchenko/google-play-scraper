@@ -30,7 +30,7 @@ func (c *Client) Developer(ctx context.Context, opts DeveloperOptions) ([]Search
 	if opts.Country == "" {
 		opts.Country = "us"
 	}
-	if opts.Num == 0 {
+	if opts.Num <= 0 {
 		opts.Num = 60
 	}
 

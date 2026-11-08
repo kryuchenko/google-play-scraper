@@ -330,7 +330,13 @@ func cmdSync(args []string) error {
 	// Here the work is real. Asked for only now: a sweep with nothing to do
 	// costs two requests and needs no consent.
 	if *sample == 0 || *sample == 100 {
-		if err := confirmExpensive(*yes, "a full catalog sweep is about 88,000 requests and hours of work; "+
+		// The generation says how many shards there are, so say that rather
+		// than a figure that is right only for the full store.
+		cost := "about 88,000 requests and hours of work"
+		if gen.Shards > 0 {
+			cost = fmt.Sprintf("%d requests, one per shard of %s", gen.Shards, gen.ID())
+		}
+		if err := confirmExpensive(*yes, "a full catalog sweep is "+cost+"; "+
 			"`gpscrape catalog size` estimates the count in about 900, `-sample 1` sweeps 1%"); err != nil {
 			return err
 		}

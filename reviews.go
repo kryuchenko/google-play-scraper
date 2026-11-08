@@ -28,7 +28,7 @@ func (c *Client) ReviewsComprehensive(ctx context.Context, appID string, opts Re
 	var lastErr error
 
 	countPerRating := opts.Count
-	if countPerRating == 0 {
+	if countPerRating <= 0 {
 		countPerRating = 200 // default per rating
 	}
 
@@ -143,7 +143,7 @@ func (c *Client) reviewsPage(ctx context.Context, appID string, opts ReviewOptio
 	if opts.Sort == 0 {
 		opts.Sort = SortNewest
 	}
-	if opts.Count == 0 {
+	if opts.Count <= 0 {
 		// One page, and the caller sees its size in the slice they get back --
 		// so this stays where it was rather than following reviewsPageMax up.
 		// ReviewsSeq raises its own page size instead, where it is an internal

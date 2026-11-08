@@ -383,6 +383,19 @@ func catalogGenres(args []string) error {
 				}
 				return err
 			}
+			// A lookup the interrupt cut off is not a failed lookup. Counted as
+			// one, its id was passed with no row (when the table did not know
+			// it) and lastDone moved past it, so a resumed run skipped it for
+			// good: its first_seen row was lost. Stop here, before it, instead.
+			if d.Err != nil && ctx.Err() != nil {
+				if cerr := checkpoint(false); cerr != nil {
+					return fmt.Errorf("%w (and the progress could not be saved: %w)", ctx.Err(), cerr)
+				}
+				if resumable {
+					return fmt.Errorf("%w (progress kept: a rerun resumes after %s)", ctx.Err(), lastDone)
+				}
+				return ctx.Err()
+			}
 			if sinceCheckpoint >= genresCheckpointEvery {
 				if err := checkpoint(false); err != nil {
 					return err
@@ -601,7 +614,7 @@ func idSource(dir, from string) (ids iter.Seq[string], closeIDs func(), readErr 
 
 	m, ok := latestManifest(dir)
 	if !ok {
-		return nil, nil, nil, 0, fmt.Errorf("no snapshot in %s; run `gpscrape catalog sweep -dir %s` first, "+
+		return nil, nil, nil, 0, records.Errorf(records.CodeNotFound, "no snapshot in %s; run `gpscrape catalog sweep -dir %s` first, "+
 			"or pass -ids", dir, dir)
 	}
 	path := filepath.Join(dir, m.File)
@@ -1144,7 +1157,7 @@ func signalAccounting(dir string, added []string, from, to googleplayscraper.Gen
 func twoNewestSnapshots(dir string) (string, string, error) {
 	entries, err := filepath.Glob(filepath.Join(dir, "manifest-*.json"))
 	if err != nil || len(entries) < 2 {
-		return "", "", fmt.Errorf("need two snapshots in %s; found %d", dir, len(entries))
+		return "", "", records.Errorf(records.CodeNotFound, "need two snapshots in %s; found %d", dir, len(entries))
 	}
 	type snap struct {
 		gen  googleplayscraper.Generation
@@ -1165,7 +1178,7 @@ func twoNewestSnapshots(dir string) (string, string, error) {
 		snaps = append(snaps, snap{m.Generation, filepath.Join(dir, m.File)})
 	}
 	if len(snaps) < 2 {
-		return "", "", fmt.Errorf("need two readable manifests in %s; found %d", dir, len(snaps))
+		return "", "", records.Errorf(records.CodeNotFound, "need two readable manifests in %s; found %d", dir, len(snaps))
 	}
 	sort.Slice(snaps, func(i, j int) bool { return snaps[i].gen.Compare(snaps[j].gen) < 0 })
 	return snaps[len(snaps)-2].file, snaps[len(snaps)-1].file, nil
@@ -1464,7 +1477,7 @@ func catalogApps(args []string) error {
 		return err
 	}
 	if rows == 0 {
-		return fmt.Errorf("no genre table in %s; run `gpscrape catalog sweep -dir %s` then "+
+		return records.Errorf(records.CodeNotFound, "no genre table in %s; run `gpscrape catalog sweep -dir %s` then "+
 			"`gpscrape catalog genres -dir %s` to build one", *dir, *dir, *dir)
 	}
 
@@ -1481,7 +1494,7 @@ func catalogApps(args []string) error {
 	// stderr behind a terminal check, so the caller this output is written for
 	// never saw it.
 	if len(hits) == 0 && *genre != "" {
-		return fmt.Errorf("no app in %s has a genre matching %q; "+
+		return records.Errorf(records.CodeNotFound, "no app in %s has a genre matching %q; "+
 			"genre ids look like GAME_PUZZLE or PRODUCTIVITY, and `gpscrape categories` lists them",
 			path, *genre)
 	}
