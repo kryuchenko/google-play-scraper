@@ -38,6 +38,7 @@ import (
 	"os"
 	"os/signal"
 	"regexp"
+	"runtime"
 	"runtime/debug"
 	"slices"
 	"sort"
@@ -204,14 +205,37 @@ func reportError(w *os.File, err error, code records.Code) {
 	case "text":
 		asJSON = false
 	}
+	hint := sandboxTLSHint(err)
 	if !asJSON {
 		_, _ = fmt.Fprintf(w, "gpscrape: %s: %v\n", code, err)
+		if hint != "" {
+			_, _ = fmt.Fprintf(w, "gpscrape: hint: %s\n", hint)
+		}
 		return
 	}
-	b, _ := json.Marshal(map[string]any{"error": map[string]any{
-		"code": code, "message": err.Error(), "retryable": code.Retryable(),
-	}})
+	e := map[string]any{"code": code, "message": err.Error(), "retryable": code.Retryable()}
+	if hint != "" {
+		// Retrying the same way fails the same way; the hint is the fix.
+		e["hint"], e["retryable"] = hint, false
+	}
+	b, _ := json.Marshal(map[string]any{"error": e})
 	_, _ = fmt.Fprintf(w, "%s\n", b)
+}
+
+// sandboxTLSHint explains the one failure an agent cannot work out from the
+// error alone. Inside Claude Code's sandbox on macOS (Seatbelt), a Go program
+// cannot reach the system trust service, so every HTTPS request fails with
+// "x509: OSStatus -26276" -- it looks like a broken certificate, and in an
+// evaluation agents answered "unknown" rather than fix the setting. Claude
+// Code documents the fix; the hint names it.
+func sandboxTLSHint(err error) string {
+	s := err.Error()
+	if runtime.GOOS != "darwin" || !strings.Contains(s, "x509") || !strings.Contains(s, "OSStatus") {
+		return ""
+	}
+	return "Go programs on macOS cannot verify TLS inside Claude Code's sandbox, which blocks the system trust service. " +
+		`Set "sandbox": {"enableWeakerNetworkIsolation": true} in Claude Code's settings (play.google.com must also be an allowed domain), ` +
+		`or add "gpscrape *" to sandbox.excludedCommands`
 }
 
 // cmdVersion reports the build. It was a `fmt.Println("gpscrape", version)`
