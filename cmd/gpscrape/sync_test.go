@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"math/rand/v2"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -1734,4 +1735,127 @@ func scanLines(r io.Reader) ([]string, error) {
 		}
 	}
 	return out, sc.Err()
+}
+
+// A run killed mid-write leaves half an id at the end of the partial file.
+// The resume cuts it off instead of gluing it to the next id, and the shard
+// it came from -- not in the done log -- is fetched again whole.
+func TestSweepResumeRepairsATornLine(t *testing.T) {
+	_, f, dir := newSweepFixture(t)
+	preFinished(t, dir, f, sampling{}, 0, 1)
+	torn := f.ids[2][0][:len(f.ids[2][0])-1] // all but the last byte, no newline
+	partial := filepath.Join(dir, "partial-"+f.gen.ID()+".txt")
+	fh, err := os.OpenFile(partial, os.O_APPEND|os.O_WRONLY, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fh.WriteString(torn); err != nil {
+		t.Fatal(err)
+	}
+	_ = fh.Close()
+
+	if _, _, err := runVerb(t, cmdSync, "-dir", dir, "-concurrency", "2"); err != nil {
+		t.Fatalf("sweep: %v", err)
+	}
+	ids, err := readSnapshot(filepath.Join(dir, "snapshot-"+fixtureGenA.ID()+".txt.gz"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"com.a", "com.b", "com.c", "com.d", "com.e"}; !slices.Equal(ids, want) {
+		t.Errorf("snapshot = %v, want %v: no torn or glued ids", ids, want)
+	}
+}
+
+// A shard the previous run recorded as failed is pending again on resume;
+// once it succeeds there, the retry pass does not fetch it a second time.
+func TestSweepResumedFailureThatSucceedsIsNotRetried(t *testing.T) {
+	store, f, dir := newSweepFixture(t)
+	preFinished(t, dir, f, sampling{}, 0, 1)
+	failed := googleplayscraper.BaseURL + f.shardPath(3)
+	if err := saveState(filepath.Join(dir, "state.json"), syncState{
+		Generation: f.gen, IDs: len(f.ids[0]) + len(f.ids[1]), Failed: []string{failed},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	_, stderr, err := runVerb(t, cmdSync, "-dir", dir, "-concurrency", "2")
+	if err != nil {
+		t.Fatalf("sweep: %v", err)
+	}
+	if got := store.hitCount(f.shardPath(3)); got != 1 {
+		t.Errorf("the recovered shard was fetched %d times, want 1", got)
+	}
+	if strings.Contains(stderr, "retrying") {
+		t.Errorf("a retry pass ran with nothing left to retry:\n%s", stderr)
+	}
+}
+
+func TestTruncateTornLine(t *testing.T) {
+	long := strings.Repeat("x", 9000) // past one read block
+	for _, c := range []struct{ in, want string }{
+		{"", ""},
+		{"a\nb\n", "a\nb\n"},
+		{"a\nb", "a\n"},
+		{"torn", ""},
+		{"a\n" + long, "a\n"},
+		{long + "\n" + "tail", long + "\n"},
+	} {
+		path := filepath.Join(t.TempDir(), "partial.txt")
+		if err := os.WriteFile(path, []byte(c.in), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := truncateTornLine(path); err != nil {
+			t.Fatal(err)
+		}
+		got, _ := os.ReadFile(path)
+		if string(got) != c.want {
+			t.Errorf("truncateTornLine(%.20q...) left %.20q..., want %.20q...", c.in, got, c.want)
+		}
+	}
+	if err := truncateTornLine(filepath.Join(t.TempDir(), "missing")); err != nil {
+		t.Errorf("missing file: %v", err)
+	}
+}
+
+// The resume state exists before the first shard is fetched, so a run killed
+// in its first minutes -- before the checkpoint 500 shards in -- leaves files
+// the next run resumes from instead of deleting.
+func TestSweepWritesStateBeforeTheFirstShard(t *testing.T) {
+	store, f, dir := newSweepFixture(t)
+	var sawState atomic.Bool
+	store.setFunc(f.shardPath(0), func(*http.Request) (int, []byte) {
+		if _, err := os.Stat(filepath.Join(dir, "state.json")); err == nil {
+			sawState.Store(true)
+		}
+		return 500, nil
+	})
+	_, _, _ = runVerb(t, cmdSync, "-dir", dir, "-concurrency", "1")
+	if !sawState.Load() {
+		t.Error("no state.json while the first shard was in flight")
+	}
+}
+
+// A kill after the delta but before the manifest leaves the resume state,
+// and the next run finishes again; the manifest is never written ahead of
+// the delta it implies.
+func TestSweepWritesTheManifestAfterTheDelta(t *testing.T) {
+	_, f, dir := newSweepFixture(t)
+	if _, _, err := runVerb(t, cmdSync, "-dir", dir, "-concurrency", "2"); err != nil {
+		t.Fatal(err)
+	}
+	f.roll(t, fixtureGenB, fourShards())
+	if _, _, err := runVerb(t, cmdSync, "-dir", dir, "-concurrency", "2"); err != nil {
+		t.Fatal(err)
+	}
+	man, err := os.Stat(filepath.Join(dir, "manifest-"+fixtureGenB.ID()+".json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	del, err := os.Stat(filepath.Join(dir, deltaName(fixtureGenA, fixtureGenB)))
+	if err != nil {
+		t.Fatalf("no delta: %v", err)
+	}
+	if man.ModTime().Before(del.ModTime()) {
+		t.Errorf("manifest %v written before delta %v", man.ModTime(), del.ModTime())
+	}
 }

@@ -67,6 +67,27 @@ All notable changes to this project are documented here. The format is based on
   by a corrupt gzip stream or an overlong line read as a shorter catalog,
   and `-prune` deleted every row past the break. It stops before publishing
   now, and for `-ids` before any request.
+### Fixed
+
+- `gpscrape catalog sweep`, resuming after a hard kill: the partial id file
+  could end in half an id, and appending glued it to the next one
+  (`com.c` + `com.d` became `com.com.d`, an app that does not exist, in the
+  snapshot). The resume now cuts the file back to its last full line; the
+  torn shard is fetched again whole.
+- A shard a previous run recorded as failed, and that succeeded on resume,
+  was fetched again by the retry pass -- and if that fetch failed, the sweep
+  refused to publish ids it already had. It leaves the failed list once it
+  succeeds.
+- A checkpoint that could not be written was logged and skipped, so a disk
+  refusing fsync let a sweep fetch for hours with nothing to resume from. It
+  stops the sweep now.
+- A sweep killed before its first checkpoint, 500 shards in, had no state
+  file, so the next run deleted its work and started over. The state is
+  written before the first shard now.
+- The manifest was written before the delta, so a kill between the two left
+  a generation that every later run took as complete and none ever diffed.
+  The manifest is written last.
+- The done log gets the same torn-line repair as the id file.
 
 ### Added
 
