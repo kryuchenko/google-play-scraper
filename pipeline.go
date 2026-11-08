@@ -111,6 +111,10 @@ func defaultRetryable(status int, err error) bool {
 		// A consent or sign-in page will be the same page next time.
 		return sb.Verdict != VerdictInterstitial
 	}
+	if errors.Is(err, ErrBodyTooLarge) {
+		// Asking again downloads the same 64MB again.
+		return false
+	}
 	if err != nil {
 		// Transport failures: connection reset, TLS handshake, DNS. Context
 		// cancellation is excluded by the caller, which checks it first.
@@ -270,6 +274,15 @@ func (c *Client) do(ctx context.Context, hc *http.Client, method, url string,
 // up on the connection. See the drain in attempt for why there is a limit.
 const maxErrorBodyDrain = 32 << 10
 
+// maxBodyBytes caps a successful response. The largest bodies this package
+// reads are category and chart pages at about 3MB; 64MB is twenty times that.
+// Without a cap the size is whatever the other end sends -- the store, or any
+// proxy on the way -- and a body that never ends is memory that never stops.
+const maxBodyBytes = 64 << 20
+
+// ErrBodyTooLarge reports a response over maxBodyBytes.
+var ErrBodyTooLarge = errors.New("response body over 64MB")
+
 // attempt performs one HTTP round trip. It returns the status alongside the
 // error so the retry decision can see it without unwrapping. waited is how
 // long the throttle held this attempt, recorded so a slow run can be read as
@@ -386,7 +399,10 @@ func (c *Client) attempt(
 		return nil, status, sent, se
 	}
 
-	body, err = io.ReadAll(resp.Body)
+	body, err = io.ReadAll(io.LimitReader(resp.Body, maxBodyBytes+1))
+	if err == nil && len(body) > maxBodyBytes {
+		body, err = nil, ErrBodyTooLarge
+	}
 	if err != nil {
 		err = fmt.Errorf("read body: %w", err)
 		finish(outcome{err: err}, err)

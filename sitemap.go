@@ -196,7 +196,7 @@ func (c *Client) sitemapShardPackages(ctx context.Context, shardURL string) ([]s
 		}
 		defer func() { _ = zr.Close() }()
 
-		pkgs, err := shardPackagesFrom(zr)
+		pkgs, err := shardPackagesFrom(limitInflate(zr))
 		if err != nil {
 			return nil, fmt.Errorf("decompress shard %s: %w", shardURL, err)
 		}
@@ -431,6 +431,42 @@ func (c *Client) CatalogShardSeq(ctx context.Context, opts CatalogOptions) iter.
 // grows as it always did.
 const gunzipHintMax = 64 << 20
 
+// maxInflatedBytes caps what one gzip stream may decompress to. A shard
+// inflates to about 8MB; a stream that keeps going past 256MB is not a
+// sitemap, and gzip compresses runs of one byte about a thousandfold, so a
+// 64MB response could otherwise stand for 64GB of work.
+const maxInflatedBytes = 256 << 20
+
+// ErrInflatedTooLarge reports a gzip stream that decompresses past
+// maxInflatedBytes.
+var ErrInflatedTooLarge = errors.New("gzip stream inflates past 256MB")
+
+// limitInflate reads r and fails with ErrInflatedTooLarge once more than
+// maxInflatedBytes have come out of it.
+func limitInflate(r io.Reader) io.Reader {
+	return &inflateLimit{r: r, left: maxInflatedBytes}
+}
+
+type inflateLimit struct {
+	r    io.Reader
+	left int64
+}
+
+func (l *inflateLimit) Read(p []byte) (int, error) {
+	if l.left < 0 {
+		return 0, ErrInflatedTooLarge
+	}
+	if int64(len(p)) > l.left+1 {
+		p = p[:l.left+1]
+	}
+	n, err := l.r.Read(p)
+	l.left -= int64(n)
+	if l.left < 0 {
+		return n, ErrInflatedTooLarge
+	}
+	return n, err
+}
+
 func gunzipIfNeeded(data []byte) ([]byte, error) {
 	if len(data) < 2 || data[0] != 0x1f || data[1] != 0x8b {
 		return data, nil
@@ -455,7 +491,7 @@ func gunzipIfNeeded(data []byte) ([]byte, error) {
 	// over 4GB reports the remainder, and the buffer grows from there as
 	// normal. For a sitemap shard it is exact.
 	buf := bytes.NewBuffer(make([]byte, 0, gunzipHint(data)))
-	if _, err := buf.ReadFrom(zr); err != nil {
+	if _, err := buf.ReadFrom(limitInflate(zr)); err != nil {
 		return nil, err
 	}
 	return buf.Bytes(), nil
