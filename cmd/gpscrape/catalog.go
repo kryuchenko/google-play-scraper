@@ -109,11 +109,11 @@ const catalogUsage = `Usage: gpscrape catalog <verb> [flags]
 type checkRecord struct {
 	Generation string  `json:"generation"`
 	Built      string  `json:"built,omitempty"`
-	AgeHours   int     `json:"ageHours"`
+	AgeHours   int     `json:"age_hours"`
 	Shards     int     `json:"shards"`
 	Have       string  `json:"have,omitempty"`
-	HaveSample float64 `json:"haveSamplePct,omitempty"`
-	UpToDate   bool    `json:"upToDate"`
+	HaveSample float64 `json:"have_sample_pct,omitempty"`
+	UpToDate   bool    `json:"up_to_date"`
 }
 
 func catalogCheck(args []string) error {
@@ -171,8 +171,8 @@ func catalogCheck(args []string) error {
 // removal has to know which storefront said so, and `gpscrape availability`
 // is what settles it across markets.
 type genreRecord struct {
-	AppID   string `json:"appId"`
-	GenreID string `json:"genreId,omitempty"`
+	AppID   string `json:"app_id"`
+	GenreID string `json:"genre_id,omitempty"`
 	Genre   string `json:"genre,omitempty"`
 	Was     string `json:"was,omitempty"`
 	Change  string `json:"change"` // first_seen | changed | gone | same
@@ -635,7 +635,7 @@ func writeGenreLines(path string, ids []string, genreOf func(string) string) err
 // ---- new ----
 
 type newRecord struct {
-	AppID    string `json:"appId"`
+	AppID    string `json:"app_id"`
 	Category string `json:"category"`
 	Rank     int    `json:"rank"`
 	Seen     string `json:"seen"` // first | known
@@ -853,7 +853,7 @@ func loadSignalIDs(path string, since, until time.Time) (map[string]bool, error)
 // meant computing a filename inside a directory whose layout this tool calls
 // its own business, so the ids existed and were not reachable.
 type changeRecord struct {
-	AppID  string `json:"appId"`
+	AppID  string `json:"app_id"`
 	Change string `json:"change"` // "added" or "removed"
 	From   string `json:"from"`
 	To     string `json:"to"`
@@ -871,12 +871,12 @@ type signalStats struct {
 	// Observed counts only what was seen inside the window the two snapshots
 	// span, so precision is a ratio of two figures from one period.
 	Observed          int     `json:"observed"`
-	MatchedAdded      int     `json:"matchedAdded"`
+	MatchedAdded      int     `json:"matched_added"`
 	Recall            float64 `json:"recall"`
 	Precision         float64 `json:"precision"`
-	UnsignalledAdded  int     `json:"unsignalledAdded"`
-	UnsignalledPerDay float64 `json:"unsignalledPerDay,omitempty"`
-	DaysBetween       float64 `json:"daysBetween,omitempty"`
+	UnsignalledAdded  int     `json:"unsignalled_added"`
+	UnsignalledPerDay float64 `json:"unsignalled_per_day,omitempty"`
+	DaysBetween       float64 `json:"days_between,omitempty"`
 }
 
 func catalogDiff(args []string) error {
@@ -1147,19 +1147,19 @@ func coverageLabel(pct float64) string {
 type sizeRecord struct {
 	Generation   string  `json:"generation"`
 	Apps         int     `json:"apps"`
-	HalfWidth    int     `json:"halfWidth"`
-	RelativePct  float64 `json:"relativePct"`
-	ShardsRead   int     `json:"shardsRead"`
-	ShardsTotal  int     `json:"shardsTotal"`
-	MeanPerShard float64 `json:"meanPerShard"`
+	HalfWidth    int     `json:"half_width"`
+	RelativePct  float64 `json:"relative_pct"`
+	ShardsRead   int     `json:"shards_read"`
+	ShardsTotal  int     `json:"shards_total"`
+	MeanPerShard float64 `json:"mean_per_shard"`
 	// Not omitempty: dispersionZ of exactly 0 is a perfectly uniform hash,
 	// which is the healthiest reading there is, and dropping it from the
 	// output makes the best case look like a missing field.
 	Dispersion  float64 `json:"dispersion"`
-	DispersionZ float64 `json:"dispersionZ"`
-	TargetPct   float64 `json:"targetPct"`
-	MetTarget   bool    `json:"metTarget"`
-	HashUniform bool    `json:"hashUniform"`
+	DispersionZ float64 `json:"dispersion_z"`
+	TargetPct   float64 `json:"target_pct"`
+	MetTarget   bool    `json:"met_target"`
+	HashUniform bool    `json:"hash_uniform"`
 	Warning     string  `json:"warning,omitempty"`
 }
 
@@ -1287,8 +1287,8 @@ func parsePercent(s string) (float64, error) {
 // answer. Only this last step is free, and it is the one a consumer runs.
 
 type appRecord struct {
-	AppID   string `json:"appId"`
-	GenreID string `json:"genreId"`
+	AppID   string `json:"app_id"`
+	GenreID string `json:"genre_id"`
 }
 
 func catalogApps(args []string) error {

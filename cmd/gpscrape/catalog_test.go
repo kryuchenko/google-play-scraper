@@ -668,7 +668,7 @@ func TestCatalogAppsFiltersByGenre(t *testing.T) {
 	// The records carry the genre, so a consumer can bucket without a second
 	// pass over the table.
 	recs := run("-genre", "GAME_ACTION")
-	if len(recs) != 1 || !strings.Contains(recs[0], `"genreId":"GAME_ACTION"`) {
+	if len(recs) != 1 || !strings.Contains(recs[0], `"genre_id":"GAME_ACTION"`) {
 		t.Errorf("record output = %v", recs)
 	}
 }

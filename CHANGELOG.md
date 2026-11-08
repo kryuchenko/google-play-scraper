@@ -13,6 +13,21 @@ All notable changes to this project are documented here. The format is based on
   it, and is no longer marked retryable. Found in the routing evaluation,
   where agents answered "unknown" instead of fixing the setting.
 
+### Changed
+
+- **Breaking, `gpscrape catalog`:** every catalog record is snake_case like
+  the rest of the CLI's output: `app_id`, `genre_id`, `age_hours`,
+  `up_to_date`, `sample_pct`, `completed_at`, `half_width`, `shards_read`
+  and the rest. Catalog files an older version wrote -- manifests, the
+  resumable sweep state, the `catalog new` signal log -- still read; new ones
+  are written snake_case.
+
+### Fixed
+
+- The live CLI canary still checked v1.5's camelCase fields (`appId`, a list
+  of permissions, a country->status map) and would have failed against
+  v1.6.0's shared records. It checks the records now.
+
 ## gpscrape-mcp 0.1.1 (tag `mcp/v0.1.1`) - 2026-11-07
 
 ### Changed

@@ -1419,7 +1419,7 @@ func cmdAvailability(args []string) error {
 // genreId beside every line -- a field that is never populated is worse than
 // no field, since a consumer cannot tell "no genre" from "not looked up".
 type idRecord struct {
-	AppID string `json:"appId"`
+	AppID string `json:"app_id"`
 }
 
 func catalogIDs(args []string) error {

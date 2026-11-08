@@ -80,8 +80,8 @@ type syncState struct {
 	// len(shards)-len(finished), and a done log from a bigger run makes that
 	// negative -- and, when it did not panic, a manifest claiming a coverage
 	// its snapshot did not have, which is the worse of the two.
-	SamplePct  float64 `json:"samplePct,omitempty"`
-	SampleSeed int64   `json:"sampleSeed,omitempty"`
+	SamplePct  float64 `json:"sample_pct,omitempty"`
+	SampleSeed int64   `json:"sample_seed,omitempty"`
 }
 
 // Which shards are finished is kept in an append-only log beside the state
@@ -137,9 +137,9 @@ func readDoneLog(path string) (map[string]struct{}, error) {
 // manifest describes a finished snapshot.
 type manifest struct {
 	Generation  googleplayscraper.Generation `json:"generation"`
-	CompletedAt string                       `json:"completedAt"`
+	CompletedAt string                       `json:"completed_at"`
 	IDs         int                          `json:"ids"`
-	FailedShard int                          `json:"failedShards,omitempty"`
+	FailedShard int                          `json:"failed_shards,omitempty"`
 	File        string                       `json:"file"`
 	SHA256      string                       `json:"sha256"`
 
@@ -150,8 +150,8 @@ type manifest struct {
 	// complete one, and diffing a 1% sample against a full snapshot reports
 	// 99% of the store as removed. The seed makes a sampled run reproducible,
 	// which is what turns a sample into a measurement rather than an anecdote.
-	SamplePct  float64 `json:"samplePct,omitempty"`
-	SampleSeed int64   `json:"sampleSeed,omitempty"`
+	SamplePct  float64 `json:"sample_pct,omitempty"`
+	SampleSeed int64   `json:"sample_seed,omitempty"`
 }
 
 // complete reports whether the manifest describes a sweep of the whole catalog

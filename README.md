@@ -143,7 +143,7 @@ gpscrape availability com.spotify.music -countries us,de,cn
 
 Several ids ride in one `batchexecute` request, so a list of apps costs one
 throttle interval rather than one per app. An id that fails in a batched run
-is still one line of output, in its position — `{"appId":"…","error":"…"}` —
+is still one line of output, in its position — `{"app_id":"…","code":"not_found","error":"…"}` —
 so the stream has one record per id asked for and a pipeline never has to
 reconcile stdout with stderr.
 
@@ -230,9 +230,9 @@ requests against Google:
 
 ```console
 $ gpscrape catalog check -dir ./catalog
-{"generation":"2026-08-23_1787500934","built":"2026-08-23T16:02:14Z","ageHours":287,"shards":83445,"upToDate":false}
-$ gpscrape catalog size | jq -c '{apps, halfWidth, shardsRead, shardsTotal, metTarget}'
-{"apps":3549110,"halfWidth":35366,"shardsRead":866,"shardsTotal":83445,"metTarget":true}
+{"generation":"2026-08-23_1787500934","built":"2026-08-23T16:02:14Z","age_hours":287,"shards":83445,"up_to_date":false}
+$ gpscrape catalog size | jq -c '{apps, half_width, shards_read, shards_total, met_target}'
+{"apps":3549110,"half_width":35366,"shards_read":866,"shards_total":83445,"met_target":true}
 ```
 
 That is 3,549,110 apps give or take 35,366 at 95% confidence, from 866 of
