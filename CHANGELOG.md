@@ -5,6 +5,25 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## gpscrape-mcp 0.1.2 (tag `mcp/v0.1.2`) - 2026-11-08
+
+### Changed
+
+- Requires the library at v1.7.0, and takes its fixes: search and cluster
+  results carry price and summary for every row, not only the first; a
+  price the store did not give leaves `free` out of the record instead of
+  reporting `true` (the output schema marks it optional); responses and
+  inflated sitemaps are size-capped; the adaptive throttle fixes listed
+  under 1.7.0.
+
+### Fixed
+
+- `play_get_apps` no longer panics on a batch entry whose error wraps an
+  already-explained error; the entry keeps its code.
+- The HTTP transport's refusal names `-token-file`.
+
+## [1.7.0] - 2026-11-08
+
 ### Security
 
 - Responses are capped at 64MB (`ErrBodyTooLarge`, not retried) and an inflated

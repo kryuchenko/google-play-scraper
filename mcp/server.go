@@ -30,7 +30,7 @@ import (
 const iconURL = "https://raw.githubusercontent.com/kryuchenko/google-play-scraper/main/mcp/assets/icon.svg"
 
 // Version is reported to clients in the MCP handshake.
-const Version = "0.1.1"
+const Version = "0.1.2"
 
 // Scraper is the part of *gps.Client the tools use. Tests substitute a fake.
 type Scraper interface {
