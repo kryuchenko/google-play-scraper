@@ -249,7 +249,7 @@ func TestAppsManyMatchesAppExceptLiveCounters(t *testing.T) {
 	}
 	appIDs := []string{"com.spotify.music", "com.duolingo", "com.ebay.mobile"}
 
-	c := NewClient(WithThrottle(300 * time.Millisecond))
+	c := liveClient(t, WithThrottle(300*time.Millisecond))
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 
@@ -319,7 +319,7 @@ func TestWs7gDcTemplateStillMatchesThePage(t *testing.T) {
 	}
 	const appID = "com.google.android.apps.maps"
 
-	c := NewClient()
+	c := liveClient(t)
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
 

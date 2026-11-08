@@ -26,7 +26,7 @@ func TestSuggestIntegration(t *testing.T) {
 		t.Skip("skipping integration test")
 	}
 
-	c := NewClient()
+	c := liveClient(t)
 	suggestions, err := c.Suggest(context.Background(), SuggestOptions{
 		Term: "whats",
 	})
@@ -94,7 +94,7 @@ func TestSuggestManyMatchesIndividualFetches(t *testing.T) {
 	}
 	terms := []string{"chess", "music", "maps", "photo editor", "language"}
 
-	client := NewClient(WithThrottle(300 * time.Millisecond))
+	client := liveClient(t, WithThrottle(300*time.Millisecond))
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 

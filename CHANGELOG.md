@@ -144,6 +144,12 @@ All notable changes to this project are documented here. The format is based on
 - The lock file is fsynced, with its directory, so a power loss can no longer
   leave an empty `sweep.lock` that every later run refuses. A failed
   directory fsync after a rename now names the file it was publishing.
+- `gpscrape`: a panic exited 2, the status for bad arguments, with no error
+  object. It is reported as `internal` and exits 1; the stack still goes to
+  stderr.
+- README lists every error code with its exit status; it named only some
+  statuses and none of `not_listed`, `confirmation_required`, `cancelled` or
+  `internal`.
 
 ### Internal
 
@@ -171,6 +177,22 @@ All notable changes to this project are documented here. The format is based on
   live CLI canary checks the shared records instead of v1.5's camelCase
   fields. `TestSearchPagination` no longer fails when Google returns one page
   or fewer.
+- Error-code traceability: `TestErrorCodeMatrix` in `cmd/gpscrape` runs the
+  test binary as `gpscrape` against a fake store and reads each code and exit
+  status back from the process; the one in `mcp` reads them from tool errors,
+  and a cancelled call's from the wire. Codes come from `records/errors.go`,
+  so a new one fails both until a scenario produces it and the READMEs list
+  it. `-v` prints the matrix.
+- Live tests (integration, the library canary) build their client with
+  `LiveClient`/`Evidence`: a failing test writes the last 20 responses --
+  URL, status, headers, first 4 KB of body, time -- and the hook events
+  around them to `$GPSCRAPE_EVIDENCE_DIR`, or a temporary directory it logs.
+  The CLI canary keeps each run's `-debug` log, stderr and stdout head. The
+  canary workflow uploads the directory when it fails.
+- The canary compares per-endpoint fill rates of key fields and median
+  latencies with `testdata/canary_baseline.json` (from a live run;
+  `UPDATE_CANARY_BASELINE=1` rewrites it): a fill rate down more than 0.25 or
+  under its floor fails, 3x the latency is logged.
 
 ## gpscrape-mcp 0.1.1 (tag `mcp/v0.1.1`) - 2026-11-07
 

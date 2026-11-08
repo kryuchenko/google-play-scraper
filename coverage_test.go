@@ -16,7 +16,7 @@ func TestCategoryAppsBeatsCeiling(t *testing.T) {
 		t.Skip("network test")
 	}
 
-	client := googleplayscraper.NewClient(googleplayscraper.WithThrottle(400 * time.Millisecond))
+	client := googleplayscraper.LiveClient(t, googleplayscraper.WithThrottle(400*time.Millisecond))
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
 

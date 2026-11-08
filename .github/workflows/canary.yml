@@ -31,5 +31,19 @@ jobs:
         with:
           go-version: stable
 
+      # A failing subtest writes the responses it saw (URL, status, headers,
+      # the first 4 KB of each body, when) to GPSCRAPE_EVIDENCE_DIR, so a red
+      # run that does not reproduce still leaves something to read.
       - name: Run canary contract tests
+        env:
+          GPSCRAPE_EVIDENCE_DIR: ${{ runner.temp }}/canary-evidence
         run: go test -tags canary -run TestCanary -v -timeout 15m ./...
+
+      - name: Upload evidence from failed subtests
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: canary-evidence
+          path: ${{ runner.temp }}/canary-evidence
+          if-no-files-found: ignore
+          retention-days: 14

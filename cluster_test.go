@@ -67,7 +67,7 @@ func TestClusterURLsCategory(t *testing.T) {
 		t.Skip("skipping integration test in short mode")
 	}
 
-	client := NewClient()
+	client := liveClient(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
@@ -93,7 +93,7 @@ func TestClusterURLsTop(t *testing.T) {
 		t.Skip("skipping integration test in short mode")
 	}
 
-	client := NewClient()
+	client := liveClient(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
@@ -113,7 +113,7 @@ func TestClusterApps(t *testing.T) {
 		t.Skip("skipping integration test in short mode")
 	}
 
-	client := NewClient()
+	client := liveClient(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 

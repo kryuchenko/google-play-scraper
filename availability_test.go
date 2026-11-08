@@ -195,7 +195,7 @@ func TestAvailabilityConcurrentRecordsEveryCountry(t *testing.T) {
 
 	countries := []string{"us", "gb", "de", "fr", "es", "it", "br", "in"}
 
-	res, err := NewClient().Availability(context.Background(), "com.google.android.apps.maps", AvailabilityOptions{
+	res, err := liveClient(t).Availability(context.Background(), "com.google.android.apps.maps", AvailabilityOptions{
 		Countries:   countries,
 		Concurrency: 4,
 	})

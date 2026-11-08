@@ -17,7 +17,7 @@ func TestPermissions(t *testing.T) {
 	if testing.Short() {
 		t.Skip("network test")
 	}
-	client := NewClient()
+	client := liveClient(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
@@ -63,7 +63,7 @@ func TestPermissionsInstagram(t *testing.T) {
 	if testing.Short() {
 		t.Skip("network test")
 	}
-	client := NewClient()
+	client := liveClient(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
@@ -212,7 +212,7 @@ func TestPermissionsManyMatchesIndividualFetches(t *testing.T) {
 		"com.duolingo",
 	}
 
-	client := NewClient(WithThrottle(300 * time.Millisecond))
+	client := liveClient(t, WithThrottle(300*time.Millisecond))
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 

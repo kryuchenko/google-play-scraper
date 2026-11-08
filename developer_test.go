@@ -20,7 +20,7 @@ func TestDeveloperStringID(t *testing.T) {
 		t.Skip("skipping integration test")
 	}
 
-	c := NewClient()
+	c := liveClient(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
@@ -59,7 +59,7 @@ func TestDeveloperNumericID(t *testing.T) {
 		t.Skip("skipping integration test")
 	}
 
-	c := NewClient()
+	c := liveClient(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
@@ -95,7 +95,7 @@ func TestDeveloperLargeRequest(t *testing.T) {
 		t.Skip("skipping integration test")
 	}
 
-	c := NewClient()
+	c := liveClient(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
@@ -121,7 +121,7 @@ func TestDeveloperDifferentLocale(t *testing.T) {
 		t.Skip("skipping integration test")
 	}
 
-	c := NewClient()
+	c := liveClient(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 

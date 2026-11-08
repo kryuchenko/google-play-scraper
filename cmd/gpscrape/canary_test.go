@@ -17,11 +17,15 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 )
 
 // buildBinary compiles gpscrape once into the test's temp dir. Testing the
@@ -39,23 +43,103 @@ func buildBinary(t *testing.T) string {
 }
 
 // run executes one gpscrape invocation with a throttle, returning stdout.
+//
+// Every invocation writes its -debug log (each request's URL, status, attempt
+// and latency, each retry) next to a record of the run: arguments, exit
+// status, stderr and the first 4 KB of stdout. A test that fails keeps them
+// under $GPSCRAPE_EVIDENCE_DIR/cli, or a temporary directory it logs; one that
+// passes deletes them. The binary is another process, so this is what can be
+// had of its traffic without a proxy: no response headers or bodies, which
+// the library canary's evidence has.
 func run(t *testing.T, bin string, args ...string) string {
 	t.Helper()
+	ev := cliEvidenceFor(t)
 	// Flags go after the command, and after its verb when it has one: the
 	// dispatchers read those positionally, before any flag parsing.
 	n := 1
 	if len(args) > 1 && args[0] == "catalog" && !strings.HasPrefix(args[1], "-") {
 		n = 2
 	}
-	args = append(append(append([]string{}, args[:n]...), "-throttle", "700ms"), args[n:]...)
+	ev.n++
+	logFile := filepath.Join(ev.dir, fmt.Sprintf("%02d-%s.log", ev.n, strings.Join(args[:n], "-")))
+	args = append(append(append([]string{}, args[:n]...),
+		"-throttle", "700ms", "-debug", "-log-file", logFile), args[n:]...)
 	cmd := exec.Command(bin, args...)
 	var stderr strings.Builder
 	cmd.Stderr = &stderr
+	start := time.Now()
 	out, err := cmd.Output()
+	ev.runs = append(ev.runs, cliInvocation{
+		Args: args, Started: start.UTC(), Took: time.Since(start).String(),
+		Exit: cmd.ProcessState.ExitCode(), Stderr: stderr.String(),
+		Stdout: string(out[:min(len(out), 4<<10)]), StdoutBytes: len(out), Log: filepath.Base(logFile),
+	})
 	if err != nil {
 		t.Fatalf("gpscrape %s: %v\nstderr: %s", strings.Join(args, " "), err, stderr.String())
 	}
 	return string(out)
+}
+
+type cliInvocation struct {
+	Args        []string  `json:"args"`
+	Started     time.Time `json:"started"`
+	Took        string    `json:"took"`
+	Exit        int       `json:"exit"`
+	Stderr      string    `json:"stderr"`
+	Stdout      string    `json:"stdout"`
+	StdoutBytes int       `json:"stdout_bytes"`
+	Log         string    `json:"log"`
+}
+
+type cliEvidence struct {
+	dir  string
+	n    int
+	runs []cliInvocation
+}
+
+var (
+	cliEvidenceMu   sync.Mutex
+	cliEvidenceByT  = map[*testing.T]*cliEvidence{}
+	cliEvidenceRoot string
+)
+
+// cliEvidenceFor is t's evidence directory, created on first use and kept
+// only if t fails.
+func cliEvidenceFor(t *testing.T) *cliEvidence {
+	t.Helper()
+	cliEvidenceMu.Lock()
+	defer cliEvidenceMu.Unlock()
+	if ev := cliEvidenceByT[t]; ev != nil {
+		return ev
+	}
+	if cliEvidenceRoot == "" {
+		cliEvidenceRoot = os.Getenv("GPSCRAPE_EVIDENCE_DIR")
+		if cliEvidenceRoot == "" {
+			d, err := os.MkdirTemp("", "gpscrape-evidence-")
+			if err != nil {
+				t.Fatal(err)
+			}
+			cliEvidenceRoot = d
+		}
+	}
+	dir := filepath.Join(cliEvidenceRoot, "cli", regexp.MustCompile(`[^A-Za-z0-9._-]+`).ReplaceAllString(t.Name(), "_"))
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	ev := &cliEvidence{dir: dir}
+	cliEvidenceByT[t] = ev
+	t.Cleanup(func() {
+		if !t.Failed() {
+			_ = os.RemoveAll(dir)
+			return
+		}
+		b, _ := json.MarshalIndent(ev.runs, "", "  ")
+		if err := os.WriteFile(filepath.Join(dir, "invocations.json"), b, 0o644); err != nil {
+			t.Logf("evidence: %v", err)
+		}
+		t.Logf("evidence: the runs and their -debug logs are in %s", dir)
+	})
+	return ev
 }
 
 // ndjson parses the output as newline-delimited JSON objects, which is the

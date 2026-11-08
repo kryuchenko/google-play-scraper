@@ -140,7 +140,7 @@ func TestAppIntegration(t *testing.T) {
 		t.Skip("skipping integration test in short mode")
 	}
 
-	c := NewClient()
+	c := liveClient(t)
 	app, err := c.App(context.Background(), "com.google.android.apps.maps", AppOptions{
 		Lang:    "en",
 		Country: "us",
@@ -172,7 +172,7 @@ func TestAppNotFound(t *testing.T) {
 		t.Skip("skipping integration test in short mode")
 	}
 
-	c := NewClient()
+	c := liveClient(t)
 	_, err := c.App(context.Background(), "com.invalid.nonexistent.app.xyz123", AppOptions{})
 
 	if err == nil {
@@ -187,7 +187,7 @@ func TestAppSpanish(t *testing.T) {
 		t.Skip("skipping integration test in short mode")
 	}
 
-	c := NewClient()
+	c := liveClient(t)
 	app, err := c.App(context.Background(), "com.google.android.apps.maps", AppOptions{
 		Lang:    "es",
 		Country: "es",
@@ -208,7 +208,7 @@ func TestAppRussian(t *testing.T) {
 		t.Skip("skipping integration test in short mode")
 	}
 
-	c := NewClient()
+	c := liveClient(t)
 	app, err := c.App(context.Background(), "com.google.android.apps.maps", AppOptions{
 		Lang:    "ru",
 		Country: "ru",
@@ -228,7 +228,7 @@ func TestAppPaid(t *testing.T) {
 		t.Skip("skipping integration test in short mode")
 	}
 
-	c := NewClient()
+	c := liveClient(t)
 	// Minecraft is a well-known paid app
 	app, err := c.App(context.Background(), "com.mojang.minecraftpe", AppOptions{
 		Lang:    "en",
@@ -256,7 +256,7 @@ func TestAppFullDetails(t *testing.T) {
 		t.Skip("skipping integration test in short mode")
 	}
 
-	c := NewClient()
+	c := liveClient(t)
 	app, err := c.App(context.Background(), "com.instagram.android", AppOptions{})
 
 	if err != nil {

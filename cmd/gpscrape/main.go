@@ -147,6 +147,17 @@ func main() {
 	// reader most wants the trace for. runExitHooks empties the list, so the
 	// two paths cannot double-write the trace.
 	defer runExitHooks()
+	// A panic is a bug in gpscrape and is reported as one. Left to the
+	// runtime it exits 2, the status for bad arguments, which tells a script
+	// to change a command that was fine. The stack still goes to stderr.
+	defer func() {
+		if p := recover(); p != nil {
+			runExitHooks()
+			fmt.Fprintf(os.Stderr, "panic: %v\n\n%s\n", p, debug.Stack())
+			reportError(os.Stderr, fmt.Errorf("%s panicked: %v; this is a bug in gpscrape, please report it", cmd, p), records.CodeInternal)
+			os.Exit(records.CodeInternal.ExitCode())
+		}
+	}()
 	err := run(os.Args[2:])
 	runExitHooks()
 	if err != nil {
