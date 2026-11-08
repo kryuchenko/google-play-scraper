@@ -9,6 +9,7 @@ import (
 	"maps"
 	"net/http"
 	"os"
+	"runtime"
 	"slices"
 	"sort"
 	"strings"
@@ -761,5 +762,42 @@ func TestDevNullIsNotATerminal(t *testing.T) {
 		t.Error("an expensive run without -yes and without a terminal was allowed")
 	} else if err != nil && records.Classify(err) != records.CodeConfirmation {
 		t.Errorf("refusal code %s, want confirmation_required", records.Classify(err))
+	}
+}
+
+// On macOS inside Claude Code's sandbox every request fails TLS verification
+// with an OSStatus; the error then carries the setting that fixes it, and
+// stops calling itself retryable.
+func TestSandboxTLSHint(t *testing.T) {
+	err := errors.New(`request failed: do request: Post "https://play.google.com/x": tls: failed to verify certificate: x509: OSStatus -26276`)
+	hint := sandboxTLSHint(err)
+	if runtime.GOOS != "darwin" {
+		if hint != "" {
+			t.Errorf("hint off macOS: %q", hint)
+		}
+		return
+	}
+	if !strings.Contains(hint, "enableWeakerNetworkIsolation") || !strings.Contains(hint, "excludedCommands") {
+		t.Errorf("hint = %q", hint)
+	}
+	if sandboxTLSHint(errors.New("x509: certificate signed by unknown authority")) != "" {
+		t.Error("an ordinary certificate error got the sandbox hint")
+	}
+	f, ferr := os.CreateTemp(t.TempDir(), "stderr")
+	if ferr != nil {
+		t.Fatal(ferr)
+	}
+	t.Setenv("GPSCRAPE_ERRORS", "json")
+	reportError(f, err, records.Classify(err))
+	_ = f.Close()
+	b, _ := os.ReadFile(f.Name())
+	var obj struct {
+		Error struct {
+			Hint      string `json:"hint"`
+			Retryable bool   `json:"retryable"`
+		} `json:"error"`
+	}
+	if jerr := json.Unmarshal(b, &obj); jerr != nil || obj.Error.Hint == "" || obj.Error.Retryable {
+		t.Errorf("error object %s: %+v %v", b, obj, jerr)
 	}
 }

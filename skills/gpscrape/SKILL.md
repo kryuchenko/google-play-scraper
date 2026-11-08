@@ -62,6 +62,11 @@ Points that trip people up:
   -limit N` streams a sample, and `catalog sweep` is about 83,000 requests and
   hours of work. Do not start a sweep unless the user asked for the whole
   store.
+- In Claude Code's sandbox on macOS every request fails with `x509:
+  OSStatus -26276`: Go cannot reach the system trust service there. The
+  error's `hint` says the fix -- `"enableWeakerNetworkIsolation": true` in the
+  sandbox settings (with play.google.com an allowed domain), or `"gpscrape *"`
+  in `sandbox.excludedCommands`. Tell the user; retrying does not help.
 - Be polite to the store: the CLI throttles itself; do not run several copies
   in parallel.
 
