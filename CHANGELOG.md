@@ -7,6 +7,13 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- The weekly canary runs the whole-catalog games pipeline -- `catalog sweep`,
+  `catalog genres`, `catalog apps -genre 'GAME_*'` -- on a 0.01% sample:
+  about nine shards and 12 seconds. It checks the chain is alive, not that a
+  full 87k-request sweep finishes.
+
+### Added
+
 - `gpscrape`: an error caused by Claude Code's sandbox on macOS -- where Go
   cannot reach the system trust service and every request fails with
   `x509: OSStatus -26276` -- carries a `hint` naming the setting that fixes
