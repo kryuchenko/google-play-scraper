@@ -32,7 +32,7 @@ func (c *Client) App(ctx context.Context, appID string, opts AppOptions) (*App, 
 		opts.Country = "us"
 	}
 
-	url := fmt.Sprintf("%s/store/apps/details?id=%s&hl=%s&gl=%s", BaseURL, appID, opts.Lang, opts.Country)
+	url := appPageURL(appID, opts.Lang, opts.Country)
 
 	body, err := c.getPage(ctx, url, requireBlock("ds:5"))
 	if err != nil {

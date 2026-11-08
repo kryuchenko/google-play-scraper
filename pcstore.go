@@ -118,7 +118,7 @@ func (c *Client) PCApp(ctx context.Context, appID string, opts AppOptions) (*PCA
 	}
 
 	pageURL := fmt.Sprintf("%s%s?id=%s&hl=%s&gl=%s",
-		BaseURL, pcDetailsPath, appID, opts.Lang, opts.Country)
+		BaseURL, pcDetailsPath, url.QueryEscape(appID), opts.Lang, opts.Country)
 
 	hc, exit := c.pcStoreClient()
 	body, err := c.do(ctx, hc, http.MethodGet, pageURL, func() (*http.Request, error) {

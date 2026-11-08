@@ -1295,7 +1295,7 @@ func catalogSize(args []string) error {
 	// that does the thing.
 	for _, a := range args {
 		if a == "-exact" || a == "--exact" {
-			return fmt.Errorf("catalog size estimates; for the exact count run `gpscrape catalog sweep`, " +
+			return records.Invalid("catalog size estimates; for the exact count run `gpscrape catalog sweep`, " +
 				"which makes the same pass and keeps the ids rather than discarding them")
 		}
 	}
