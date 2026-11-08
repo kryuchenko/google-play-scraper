@@ -324,3 +324,76 @@ func TestTableMergeWithoutAndWithAnUnreadableTable(t *testing.T) {
 		t.Error("checkTableSorted passed a table it could not read through")
 	}
 }
+
+// A first-pass file with more absent rows than ids to settle is out of step,
+// and settling it is an error rather than an index past the end of the ids.
+func TestSettleTableRefusesAnAbsentRowWithNoID(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "genres.tsv")
+	writeTable(t, path, "a\tX")
+	merged := filepath.Join(dir, "merge")
+	if err := os.WriteFile(merged, []byte("-\ta\tX\nA\tb\tY\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var err error
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				t.Fatalf("settleTable panicked: %v", r)
+			}
+		}()
+		_, err = settleTable(merged, path, nil, func(int) (settled, string) { return settledAlive, "" }, false)
+	}()
+	if err == nil || !strings.Contains(err.Error(), "out of step") {
+		t.Errorf("err = %v, want an absent id out of step", err)
+	}
+	if got := readTable(t, path); !slices.Equal(got, []string{"a\tX"}) {
+		t.Errorf("table replaced after a failed settlement: %q", got)
+	}
+}
+
+// close releases the table file, and a second close is a no-op.
+func TestTableCursorCloseReleasesTheFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "genres.tsv")
+	writeTable(t, path, "a\tX")
+	c, err := openTable(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.close()
+	if c.f != nil {
+		t.Fatal("close left the table file open")
+	}
+	c.close()
+}
+
+// The first pass adds a mark and a tab to every table line, so a line as
+// long as the table reader takes still fits the second pass.
+func TestTableMergeKeepsALineAtTheReaderLimit(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "genres.tsv")
+	long := "a.long\t" + strings.Repeat("G", maxLineBytes-1-len("a.long\t"))
+	writeTable(t, path, long, "b\tX")
+	prev, err := openTable(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer prev.close()
+	if !prev.ok || prev.id != "a.long" {
+		t.Fatalf("the table reader did not take a %d-byte line: %v", len(long), prev.err())
+	}
+	m, err := newTableMerge(prev, path+".merge")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer m.abandon()
+	if err := m.finish(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := settleTable(m.path, path, nil, nil, false); err != nil {
+		t.Fatalf("settleTable: %v", err)
+	}
+	if got := readTable(t, path); len(got) != 2 || got[0] != long || got[1] != "b\tX" {
+		t.Errorf("the long row did not come through the merge unchanged (%d rows)", len(got))
+	}
+}

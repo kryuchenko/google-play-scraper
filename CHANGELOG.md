@@ -261,6 +261,11 @@ All notable changes to this project are documented here. The format is based on
   `UPDATE_CANARY_BASELINE=1` rewrites it): a fill rate down more than 0.25 or
   under its floor fails, 3x the latency is logged. The baseline is from a
   live run after the grid price and summary fix.
+- Tests for what mutation testing of `catalog sweep` and the genre merge
+  found unpinned: sweep stderr notes and consent, an uncounted done log
+  without its id file, torn-line cuts, line counts past one buffer, blank
+  snapshot lines, the parallel snapshot's last part, a resumed table merge,
+  absent rows past the ids, and a table line at the reader limit.
 
 ## gpscrape-mcp 0.1.1 (tag `mcp/v0.1.1`) - 2026-11-07
 

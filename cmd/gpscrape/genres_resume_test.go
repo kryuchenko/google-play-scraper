@@ -385,3 +385,66 @@ func TestGenresResumeAfterAStopAtAnyMoment(t *testing.T) {
 		})
 	}
 }
+
+// A resumed merge carries on after lastID: the table row of lastID itself is
+// in the merge file already and is not written twice, and an id at or before
+// lastID is still refused.
+func TestResumeTableMergeCarriesOnAfterLastID(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "genres.tsv")
+	writeTable(t, path, "a\tX", "b\tY", "c\tZ")
+	merged := path + ".merge"
+	kept := "-\ta\tX\n-\tb\tY\n"
+	if err := os.WriteFile(merged, []byte(kept+"-\tc\tZ"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	prev, err := openTable(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer prev.close()
+	m, err := resumeTableMerge(prev, merged, int64(len(kept)), "b")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer m.abandon()
+	for _, id := range []string{"a", "b"} {
+		if _, _, err := m.lookup(id); err == nil {
+			t.Errorf("lookup(%q) after resuming past \"b\" was accepted", id)
+		}
+	}
+	was, known, err := m.lookup("c")
+	if err != nil || !known || was != "Z" {
+		t.Fatalf("lookup(c) = %q %v %v, want Z", was, known, err)
+	}
+	if err := m.row("c", "Z", ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.finish(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := settleTable(merged, path, nil, nil, false); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := readTable(t, path), []string{"a\tX", "b\tY", "c\tZ"}; !slices.Equal(got, want) {
+		t.Errorf("table = %q, want %q", got, want)
+	}
+}
+
+// The absent ids read back from a merge file keep whether the table knew
+// them, which decides what an unconfirmed one leaves in the table.
+func TestAbsentFromMergeKeepsWhatTheTableKnew(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "merge")
+	body := "-\tq\tG0\nA\tx\tG\nP\ty\tH\na\tz\t\n"
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got, err := absentFromMerge(path, int64(len(body)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []absentID{{id: "x", was: "G", known: true}, {id: "z", was: "", known: false}}
+	if !slices.Equal(got, want) {
+		t.Errorf("absentFromMerge = %+v, want %+v", got, want)
+	}
+}

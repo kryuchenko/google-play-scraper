@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"compress/gzip"
 	"context"
 	"crypto/sha256"
@@ -23,6 +24,7 @@ import (
 	"time"
 
 	googleplayscraper "github.com/kryuchenko/google-play-scraper"
+	"github.com/kryuchenko/google-play-scraper/records"
 )
 
 func TestParseGeneration(t *testing.T) {
@@ -2030,5 +2032,194 @@ func TestReadDoneLogCountsIDs(t *testing.T) {
 	}
 	if done, _, counted, _ := readDoneLog(path); len(done) != 2 || counted {
 		t.Errorf("an old line without a count: %d shards, counted %v; want 2, false", len(done), counted)
+	}
+}
+
+// A plain full sweep says only what happened: no notes about flags it was not
+// given, shard counts that agree, resume state or snapshots it did not remove.
+func TestSweepSaysNothingThatDidNotHappen(t *testing.T) {
+	_, _, dir := newSweepFixture(t)
+	_, stderr, err := runVerb(t, cmdSync, "-dir", dir, "-concurrency", "2", "-keep", "3")
+	if err != nil {
+		t.Fatalf("sweep: %v", err)
+	}
+	for _, s := range []string{
+		"-sample 0 means",        // -sample was not given
+		"warning: filenames say", // the counts agree
+		"of resume state",        // nothing was stale
+		"kept the",               // nothing was pruned
+		"swept again from the start",
+	} {
+		if strings.Contains(stderr, s) {
+			t.Errorf("stderr says %q:\n%s", s, stderr)
+		}
+	}
+}
+
+// Shard filenames without a count leave the cost to the generic figure, and
+// that is not a disagreement with the indexes.
+func TestSweepWithoutAShardCountInTheFilenames(t *testing.T) {
+	store := newFakeStore(t)
+	useFakeClient(t, store.transport())
+	gen := googleplayscraper.Generation{Date: fixtureGenA.Date, Run: fixtureGenA.Run}
+	p := fmt.Sprintf("/sitemaps/play_sitemaps_%s_%s-00000-of-00000.xml.gz", gen.Date, gen.Run)
+	store.set(p, http.StatusOK, gzipTestBytes(t, urlsetTestXML(googleplayscraper.BaseURL+"/store/apps/details?id=com.a")))
+	f := &sitemapFixture{store: store, gen: gen, urls: []string{googleplayscraper.BaseURL + p}, ids: [][]string{{"com.a"}}}
+	f.publish(t)
+	assumeYes = false
+	t.Cleanup(func() { assumeYes = true })
+
+	_, stderr, err := runVerb(t, cmdSync, "-dir", t.TempDir())
+	if err == nil || records.Classify(err) != records.CodeConfirmation || !strings.Contains(err.Error(), "about 88,000 requests") {
+		t.Errorf("err = %v, want a confirmation with the generic cost", err)
+	}
+	if strings.Contains(stderr, "filenames say") {
+		t.Errorf("a missing count was reported as a disagreement:\n%s", stderr)
+	}
+}
+
+// Only a full sweep asks for consent; a sample is cheap.
+func TestSweepSampleNeedsNoConsent(t *testing.T) {
+	_, _, dir := newSweepFixture(t)
+	assumeYes = false
+	t.Cleanup(func() { assumeYes = true })
+	if _, _, err := runVerb(t, cmdSync, "-dir", dir, "-concurrency", "2", "-sample", "50", "-seed", "1"); err != nil {
+		t.Fatalf("a sampled sweep without -yes: %v", err)
+	}
+}
+
+// A full sweep over a sampled snapshot of the same generation says so.
+func TestSweepSaysInFullWhenItIs(t *testing.T) {
+	_, _, dir := newSweepFixture(t)
+	if err := writeJSON(filepath.Join(dir, "manifest-"+fixtureGenA.ID()+".json"), manifest{
+		Generation: fixtureGenA, File: "snapshot-" + fixtureGenA.ID() + ".txt.gz",
+		IDs: 1, SamplePct: 1,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	_, stderr, err := runVerb(t, cmdSync, "-dir", dir, "-concurrency", "2")
+	if err != nil {
+		t.Fatalf("sweep: %v", err)
+	}
+	if !strings.Contains(stderr, "sweeping it in full") {
+		t.Errorf("a full run did not say it was sweeping in full:\n%s", stderr)
+	}
+}
+
+// Resume state from a run killed before its first shard is a resume, not a
+// file that was cut short.
+func TestSweepResumesAnEmptyStart(t *testing.T) {
+	_, f, dir := newSweepFixture(t)
+	preFinished(t, dir, f, sampling{})
+	_, stderr, err := runVerb(t, cmdSync, "-dir", dir, "-concurrency", "2")
+	if err != nil {
+		t.Fatalf("sweep: %v", err)
+	}
+	if strings.Contains(stderr, "swept again from the start") {
+		t.Errorf("an empty resume was taken for a removed id file:\n%s", stderr)
+	}
+}
+
+// A done log from before the per-shard counts, with the id file gone and no
+// checkpoint, cannot vouch for its shards: they are swept again.
+func TestSweepDoesNotTrustAnUncountedDoneLogWithoutIDs(t *testing.T) {
+	_, f, dir := newSweepFixture(t)
+	writeFixtureFile(t, doneLogPath(dir, f.gen), googleplayscraper.BaseURL+f.shardPath(0)+"\n")
+	if err := saveState(filepath.Join(dir, "state.json"), syncState{Generation: f.gen}); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := runVerb(t, cmdSync, "-dir", dir, "-concurrency", "2"); err != nil {
+		t.Fatalf("sweep: %v", err)
+	}
+	ids, err := readSnapshot(filepath.Join(dir, "snapshot-"+fixtureGenA.ID()+".txt.gz"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"com.a", "com.b", "com.c", "com.d", "com.e"}; !slices.Equal(ids, want) {
+		t.Errorf("snapshot = %v, want %v", ids, want)
+	}
+}
+
+func TestLastLineEnd(t *testing.T) {
+	for _, c := range []struct {
+		name, body string
+		cut        int64
+		torn       bool
+	}{
+		{"empty", "", 0, false},
+		{"whole lines", "a\nb\n", 4, false},
+		{"no newline", "abc", 0, true},
+		{"newline first", "\nabc", 1, true},
+		{"newline at a block start", strings.Repeat("x", 99) + "\n" + strings.Repeat("y", 4095), 100, true},
+	} {
+		path := filepath.Join(t.TempDir(), "f")
+		if err := os.WriteFile(path, []byte(c.body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		f, err := os.Open(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		cut, torn, err := lastLineEnd(f)
+		_ = f.Close()
+		if err != nil || cut != c.cut || torn != c.torn {
+			t.Errorf("%s: lastLineEnd = %d %v %v, want %d %v", c.name, cut, torn, err, c.cut, c.torn)
+		}
+	}
+}
+
+// countLines reads past its first buffer.
+func TestCountLinesPastOneBuffer(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "ids")
+	n := 1<<20 + 7
+	if err := os.WriteFile(path, bytes.Repeat([]byte("a\n"), n), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := countLines(path); err != nil || got != n {
+		t.Errorf("countLines = %d %v, want %d", got, err, n)
+	}
+}
+
+// A blank line in a snapshot is not an id.
+func TestDiffSnapshotsSkipsBlankLines(t *testing.T) {
+	dir := t.TempDir()
+	o, n := filepath.Join(dir, "old.txt"), filepath.Join(dir, "new.txt")
+	if err := os.WriteFile(o, []byte("a\n\n  \nb\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(n, []byte("a\nc\n\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	d, err := diffSnapshots(fixtureGenA, fixtureGenB, o, n)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(d.Added, []string{"c"}) || !slices.Equal(d.Removed, []string{"b"}) {
+		t.Errorf("diff = +%q -%q, want +[c] -[b]", d.Added, d.Removed)
+	}
+}
+
+// The parallel snapshot writer splits the ids into parts; a count that leaves
+// the last part one short of a full one is written whole.
+func TestWriteSnapshotLastPartOneShort(t *testing.T) {
+	w := runtime.GOMAXPROCS(0)
+	if w < 2 {
+		t.Skip("the parallel path needs more than one core")
+	}
+	n := ((1<<16)/w+1)*w - 1
+	ids := make([]string, n)
+	for i := range ids {
+		ids[i] = fmt.Sprintf("com.app%07d", i)
+	}
+	path := filepath.Join(t.TempDir(), "snapshot-x.txt.gz")
+	if _, err := writeSnapshot(path, ids); err != nil {
+		t.Fatal(err)
+	}
+	back, err := readSnapshot(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(back, ids) {
+		t.Errorf("read back %d ids, wrote %d", len(back), n)
 	}
 }
