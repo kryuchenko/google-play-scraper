@@ -40,6 +40,12 @@ linters:
     - wastedassign
     - makezero
     - mirror
+    # noctx: a request without a context cannot be cancelled, and every
+    # request this package sends is meant to stop when its caller does --
+    # Ctrl-C, -timeout, a breaker pause. The library was already clean; the
+    # findings were tests, the fixture generator, and the Windows path of
+    # `gpscrape mcp`, which now says why its child runs on Background.
+    - noctx
 
   settings:
     errcheck:

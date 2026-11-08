@@ -605,7 +605,7 @@ func TestWriteSnapshotParallelIsReadableAndComplete(t *testing.T) {
 	// And by something that is not this package: a member boundary handled
 	// wrongly would truncate silently at the first one.
 	if _, err := exec.LookPath("gunzip"); err == nil {
-		out, gerr := exec.Command("sh", "-c", "gunzip -c "+path+" | wc -l").Output()
+		out, gerr := exec.CommandContext(t.Context(), "sh", "-c", "gunzip -c "+path+" | wc -l").Output()
 		if gerr != nil {
 			t.Errorf("system gunzip could not read the file: %v", gerr)
 		} else if n := strings.TrimSpace(string(out)); n != fmt.Sprint(len(ids)) {

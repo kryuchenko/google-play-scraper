@@ -35,6 +35,12 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- CI: a benchstat report of base against head on every pull request, in the
+  job summary (Benchmarks workflow; it reports and does not gate). noctx
+  joins the linters, so every request and child process carries a context;
+  lightfeed's port probe and readiness wait now honour the caller's. apidoc
+  is linted like the other modules, with a test that checks every endpoint
+  stub's annotations. `lightfeed.WithThrottle` has a test.
 - CI lints with six more linters: unparam, errorlint, nilerr, wastedassign,
   makezero and mirror. Their findings are fixed: three parsers that could
   not fail lose their always-nil error, unused parameters go

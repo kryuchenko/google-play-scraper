@@ -9,6 +9,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -148,7 +149,7 @@ func pcListingURL(id string) string {
 func redirectOf(c *http.Client, rawURL string) []byte {
 	noFollow := *c
 	noFollow.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
-	req, err := http.NewRequest(http.MethodGet, rawURL, nil)
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, rawURL, nil)
 	if err != nil {
 		fail(err)
 	}
@@ -316,7 +317,7 @@ func str(v any) string {
 }
 
 func get(c *http.Client, rawURL string) []byte {
-	req, err := http.NewRequest(http.MethodGet, rawURL, nil)
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, rawURL, nil)
 	if err != nil {
 		fail(err)
 	}
@@ -327,7 +328,7 @@ func get(c *http.Client, rawURL string) []byte {
 }
 
 func post(c *http.Client, rawURL, contentType, body string) []byte {
-	req, err := http.NewRequest(http.MethodPost, rawURL, strings.NewReader(body))
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, rawURL, strings.NewReader(body))
 	if err != nil {
 		fail(err)
 	}

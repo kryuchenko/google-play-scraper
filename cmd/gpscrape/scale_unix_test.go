@@ -61,7 +61,7 @@ func TestCatalogPeakAtScale(t *testing.T) {
 		ceiling float64 // MB
 	}{{"finish", 600}, {"diff", 64}, {"genres", 64}} {
 		t.Run(c.name, func(t *testing.T) {
-			cmd := exec.Command(os.Args[0], "-test.run=^TestCatalogPeakAtScale$", "-test.v", "-test.count=1")
+			cmd := exec.CommandContext(t.Context(), os.Args[0], "-test.run=^TestCatalogPeakAtScale$", "-test.v", "-test.count=1")
 			cmd.Env = append(os.Environ(), "GPSCRAPE_SCALE_CHILD="+dir, "GPSCRAPE_SCALE_CASE="+c.name)
 			out, err := cmd.CombinedOutput()
 			if err != nil {

@@ -72,7 +72,11 @@ func transformYAMLAndJSON(dir string) error {
 	if err := enc.Encode(&doc); err != nil {
 		return fmt.Errorf("encode swagger.yaml: %w", err)
 	}
-	enc.Close()
+	// Close flushes the encoder; an error here is a document never fully
+	// written.
+	if err := enc.Close(); err != nil {
+		return fmt.Errorf("encode swagger.yaml: %w", err)
+	}
 	if err := os.WriteFile(yamlPath, yb.Bytes(), 0o644); err != nil {
 		return fmt.Errorf("write swagger.yaml: %w", err)
 	}

@@ -50,7 +50,7 @@ func plantLock(t *testing.T, dir string, o lockOwner) {
 // match no test and exit immediately.
 func deadPID(t *testing.T) int {
 	t.Helper()
-	cmd := exec.Command(os.Args[0], "-test.run=^$")
+	cmd := exec.CommandContext(t.Context(), os.Args[0], "-test.run=^$")
 	if err := cmd.Start(); err != nil {
 		t.Fatalf("start a process to reap: %v", err)
 	}
