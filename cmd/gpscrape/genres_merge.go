@@ -137,6 +137,8 @@ type tableMerge struct {
 	path    string
 	last    string
 	started bool
+	// keep leaves the file for a resume: set once a checkpoint names it.
+	keep bool
 }
 
 func newTableMerge(prev *tableCursor, path string) (*tableMerge, error) {
@@ -196,12 +198,22 @@ func (m *tableMerge) finish() error {
 	if err := m.w.Flush(); err != nil {
 		return err
 	}
+	// Synced: a resume after the walk reads the file as the checkpoint left it.
+	if err := m.f.Sync(); err != nil {
+		return err
+	}
 	return m.f.Close()
 }
 
+// abandon closes the file and removes it, unless keep says a checkpoint
+// needs it to resume from.
 func (m *tableMerge) abandon() {
-	_ = m.f.Close()
-	_ = os.Remove(m.path)
+	if m.f != nil {
+		_ = m.f.Close()
+	}
+	if !m.keep {
+		_ = os.Remove(m.path)
+	}
 }
 
 // settled is what the second pass does with one absent id.
