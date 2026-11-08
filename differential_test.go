@@ -444,6 +444,8 @@ func FuzzShardStreamMatchesBuffer(f *testing.F) {
 	f.Add([]byte(`<loc>`))
 	f.Add([]byte(`</loc>`))
 	f.Add([]byte(nil))
+	f.Add([]byte("<urlset><url><loc>https://play.google.com/store/apps/details?id=com.a</loc></url></urlset>\n"))
+	f.Add([]byte("<urlset><url><loc>https://play.google.com/store/apps/details?id=com.a</loc></url></urls"))
 
 	f.Fuzz(func(t *testing.T, body []byte) {
 		// The window is bounded on purpose, so the two agree exactly on any
@@ -455,13 +457,22 @@ func FuzzShardStreamMatchesBuffer(f *testing.F) {
 			return
 		}
 		want := shardPackages(body)
-		got, err := shardPackagesFrom(bytes.NewReader(body))
-		if err != nil {
-			t.Fatalf("stream failed on input the buffer read: %v", err)
-		}
-		if !slices.Equal(want, got) {
-			t.Fatalf("stream diverged from the buffered scan\n  input:  %q\n  buffer: %v\n  stream: %v",
-				body, want, got)
+		// The stream fails exactly when the document does not end in
+		// </urlset>, and the ids it read before saying so are the same.
+		// Read a byte at a time too, so the end is found across every
+		// possible chunk boundary.
+		for _, r := range []io.Reader{bytes.NewReader(body), iotest.OneByteReader(bytes.NewReader(body))} {
+			got, err := shardPackagesFrom(r)
+			if closed := shardClosed(body); closed != (err == nil) {
+				t.Fatalf("closed=%v but err=%v for %q", closed, err, body)
+			}
+			if err != nil && !errors.Is(err, ErrShardTruncated) {
+				t.Fatalf("unexpected error %v", err)
+			}
+			if !slices.Equal(want, got) {
+				t.Fatalf("stream diverged from the buffered scan\n  input:  %q\n  buffer: %v\n  stream: %v",
+					body, want, got)
+			}
 		}
 	})
 }

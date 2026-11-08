@@ -6,7 +6,9 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 )
 
 func TestSearchValidation(t *testing.T) {
@@ -104,7 +106,19 @@ func TestSearchPagination(t *testing.T) {
 		t.Skip("skipping integration test in short mode")
 	}
 
-	c := NewClient()
+	// Asking for more than a page sends the RPC that returns the rest. Its
+	// success is what this checks: the result count is Google's to choose
+	// -- "social" has come back with 17 and with 21 on the same day -- so a
+	// count above one page proved nothing about this code and failed
+	// whenever the store had fewer.
+	var rpcOK atomic.Bool
+	c := NewClient(WithHooks(Hooks{
+		OnResponse: func(_, url string, _, status int, _ time.Duration, err error) {
+			if strings.Contains(url, "batchexecute") && status == http.StatusOK && err == nil {
+				rpcOK.Store(true)
+			}
+		},
+	}))
 	results, err := c.Search(context.Background(), SearchOptions{
 		Term: "social",
 		Num:  60, // More than one page
@@ -113,12 +127,12 @@ func TestSearchPagination(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Search failed: %v", err)
 	}
-
-	// One page is about 20; more than that proves the RPC path works. Google
-	// returns at most about 50 for a query, so 60 is clamped.
 	t.Logf("Got %d results (requested 60)", len(results))
-	if len(results) <= 20 {
-		t.Errorf("got %d results; more than one page should come back", len(results))
+	if len(results) == 0 {
+		t.Fatal("no results for a common term")
+	}
+	if !rpcOK.Load() {
+		t.Error("asking for 60 did not send a successful continuation RPC")
 	}
 
 	// Validate all results

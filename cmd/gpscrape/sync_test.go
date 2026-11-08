@@ -1859,3 +1859,24 @@ func TestSweepWritesTheManifestAfterTheDelta(t *testing.T) {
 		t.Errorf("manifest %v written before delta %v", man.ModTime(), del.ModTime())
 	}
 }
+
+// A shard whose gzip stream is whole but whose document is cut short used to
+// parse as a shard with fewer apps, be marked done, and surface weeks later
+// as removals. It fails now, so the sweep retries it and, if it stays short,
+// refuses to publish.
+func TestSweepTreatsATruncatedShardAsFailed(t *testing.T) {
+	store, f, dir := newSweepFixture(t)
+	full := urlsetTestXML("https://play.google.com/store/apps/details?id=com.c")
+	store.set(f.shardPath(2), http.StatusOK, gzipTestBytes(t, full[:len(full)-len("</urlset>")]))
+
+	_, _, err := runVerb(t, cmdSync, "-dir", dir, "-concurrency", "2")
+	if err == nil || !strings.Contains(err.Error(), "after a retry pass") {
+		t.Fatalf("err = %v, want the sweep to refuse a snapshot missing a shard", err)
+	}
+	if got := store.hitCount(f.shardPath(2)); got != 2 {
+		t.Errorf("the truncated shard was fetched %d times, want 2 (once, then the retry)", got)
+	}
+	if _, serr := os.Stat(filepath.Join(dir, "manifest-"+fixtureGenA.ID()+".json")); serr == nil {
+		t.Error("a manifest was written over a truncated shard")
+	}
+}
