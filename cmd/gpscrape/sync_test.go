@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"math/rand/v2"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -1756,5 +1757,48 @@ func TestTruncateTornLine(t *testing.T) {
 	}
 	if err := truncateTornLine(filepath.Join(t.TempDir(), "missing")); err != nil {
 		t.Errorf("missing file: %v", err)
+	}
+}
+
+// The resume state exists before the first shard is fetched, so a run killed
+// in its first minutes -- before the checkpoint 500 shards in -- leaves files
+// the next run resumes from instead of deleting.
+func TestSweepWritesStateBeforeTheFirstShard(t *testing.T) {
+	store, f, dir := newSweepFixture(t)
+	var sawState atomic.Bool
+	store.setFunc(f.shardPath(0), func(*http.Request) (int, []byte) {
+		if _, err := os.Stat(filepath.Join(dir, "state.json")); err == nil {
+			sawState.Store(true)
+		}
+		return 500, nil
+	})
+	_, _, _ = runVerb(t, cmdSync, "-dir", dir, "-concurrency", "1")
+	if !sawState.Load() {
+		t.Error("no state.json while the first shard was in flight")
+	}
+}
+
+// A kill after the delta but before the manifest leaves the resume state,
+// and the next run finishes again; the manifest is never written ahead of
+// the delta it implies.
+func TestSweepWritesTheManifestAfterTheDelta(t *testing.T) {
+	_, f, dir := newSweepFixture(t)
+	if _, _, err := runVerb(t, cmdSync, "-dir", dir, "-concurrency", "2"); err != nil {
+		t.Fatal(err)
+	}
+	f.roll(t, fixtureGenB, fourShards())
+	if _, _, err := runVerb(t, cmdSync, "-dir", dir, "-concurrency", "2"); err != nil {
+		t.Fatal(err)
+	}
+	man, err := os.Stat(filepath.Join(dir, "manifest-"+fixtureGenB.ID()+".json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	del, err := os.Stat(filepath.Join(dir, deltaName(fixtureGenA, fixtureGenB)))
+	if err != nil {
+		t.Fatalf("no delta: %v", err)
+	}
+	if man.ModTime().Before(del.ModTime()) {
+		t.Errorf("manifest %v written before delta %v", man.ModTime(), del.ModTime())
 	}
 }

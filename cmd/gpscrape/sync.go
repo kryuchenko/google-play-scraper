@@ -416,6 +416,27 @@ func sweep(
 		// Files from an older generation are not a base to append to.
 		_ = os.Remove(partialPath)
 		_ = os.Remove(donePath)
+		// Written now, not at the first checkpoint 500 shards in: without a
+		// state file the next run cannot tell its files from a stale run's,
+		// so a kill in the first minutes threw that work away.
+		if err := saveState(statePath, state); err != nil {
+			return fmt.Errorf("write %s: %w", statePath, err)
+		}
+	}
+
+	// A run killed in the middle of a write leaves the partial file ending
+	// in half an id. Appending to it glued that half to the next id --
+	// com.exa + com.example became com.exacom.example, an app that does not
+	// exist, in the snapshot. The torn line belongs to a shard whose done
+	// line was never written, so the shard is fetched again whole; cutting
+	// the file back to its last newline loses nothing.
+	if err := truncateTornLine(partialPath); err != nil {
+		return fmt.Errorf("repair %s: %w", partialPath, err)
+	}
+	// The done log the same way: a torn URL glued to the next one names no
+	// shard, so both would be fetched again.
+	if err := truncateTornLine(donePath); err != nil {
+		return fmt.Errorf("repair %s: %w", donePath, err)
 	}
 
 	finished, err := readDoneLog(donePath)
@@ -432,15 +453,6 @@ func sweep(
 		}
 	}
 
-	// A run killed in the middle of a write leaves the partial file ending
-	// in half an id. Appending to it glued that half to the next id --
-	// com.exa + com.example became com.exacom.example, an app that does not
-	// exist, in the snapshot. The torn line belongs to a shard whose done
-	// line was never written, so the shard is fetched again whole; cutting
-	// the file back to its last newline loses nothing.
-	if err := truncateTornLine(partialPath); err != nil {
-		return fmt.Errorf("repair %s: %w", partialPath, err)
-	}
 	partial, err := os.OpenFile(partialPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
 	if err != nil {
 		return fmt.Errorf("open %s: %w", partialPath, err)
@@ -534,6 +546,10 @@ func sweep(
 				return // interrupted; the shard is simply not marked done
 			}
 			if isGone(err) {
+				// Not a reason to stop: one 404 does not prove the generation
+				// rolled -- a single shard can go missing while the rest
+				// stand -- and the shards fetched meanwhile are progress a
+				// rerun on the same generation keeps.
 				rolled = true
 			}
 			noteFailed(url)
@@ -738,10 +754,6 @@ func finish(
 		SamplePct:   samp.Pct,
 		SampleSeed:  samp.Seed,
 	}
-	if err := writeJSON(filepath.Join(dir, "manifest-"+gen.ID()+".json"), m); err != nil {
-		return err
-	}
-
 	// Whether there is a delta to write is exactly the question `catalog diff`
 	// already answers, and for a while this asked a weaker version of it: the
 	// generation id alone. A -sample run after a complete one then wrote
@@ -779,6 +791,15 @@ func finish(
 			return err
 		}
 		fmt.Fprintf(os.Stderr, "delta: +%d -%d\n", len(d.Added), len(d.Removed))
+	}
+
+	// The manifest last: it is what says this generation is done. Written
+	// before the delta, a kill between the two left a generation that every
+	// later run took as complete and no run ever diffed. Written after, the
+	// same kill leaves the resume state in place, and the next run finishes
+	// again -- snapshot, delta, manifest -- from the files it already has.
+	if err := writeJSON(filepath.Join(dir, "manifest-"+gen.ID()+".json"), m); err != nil {
+		return err
 	}
 
 	// A finished sweep leaves nothing to resume from.

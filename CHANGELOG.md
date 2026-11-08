@@ -19,6 +19,13 @@ All notable changes to this project are documented here. The format is based on
 - A checkpoint that could not be written was logged and skipped, so a disk
   refusing fsync let a sweep fetch for hours with nothing to resume from. It
   stops the sweep now.
+- A sweep killed before its first checkpoint, 500 shards in, had no state
+  file, so the next run deleted its work and started over. The state is
+  written before the first shard now.
+- The manifest was written before the delta, so a kill between the two left
+  a generation that every later run took as complete and none ever diffed.
+  The manifest is written last.
+- The done log gets the same torn-line repair as the id file.
 
 ### Added
 
