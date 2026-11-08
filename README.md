@@ -260,6 +260,18 @@ the shards it has not reached. Each completed sweep writes a sorted snapshot,
 a manifest with the generation id and a checksum, and a delta against the
 previous snapshot, and prints the manifest as its one output record.
 
+`catalog sweep` and `catalog genres` run with `-adaptive` on unless told
+`-adaptive=false`: over five hours and ninety thousand requests, a fixed
+interval turns one long `Retry-After` into a failed shard, where the adaptive
+client slows down and waits, and stops after three refused probes rather than
+keep asking. If the previous snapshot cannot be read, the new manifest says so
+in `delta_error` instead of silently having no delta.
+
+After a sweep, `catalog size -dir ./catalog` checks the snapshot against an
+independent estimate (`snapshot_ids`, `snapshot_agrees`). A shard can parse
+short without an error -- the sweep would then publish fewer ids than the
+store has -- and this is the check that notices.
+
 A snapshot directory takes one writer at a time. `sweep` and `genres` hold a
 `sweep.lock` in it while they run, a second run against the same directory is
 refused, and a lock left behind by a process that has died is cleared on the

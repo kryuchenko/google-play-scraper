@@ -15,6 +15,12 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- `gpscrape catalog size -dir` checks its estimate against the complete
+  snapshot of the same generation (`snapshot_ids`, `snapshot_agrees`, and a
+  warning when they disagree): the one check that notices ids lost without
+  an error.
+- A sweep that cannot diff against the previous snapshot records why in the
+  manifest's `delta_error`.
 - Tests that hold the parsers to allocation budgets and `ReviewsSeq` to a
   memory ceiling (`alloc_budget_test.go`, run in CI without `-race`). A
   parser that starts allocating 10% more, or a streaming path that starts
@@ -35,6 +41,10 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- `gpscrape catalog sweep` and `catalog genres` default to `-adaptive`;
+  `-adaptive=false` restores the fixed interval. Over hours of requests a
+  fixed interval turned a `Retry-After` beyond the retry policy into a failed
+  shard.
 - CI lints with six more linters: unparam, errorlint, nilerr, wastedassign,
   makezero and mirror. Their findings are fixed: three parsers that could
   not fail lose their always-nil error, unused parameters go

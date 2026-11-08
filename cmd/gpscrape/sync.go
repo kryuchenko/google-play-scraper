@@ -152,6 +152,12 @@ type manifest struct {
 	// which is what turns a sample into a measurement rather than an anecdote.
 	SamplePct  float64 `json:"sample_pct,omitempty"`
 	SampleSeed int64   `json:"sample_seed,omitempty"`
+
+	// DeltaError says why no delta was written against the previous
+	// snapshot when one should have been -- that snapshot missing or
+	// corrupt. Without it the only record was a warning on stderr, and the
+	// generation read as complete with nothing to say a delta was skipped.
+	DeltaError string `json:"delta_error,omitempty"`
 }
 
 // complete reports whether the manifest describes a sweep of the whole catalog
@@ -215,6 +221,7 @@ func cmdSync(args []string) error {
 	}
 
 	c := newCommon("catalog sweep")
+	c.adaptiveByDefault()
 	dir := c.fs.String("dir", "catalog", "directory for snapshots, deltas and resume state")
 	force := c.fs.Bool("force", false, "sweep even if the current generation is already snapshotted")
 	sample := c.fs.Float64("sample", 0, "sweep only this percent of shards (0 = all)")
@@ -824,6 +831,7 @@ func finish(
 		d, rerr := diffAgainstSnapshot(filepath.Join(dir, prev.File), prev.Generation, gen, ids)
 		if rerr != nil {
 			fmt.Fprintf(os.Stderr, "warning: cannot diff against %s: %v\n", prev.File, rerr)
+			m.DeltaError = fmt.Sprintf("cannot diff against %s: %v", prev.File, rerr)
 			break
 		}
 		if err := writeJSON(filepath.Join(dir, deltaName(prev.Generation, gen)), d); err != nil {

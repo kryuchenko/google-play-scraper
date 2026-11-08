@@ -185,6 +185,7 @@ type genreRecord struct {
 
 func catalogGenres(args []string) error {
 	c := newCommon("catalog genres")
+	c.adaptiveByDefault()
 	dir := c.fs.String("dir", "catalog", "directory holding the snapshot to read")
 	from := c.fs.String("ids", "", "read ids from this file instead of the snapshot (- for stdin)")
 	confirm := c.fs.String("confirm-gone", "de,in,br,jp,ru",
@@ -1138,7 +1139,27 @@ type sizeRecord struct {
 	TargetPct   float64 `json:"target_pct"`
 	MetTarget   bool    `json:"met_target"`
 	HashUniform bool    `json:"hash_uniform"`
-	Warning     string  `json:"warning,omitempty"`
+	// SnapshotIDs is the id count of the complete snapshot of this
+	// generation in -dir, when there is one, and SnapshotAgrees whether it
+	// lies within the estimate's reach (three standard errors, or exactly
+	// when every shard was read). A snapshot short of the estimate is the
+	// one sign of ids lost without an error: a shard whose document parsed
+	// but held fewer apps than it should.
+	SnapshotIDs    int    `json:"snapshot_ids,omitempty"`
+	SnapshotAgrees *bool  `json:"snapshot_agrees,omitempty"`
+	Warning        string `json:"warning,omitempty"`
+}
+
+// snapshotAgrees reports whether a snapshot's id count is what the estimate
+// allows: exactly the count when every shard was read, otherwise within
+// three standard errors (HalfWidth is the 95% half-width, so 1.96 of them).
+// Shards share no ids, so the two count the same thing.
+func snapshotAgrees(ids int, size googleplayscraper.CatalogSize) bool {
+	if size.Exact {
+		return ids == size.Apps
+	}
+	sigma := size.HalfWidth / 1.96
+	return math.Abs(float64(ids-size.Apps)) <= 3*sigma
 }
 
 func catalogSize(args []string) error {
@@ -1156,6 +1177,7 @@ func catalogSize(args []string) error {
 	precision := c.fs.String("precision", "1%", "target relative half-width, e.g. 1% or 0.5% (for the exact count, use `catalog sweep`)")
 	pilot := c.fs.Int("pilot", 200, "shards to read before sizing the sample")
 	seed := c.fs.Uint64("seed", 0, "fix which shards are drawn (0 derives one from the generation)")
+	dir := c.fs.String("dir", "catalog", "check the estimate against this directory's complete snapshot of the same generation, if it has one (\"\" to skip)")
 	if err := c.parse(args); err != nil {
 		return err
 	}
@@ -1222,6 +1244,18 @@ func catalogSize(args []string) error {
 		// saying so is the only useful thing to do.
 		rec.Warning = "between-shard spread is not what a uniform hash produces; the shards " +
 			"may be organised, in which case a sample of them is biased and only `catalog sweep` is sound"
+	}
+	if *dir != "" {
+		if m, ok := latestManifest(*dir); ok && m.complete() && m.Generation.ID() == size.Generation.ID() {
+			agrees := snapshotAgrees(m.IDs, size)
+			rec.SnapshotIDs, rec.SnapshotAgrees = m.IDs, &agrees
+			if !agrees {
+				rec.Warning = strings.TrimPrefix(rec.Warning+"; ", "; ") + fmt.Sprintf(
+					"the snapshot of this generation holds %d ids against an estimate of %d +/- %.0f: "+
+						"ids may have been lost without an error (a shard that parsed short); sweep it again",
+					m.IDs, size.Apps, size.HalfWidth)
+			}
+		}
 	}
 	return emitOne(rec)
 }

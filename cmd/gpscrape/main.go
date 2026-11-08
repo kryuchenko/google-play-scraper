@@ -361,6 +361,17 @@ func newCommon(name string) *common {
 	return c
 }
 
+// adaptiveByDefault turns -adaptive on unless the caller says otherwise, for
+// the verbs that run for hours. A fixed interval treats a Retry-After longer
+// than the retry policy allows (30s) as a failure, so one long refusal four
+// hours into a sweep costs the shard; the adaptive client slows down and
+// pauses instead, and stops the run after three refused probes rather than
+// hammering. -adaptive=false restores the fixed interval.
+func (c *common) adaptiveByDefault() {
+	c.adaptive = true
+	c.fs.Lookup("adaptive").DefValue = "true"
+}
+
 // newClientHook, when non-nil, replaces client construction. It is nil in a
 // built binary and exists for the tests: every verb builds its own client
 // deep inside itself, so without a seam here nothing below cmdSync or

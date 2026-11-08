@@ -12,6 +12,8 @@ import (
 	"testing"
 
 	"bufio"
+
+	googleplayscraper "github.com/kryuchenko/google-play-scraper"
 )
 
 // Tests for paths mutation testing showed no test ran: two whole verbs, the
@@ -247,5 +249,103 @@ func TestSweepNamesAnUnopenablePartialFile(t *testing.T) {
 	_, _, err := runVerb(t, cmdSync, "-dir", dir, "-concurrency", "2")
 	if err == nil || !strings.Contains(err.Error(), "partial-") {
 		t.Errorf("err = %v, want one naming the partial file", err)
+	}
+}
+
+// catalog size checks its estimate against the directory's complete snapshot
+// of the same generation: equal when every shard was read, and a snapshot
+// short of it -- ids lost without an error -- is flagged.
+func TestCatalogSizeChecksTheSnapshot(t *testing.T) {
+	store := newFakeStore(t)
+	useFakeClient(t, store.transport())
+	newSitemapFixture(t, store, fixtureGenA, [][]string{{"com.a", "com.b"}, {"com.c"}, {"com.d", "com.e"}, {"com.f"}})
+	dir := t.TempDir()
+	if _, _, err := runVerb(t, cmdSync, "-dir", dir, "-concurrency", "2"); err != nil {
+		t.Fatal(err)
+	}
+	size := func() sizeRecord {
+		t.Helper()
+		out, _, err := runVerb(t, catalogSize, "-dir", dir, "-pilot", "4", "-precision", "50%")
+		if err != nil {
+			t.Fatal(err)
+		}
+		var rec sizeRecord
+		if err := json.Unmarshal([]byte(strings.TrimSpace(out)), &rec); err != nil {
+			t.Fatal(err)
+		}
+		return rec
+	}
+	rec := size()
+	if rec.SnapshotIDs != 6 || rec.SnapshotAgrees == nil || !*rec.SnapshotAgrees || rec.Warning != "" {
+		t.Errorf("a complete snapshot: %+v", rec)
+	}
+
+	// A snapshot that lost an id.
+	man := filepath.Join(dir, "manifest-"+fixtureGenA.ID()+".json")
+	var m manifest
+	readJSON(t, man, &m)
+	m.IDs = 5
+	if err := writeJSON(man, m); err != nil {
+		t.Fatal(err)
+	}
+	rec = size()
+	if rec.SnapshotAgrees == nil || *rec.SnapshotAgrees || !strings.Contains(rec.Warning, "lost without an error") {
+		t.Errorf("a snapshot one id short: %+v", rec)
+	}
+
+	// -dir "" skips the check.
+	out, _, err := runVerb(t, catalogSize, "-dir", "", "-pilot", "4", "-precision", "50%")
+	if err != nil || strings.Contains(out, "snapshot_") {
+		t.Errorf("-dir \"\": %v %s", err, out)
+	}
+}
+
+func TestSnapshotAgrees(t *testing.T) {
+	est := googleplayscraper.CatalogSize{Apps: 1000, HalfWidth: 19.6} // sigma 10
+	for ids, want := range map[int]bool{1000: true, 1030: true, 970: true, 1031: false, 969: false} {
+		if got := snapshotAgrees(ids, est); got != want {
+			t.Errorf("snapshotAgrees(%d) = %v, want %v", ids, got, want)
+		}
+	}
+	exact := googleplayscraper.CatalogSize{Apps: 10, Exact: true}
+	if !snapshotAgrees(10, exact) || snapshotAgrees(9, exact) {
+		t.Error("an exact count must match exactly")
+	}
+}
+
+// A delta that cannot be computed -- the previous snapshot corrupt -- is
+// recorded in the new generation's manifest, not only warned about.
+func TestSweepRecordsASkippedDeltaInTheManifest(t *testing.T) {
+	_, f, dir := newSweepFixture(t)
+	if _, _, err := runVerb(t, cmdSync, "-dir", dir, "-concurrency", "2"); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "snapshot-"+fixtureGenA.ID()+".txt.gz"), []byte("corrupt"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	f.roll(t, fixtureGenB, fourShards())
+	if _, _, err := runVerb(t, cmdSync, "-dir", dir, "-concurrency", "2"); err != nil {
+		t.Fatal(err)
+	}
+	var m manifest
+	readJSON(t, filepath.Join(dir, "manifest-"+fixtureGenB.ID()+".json"), &m)
+	if !strings.Contains(m.DeltaError, "cannot diff against") {
+		t.Errorf("manifest = %+v, want delta_error naming the previous snapshot", m)
+	}
+}
+
+// The two verbs that run for hours default to -adaptive; the rest do not.
+func TestLongVerbsDefaultToAdaptive(t *testing.T) {
+	for name, run := range map[string]func([]string) error{"catalog sweep": cmdSync, "catalog genres": catalogGenres, "catalog size": catalogSize} {
+		describing, described = true, nil
+		_ = run(nil)
+		describing = false
+		if described == nil {
+			t.Fatalf("%s did not register its flags", name)
+		}
+		want := name != "catalog size"
+		if got := described.Lookup("adaptive").DefValue == "true"; got != want {
+			t.Errorf("%s: -adaptive default %v, want %v", name, got, want)
+		}
 	}
 }
