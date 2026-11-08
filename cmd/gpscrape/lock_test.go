@@ -50,7 +50,7 @@ func plantLock(t *testing.T, dir string, o lockOwner) {
 // match no test and exit immediately.
 func deadPID(t *testing.T) int {
 	t.Helper()
-	cmd := exec.Command(os.Args[0], "-test.run=^$")
+	cmd := exec.CommandContext(t.Context(), os.Args[0], "-test.run=^$")
 	if err := cmd.Start(); err != nil {
 		t.Fatalf("start a process to reap: %v", err)
 	}
@@ -320,7 +320,14 @@ func TestASecondSweepIsRefusedWhileTheFirstIsRunning(t *testing.T) {
 				firstErr = cmdSync([]string{"-dir", dir, "-concurrency", "2"})
 			}()
 
-			<-inShard // the first sweep is past the lock and fetching
+			// The first sweep is past the lock and fetching -- or it ended
+			// before it got there, and waiting on the shard would hang.
+			select {
+			case <-inShard:
+			case <-firstDone:
+				close(releaseShard)
+				return
+			}
 			secondErr = cmdSync([]string{"-dir", dir, "-concurrency", "2"})
 			close(releaseShard)
 			<-firstDone

@@ -90,15 +90,15 @@ func checkFormat(f string) (detailed bool, err error) {
 	return false, invalid("response_format must be %q or %q", formatConcise, formatDetailed)
 }
 
-// clamp applies the default when the argument was omitted and rejects
+// clamp applies the default for num when the argument was omitted and rejects
 // anything outside [1, max], zero included: the schema says 1 to max, and a
 // 0 that silently meant "default" would surprise a caller who asked for none.
-func clamp(name string, n *int, def, max int) (int, error) {
+func clamp(n *int, def, max int) (int, error) {
 	if n == nil {
 		return def, nil
 	}
 	if *n < 1 || *n > max {
-		return 0, invalid("%s must be between 1 and %d", name, max)
+		return 0, invalid("num must be between 1 and %d", max)
 	}
 	return *n, nil
 }
@@ -251,7 +251,7 @@ func (r *registry) search(ctx context.Context, in SearchInput) (AppsPage, error)
 	if term == "" {
 		return AppsPage{}, invalid("term is required")
 	}
-	num, err := clamp("num", in.Num, 20, 50)
+	num, err := clamp(in.Num, 20, 50)
 	if err != nil {
 		return AppsPage{}, err
 	}
@@ -347,7 +347,7 @@ func (r *registry) list(ctx context.Context, in ListInput) (AppsPage, error) {
 	if !ok {
 		return AppsPage{}, invalid("unknown collection %q; want top_free, top_paid, grossing, new_free, new_paid or movers_shakers", in.Collection)
 	}
-	num, err := clamp("num", in.Num, 50, 200)
+	num, err := clamp(in.Num, 50, 200)
 	if err != nil {
 		return AppsPage{}, err
 	}
@@ -410,7 +410,7 @@ func (r *registry) reviews(ctx context.Context, in ReviewsInput) (ReviewsOutput,
 		}
 		score = *in.Score
 	}
-	count, err := clamp("num", in.Num, 20, 100)
+	count, err := clamp(in.Num, 20, 100)
 	if err != nil {
 		return ReviewsOutput{}, err
 	}
@@ -483,7 +483,7 @@ func (r *registry) similar(ctx context.Context, in SimilarInput) (AppsPage, erro
 	if err != nil {
 		return AppsPage{}, err
 	}
-	num, err := clamp("num", in.Num, 20, 100)
+	num, err := clamp(in.Num, 20, 100)
 	if err != nil {
 		return AppsPage{}, err
 	}
@@ -503,7 +503,7 @@ func (r *registry) developer(ctx context.Context, in DeveloperInput) (AppsPage, 
 	if dev == "" {
 		return AppsPage{}, invalid("developer_id is required")
 	}
-	num, err := clamp("num", in.Num, 20, 100)
+	num, err := clamp(in.Num, 20, 100)
 	if err != nil {
 		return AppsPage{}, err
 	}

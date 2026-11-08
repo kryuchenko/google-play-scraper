@@ -35,7 +35,8 @@ type SearchOptions struct {
 	Term    string
 	Lang    string
 	Country string
-	// Num caps the number of results returned. Default 20. Values above 50
+	// Num caps the number of results returned. Default 20, for zero or a
+	// negative value. Values above 50
 	// are clamped to 50 (searchMaxNum): that is as many as Google returns for
 	// one query. Above 20, results come from one lGYRle RPC rather than the
 	// search page, except with a Price filter, which only the page applies.
@@ -93,7 +94,8 @@ func (c *Client) Search(ctx context.Context, opts SearchOptions) ([]SearchResult
 	if opts.Country == "" {
 		opts.Country = "us"
 	}
-	if opts.Num == 0 {
+	if opts.Num <= 0 {
+		// A negative Num used to reach the slice at the end and panic.
 		opts.Num = 20
 	}
 	if opts.Num > searchMaxNum {
@@ -110,7 +112,7 @@ func (c *Client) Search(ctx context.Context, opts SearchOptions) ([]SearchResult
 	var results []SearchResult
 	var token string
 	_, err := c.getPage(ctx, searchURL, func(body []byte) (Verdict, string) {
-		results, token, _ = parseSearchPage(body, opts.Num)
+		results, token, _ = parseSearchPage(body)
 		return classifySearchPage(body, results)
 	})
 	if err != nil {
@@ -258,7 +260,7 @@ func (c *Client) searchRPC(ctx context.Context, opts SearchOptions) ([]SearchRes
 	return results, err
 }
 
-func parseSearchPage(body []byte, num int) ([]SearchResult, string, error) {
+func parseSearchPage(body []byte) ([]SearchResult, string, error) {
 	dataBlocks := parseDataBlocks(body)
 	return extractSearchResults(dataBlocks)
 }
@@ -471,12 +473,22 @@ func hasPackagePrefix(s string) bool {
 }
 
 // searchGridPaths is the search/cluster grid row layout. Rows may arrive wrapped
-// ([[actual]]) and carry no price node (the grid never prices apps, so rows stay
-// free). The appID slot can hold non-package noise across the page variants, so
-// candidates are gated on a package-name prefix (requireAppID).
+// ([[actual]]). The appID slot can hold non-package noise across the page
+// variants, so candidates are gated on a package-name prefix (requireAppID).
+//
+// A row carries its offer at [8][1][0] as [micros, currency, ""] and the full
+// HTML description at [13][1], but no tagline. Neither was read: an earlier
+// comment here said the grid never prices apps, so every result after the
+// featured card came back with PriceKnown false and no summary (1 in 20 of a
+// live search had either). The summary is the description's first paragraph,
+// as for the chart rows of List, which carry no tagline either.
 var searchGridPaths = rowPaths{
-	unwrapSingleton: true,
-	requireAppID:    true,
+	price:                [][]int{{8, 1, 0, 0}},
+	currency:             [][]int{{8, 1, 0, 1}},
+	summary:              [][]int{{13, 1}},
+	summaryIsDescription: true,
+	unwrapSingleton:      true,
+	requireAppID:         true,
 	appID: [][]int{
 		{0, 0, 0, 0}, // developer page format with extra wrap
 		{0, 0, 0},    // developer page format
@@ -510,10 +522,6 @@ var qnKhObRowPaths = rowPaths{
 	price:           [][]int{{7, 0, 3, 2, 1, 0, 0}},
 	urlPath:         [][]int{{9, 4, 2}},
 	urlPathOnly:     true,
-}
-
-func parseSearchResult(item any) SearchResult {
-	return decodeResultRow(item, qnKhObRowPaths)
 }
 
 // enrichSearchResults replaces each result with full app details.

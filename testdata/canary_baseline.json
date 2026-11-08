@@ -1,0 +1,145 @@
+{
+  "comment": "Fill rates and median latencies of the last good canary run; see canary_history_test.go. Rewrite with UPDATE_CANARY_BASELINE=1 go test -tags canary -run TestCanary .",
+  "source": "live canary run",
+  "taken": "2026-11-08",
+  "fill": {
+    "app_page": {
+      "n": 3,
+      "fields": {
+        "content_rating": 1,
+        "description": 1,
+        "developer": 1,
+        "developer_id": 1,
+        "genre_id": 1,
+        "header_image": 1,
+        "icon": 1,
+        "installs": 1,
+        "ratings": 1,
+        "score": 1,
+        "screenshots": 1,
+        "summary": 1,
+        "title": 1,
+        "updated": 1,
+        "url": 1
+      }
+    },
+    "app_rpc": {
+      "n": 4,
+      "fields": {
+        "content_rating": 1,
+        "description": 1,
+        "developer": 1,
+        "developer_id": 1,
+        "genre_id": 1,
+        "header_image": 1,
+        "icon": 1,
+        "installs": 1,
+        "ratings": 1,
+        "score": 1,
+        "screenshots": 1,
+        "summary": 1,
+        "title": 1,
+        "updated": 1,
+        "url": 1
+      }
+    },
+    "cluster": {
+      "n": 18,
+      "fields": {
+        "app_id": 1,
+        "developer": 1,
+        "icon": 1,
+        "price": 1,
+        "score": 1,
+        "summary": 1,
+        "title": 1,
+        "url": 1
+      }
+    },
+    "developer": {
+      "n": 20,
+      "fields": {
+        "app_id": 1,
+        "developer": 1,
+        "icon": 1,
+        "price": 0,
+        "score": 1,
+        "summary": 0,
+        "title": 1,
+        "url": 1
+      }
+    },
+    "list": {
+      "n": 50,
+      "fields": {
+        "app_id": 1,
+        "developer": 1,
+        "icon": 1,
+        "price": 1,
+        "score": 1,
+        "summary": 1,
+        "title": 1,
+        "url": 1
+      }
+    },
+    "reviews": {
+      "n": 100,
+      "fields": {
+        "date": 1,
+        "id": 1,
+        "score": 1,
+        "text": 1,
+        "url": 1,
+        "user_image": 1,
+        "user_name": 1,
+        "version": 0.76
+      }
+    },
+    "search": {
+      "n": 20,
+      "fields": {
+        "app_id": 1,
+        "developer": 1,
+        "icon": 1,
+        "price": 1,
+        "score": 1,
+        "summary": 1,
+        "title": 1,
+        "url": 1
+      }
+    },
+    "similar": {
+      "n": 50,
+      "fields": {
+        "app_id": 1,
+        "developer": 1,
+        "icon": 1,
+        "price": 0,
+        "score": 1,
+        "summary": 0,
+        "title": 1,
+        "url": 1
+      }
+    }
+  },
+  "latency_ms": {
+    "App": 362,
+    "Availability": 73,
+    "AvailabilityClasses": 91,
+    "Batched": 105,
+    "CategoryApps": 434,
+    "ClusterURLs+Cluster": 333,
+    "Collections": 253,
+    "DataSafety": 110,
+    "Developer": 244,
+    "List": 197,
+    "PCApp": 109,
+    "Permissions": 100,
+    "Reviews": 373,
+    "ReviewsSeq": 706,
+    "Search": 371,
+    "Similar": 257,
+    "Sitemap": 43,
+    "Suggest": 87
+  }
+}

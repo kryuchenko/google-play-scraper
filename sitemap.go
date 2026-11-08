@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
@@ -196,13 +195,16 @@ func (c *Client) sitemapShardPackages(ctx context.Context, shardURL string) ([]s
 		}
 		defer func() { _ = zr.Close() }()
 
-		pkgs, err := shardPackagesFrom(zr)
+		pkgs, err := shardPackagesFrom(limitInflate(zr))
 		if err != nil {
 			return nil, fmt.Errorf("decompress shard %s: %w", shardURL, err)
 		}
 		return pkgs, nil
 	}
 
+	if !shardClosed(body) {
+		return nil, fmt.Errorf("shard %s: %w", shardURL, ErrShardTruncated)
+	}
 	return shardPackages(body), nil
 }
 
@@ -417,61 +419,40 @@ func (c *Client) CatalogShardSeq(ctx context.Context, opts CatalogOptions) iter.
 	}
 }
 
-// gunzipIfNeeded decompresses data when it carries the gzip magic header,
-// otherwise returns it unchanged. Sitemap shards are served as .xml.gz files
-// (the gzip is the resource, not an HTTP transfer encoding, so the transport
-// does not transparently decode it), but indexes are plain XML — detecting the
-// magic bytes handles both without assuming.
-// gunzipHintMax caps the pre-allocation taken from a gzip trailer.
-//
-// A shard decompresses to about 8MB. The cap exists because the trailer is
-// attacker-controlled: it is four bytes at the end of the stream that anyone
-// serving the response chooses, so an unbounded hint is an unbounded
-// allocation from an unauthenticated source. Beyond the cap the buffer simply
-// grows as it always did.
-const gunzipHintMax = 64 << 20
+// maxInflatedBytes caps what one gzip stream may decompress to. A shard
+// inflates to about 8MB; a stream that keeps going past 256MB is not a
+// sitemap, and gzip compresses runs of one byte about a thousandfold, so a
+// 64MB response could otherwise stand for 64GB of work.
+const maxInflatedBytes = 256 << 20
 
-func gunzipIfNeeded(data []byte) ([]byte, error) {
-	if len(data) < 2 || data[0] != 0x1f || data[1] != 0x8b {
-		return data, nil
-	}
-	zr, err := gzip.NewReader(bytes.NewReader(data))
-	if err != nil {
-		return nil, err
-	}
-	// A corrupt stream surfaces from the read below, not from Close, so the
-	// close error carries nothing a caller could act on.
-	defer func() { _ = zr.Close() }()
+// ErrInflatedTooLarge reports a gzip stream that decompresses past
+// maxInflatedBytes.
+var ErrInflatedTooLarge = errors.New("gzip stream inflates past 256MB")
 
-	// Allocate once from the size the format already states.
-	//
-	// io.ReadAll grows from nothing, doubling and copying: decompressing an
-	// 8MB shard that way allocates 16.7MB and takes 6.4ms, against 8.07MB and
-	// 4.4ms when the buffer is the right size to begin with. A catalog sweep
-	// does this 83,445 times.
-	//
-	// RFC 1952 puts ISIZE -- the uncompressed length modulo 2^32 -- in the
-	// last four bytes. Modulo, so it is a hint and not a promise: a stream
-	// over 4GB reports the remainder, and the buffer grows from there as
-	// normal. For a sitemap shard it is exact.
-	buf := bytes.NewBuffer(make([]byte, 0, gunzipHint(data)))
-	if _, err := buf.ReadFrom(zr); err != nil {
-		return nil, err
-	}
-	return buf.Bytes(), nil
+// limitInflate reads r and fails with ErrInflatedTooLarge once more than
+// maxInflatedBytes have come out of it.
+func limitInflate(r io.Reader) io.Reader {
+	return &inflateLimit{r: r, left: maxInflatedBytes}
 }
 
-// gunzipHint reads the uncompressed size a gzip stream declares, clamped to
-// something it is safe to allocate on that word alone.
-func gunzipHint(data []byte) int {
-	if len(data) < 4 {
-		return 0
+type inflateLimit struct {
+	r    io.Reader
+	left int64
+}
+
+func (l *inflateLimit) Read(p []byte) (int, error) {
+	if l.left < 0 {
+		return 0, ErrInflatedTooLarge
 	}
-	size := binary.LittleEndian.Uint32(data[len(data)-4:])
-	if size > gunzipHintMax {
-		return gunzipHintMax
+	if int64(len(p)) > l.left+1 {
+		p = p[:l.left+1]
 	}
-	return int(size)
+	n, err := l.r.Read(p)
+	l.left -= int64(n)
+	if l.left < 0 {
+		return n, ErrInflatedTooLarge
+	}
+	return n, err
 }
 
 // appPackageFromLoc returns the package id of an app-listing sitemap loc, or ""
@@ -661,8 +642,8 @@ func shardPackages(body []byte) []string {
 // A sitemap loc is a URL. Anything longer than the carry bound is not one, and
 // without the bound a stream containing a single unterminated <loc> would
 // buffer the whole document that streaming exists to avoid -- which is the
-// same unbounded-allocation-from-an-untrusted-source problem gunzipHintMax
-// exists for.
+// same unbounded-allocation-from-an-untrusted-source problem as taking a
+// gzip trailer's size at its word.
 const (
 	shardScanChunk    = 32 << 10
 	shardScanCarryMax = 64 << 10
@@ -691,6 +672,7 @@ const (
 func shardPackagesFrom(r io.Reader) ([]string, error) {
 	seen := make(map[string]struct{})
 	var pkgs []string
+	var end shardEnd
 
 	buf := make([]byte, 0, shardScanChunk+shardScanCarryMax)
 	chunk := make([]byte, shardScanChunk)
@@ -698,14 +680,27 @@ func shardPackagesFrom(r io.Reader) ([]string, error) {
 	for {
 		n, err := r.Read(chunk)
 		if n > 0 {
+			end.see(chunk[:n])
 			buf = append(buf, chunk[:n]...)
 			tail := scanLocs(buf, seen, &pkgs)
 			if len(tail) > shardScanCarryMax {
 				// A <loc> still unclosed after more bytes than any URL runs
 				// to. shardPackages stops at an unterminated marker, so this
-				// stops too: the two must not disagree about a document, and
-				// growing the window instead is the unbounded allocation the
-				// bound exists to prevent.
+				// stops collecting too: the two must not disagree about a
+				// document, and growing the window instead is the unbounded
+				// allocation the bound exists to prevent. It does not stop
+				// reading: whether the document ends in </urlset> is still
+				// the question, and returning here used to skip it.
+				for err == nil {
+					n, err = r.Read(chunk)
+					end.see(chunk[:n])
+				}
+				if !errors.Is(err, io.EOF) {
+					return pkgs, err
+				}
+				if !end.closed() {
+					return pkgs, ErrShardTruncated
+				}
 				return pkgs, nil
 			}
 			// copy handles the overlap: tail is a suffix of buf.
@@ -713,11 +708,73 @@ func shardPackagesFrom(r io.Reader) ([]string, error) {
 		}
 		if err != nil {
 			if errors.Is(err, io.EOF) {
+				if !end.closed() {
+					return pkgs, ErrShardTruncated
+				}
 				return pkgs, nil
 			}
 			return pkgs, err
 		}
 	}
+}
+
+// ErrShardTruncated reports a sitemap shard that ended before </urlset>.
+//
+// A gzip stream that is cut short fails on its own; one that is complete but
+// holds a document cut short does not, and parsed, it reads as a shard with
+// fewer apps. Nothing downstream can tell that from a catalog that shrank:
+// the sweep marked the shard done, and the missing ids surfaced weeks later
+// as removals. Every shard Google serves ends in </urlset>.
+var ErrShardTruncated = errors.New("sitemap shard ended before </urlset>")
+
+var urlsetClose = []byte("</urlset>")
+
+// shardEnd tells, as a stream goes by, whether it ends in </urlset> with
+// nothing but whitespace after it. tail is the last bytes of the stream up to
+// its last non-whitespace byte; ws is the whitespace after that, held back
+// until something follows it. Trailing whitespace of any length therefore
+// cannot push the closing tag out of the window, and whitespace inside the
+// document is kept in order.
+type shardEnd struct {
+	tail [64]byte
+	n    int
+	ws   []byte
+}
+
+func (e *shardEnd) see(b []byte) {
+	last := bytes.LastIndexFunc(b, func(r rune) bool { return !isXMLSpace(r) })
+	if last < 0 {
+		e.ws = lastN(append(e.ws, b...), len(e.tail))
+		return
+	}
+	e.push(e.ws)
+	e.push(b[:last+1])
+	e.ws = append(e.ws[:0], lastN(b[last+1:], len(e.tail))...)
+}
+
+func (e *shardEnd) push(b []byte) {
+	if len(b) >= len(e.tail) {
+		e.n = copy(e.tail[:], b[len(b)-len(e.tail):])
+		return
+	}
+	keep := min(e.n, len(e.tail)-len(b))
+	copy(e.tail[:keep], e.tail[e.n-keep:e.n])
+	e.n = keep + copy(e.tail[keep:], b)
+}
+
+func lastN(b []byte, n int) []byte {
+	if len(b) > n {
+		return b[len(b)-n:]
+	}
+	return b
+}
+
+func (e *shardEnd) closed() bool { return bytes.HasSuffix(e.tail[:e.n], urlsetClose) }
+
+func isXMLSpace(r rune) bool { return r == ' ' || r == '\t' || r == '\n' || r == '\r' }
+
+func shardClosed(b []byte) bool {
+	return bytes.HasSuffix(bytes.TrimRightFunc(b, isXMLSpace), urlsetClose)
 }
 
 // scanLocs consumes every complete <loc>…</loc> in buf, appending the app

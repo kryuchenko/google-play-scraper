@@ -19,11 +19,13 @@ import (
 	"runtime"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	googleplayscraper "github.com/kryuchenko/google-play-scraper"
+	"github.com/kryuchenko/google-play-scraper/records"
 )
 
 // The catalog is not an operation, it is a dataset.
@@ -110,28 +112,39 @@ func deltaName(from, to googleplayscraper.Generation) string {
 	return fmt.Sprintf("delta-%s-to-%s.json", from.ID(), to.ID())
 }
 
-// readDoneLog returns the shard URLs a previous run finished. A truncated
-// final line -- the ordinary result of a kill -- is discarded rather than
-// treated as a completed shard.
-func readDoneLog(path string) (map[string]struct{}, error) {
+// readDoneLog returns the shard URLs a previous run finished, and how many
+// ids those shards wrote. A line is "<url>\t<ids>"; a log from before the
+// count reads as URLs only, and then counted is false. A truncated final
+// line -- the ordinary result of a kill -- is discarded rather than treated
+// as a completed shard.
+func readDoneLog(path string) (done map[string]struct{}, ids int, counted bool, err error) {
 	f, err := os.Open(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return map[string]struct{}{}, nil
+			return map[string]struct{}{}, 0, true, nil
 		}
-		return nil, err
+		return nil, 0, false, err
 	}
 	defer func() { _ = f.Close() }()
 
-	done := make(map[string]struct{}, 1<<16)
+	done = make(map[string]struct{}, 1<<16)
+	counted = true
 	sc := bufio.NewScanner(f)
 	sc.Buffer(make([]byte, 0, 64*1024), maxLineBytes)
 	for sc.Scan() {
-		if line := strings.TrimSpace(sc.Text()); line != "" {
-			done[line] = struct{}{}
+		line := strings.TrimSpace(sc.Text())
+		if line == "" {
+			continue
+		}
+		url, n, hasCount := strings.Cut(line, "\t")
+		done[url] = struct{}{}
+		if k, perr := strconv.Atoi(n); hasCount && perr == nil && k >= 0 {
+			ids += k
+		} else {
+			counted = false
 		}
 	}
-	return done, sc.Err()
+	return done, ids, counted, sc.Err()
 }
 
 // manifest describes a finished snapshot.
@@ -152,6 +165,12 @@ type manifest struct {
 	// which is what turns a sample into a measurement rather than an anecdote.
 	SamplePct  float64 `json:"sample_pct,omitempty"`
 	SampleSeed int64   `json:"sample_seed,omitempty"`
+
+	// DeltaError says why no delta was written against the previous
+	// snapshot when one should have been -- that snapshot missing or
+	// corrupt. Without it the only record was a warning on stderr, and the
+	// generation read as complete with nothing to say a delta was skipped.
+	DeltaError string `json:"delta_error,omitempty"`
 }
 
 // complete reports whether the manifest describes a sweep of the whole catalog
@@ -209,19 +228,20 @@ func cmdSync(args []string) error {
 	// provided but not defined", which would say nothing about where to go.
 	for _, a := range args {
 		if a == "-check" || a == "--check" {
-			return fmt.Errorf("catalog sweep no longer takes -check; `gpscrape catalog check` " +
+			return records.Invalid("catalog sweep no longer takes -check; `gpscrape catalog check` " +
 				"reports the same thing in 2 requests instead of 3, with built, ageHours and shards")
 		}
 	}
 
 	c := newCommon("catalog sweep")
+	c.adaptiveByDefault()
 	dir := c.fs.String("dir", "catalog", "directory for snapshots, deltas and resume state")
 	force := c.fs.Bool("force", false, "sweep even if the current generation is already snapshotted")
 	sample := c.fs.Float64("sample", 0, "sweep only this percent of shards (0 = all)")
 	keep := c.fs.Int("keep", 0, "after a successful sweep, keep only this many of the newest "+
 		"snapshots and delete older ones (0 = keep every generation)")
 	seed := c.fs.Int64("seed", 0, "seed for -sample (0 derives one from the generation)")
-	yes := c.fs.Bool("yes", false, "start a full sweep without a terminal (an agent or a script); it is about 83,000 requests")
+	yes := c.fs.Bool("yes", false, "start a full sweep without a terminal (an agent or a script); it is about 88,000 requests")
 	if err := c.parse(args); err != nil {
 		return err
 	}
@@ -233,7 +253,7 @@ func cmdSync(args []string) error {
 	// a manifest saying the catalog held nothing, and -sample -5 was ignored
 	// and swept all 83,445 shards. Both exited 0.
 	if *sample != 0 && (*sample < 0 || *sample > 100 || math.IsNaN(*sample)) {
-		return fmt.Errorf("-sample %v: a share of the catalog is above 0 and at most 100, "+
+		return records.Invalid("-sample %v: a share of the catalog is above 0 and at most 100, "+
 			"or 0 for the whole catalog", *sample)
 	}
 	// 0 is the flag's own default and has always meant "all", so it cannot be
@@ -308,6 +328,11 @@ func cmdSync(args []string) error {
 
 	if upToDate && !*force {
 		fmt.Fprintf(os.Stderr, "already have %s; nothing to do (use -force to sweep anyway)\n", gen)
+		// A run killed after its manifest but before its cleanup left the
+		// resume files of a generation that is done -- about 100MB at catalog
+		// scale -- and every later run took this branch and kept them until
+		// the generation rolled.
+		removeFinishedResumeState(*dir, gen)
 		// The manifest of the snapshot that is current, so `catalog sweep` has
 		// exactly one machine-readable answer whether or not it had work to
 		// do. Exiting 0 with an empty stdout was indistinguishable from a run
@@ -318,7 +343,13 @@ func cmdSync(args []string) error {
 	// Here the work is real. Asked for only now: a sweep with nothing to do
 	// costs two requests and needs no consent.
 	if *sample == 0 || *sample == 100 {
-		if err := confirmExpensive(*yes, "a full catalog sweep is about 83,000 requests and hours of work; "+
+		// The generation says how many shards there are, so say that rather
+		// than a figure that is right only for the full store.
+		cost := "about 88,000 requests and hours of work"
+		if gen.Shards > 0 {
+			cost = fmt.Sprintf("%d requests, one per shard of %s", gen.Shards, gen.ID())
+		}
+		if err := confirmExpensive(*yes, "a full catalog sweep is "+cost+"; "+
 			"`gpscrape catalog size` estimates the count in about 900, `-sample 1` sweeps 1%"); err != nil {
 			return err
 		}
@@ -416,11 +447,66 @@ func sweep(
 		// Files from an older generation are not a base to append to.
 		_ = os.Remove(partialPath)
 		_ = os.Remove(donePath)
+		// Written now, not at the first checkpoint 500 shards in: without a
+		// state file the next run cannot tell its files from a stale run's,
+		// so a kill in the first minutes threw that work away.
+		if err := saveState(statePath, state); err != nil {
+			return fmt.Errorf("write %s: %w", statePath, err)
+		}
 	}
 
-	finished, err := readDoneLog(donePath)
+	// A run killed in the middle of a write leaves the partial file ending
+	// in half an id. Appending to it glued that half to the next id --
+	// com.exa + com.example became com.exacom.example, an app that does not
+	// exist, in the snapshot. The torn line belongs to a shard whose done
+	// line was never written, so the shard is fetched again whole; cutting
+	// the file back to its last newline loses nothing.
+	if err := truncateTornLine(partialPath); err != nil {
+		return fmt.Errorf("repair %s: %w", partialPath, err)
+	}
+	// The done log the same way: a torn URL glued to the next one names no
+	// shard, so both would be fetched again.
+	if err := truncateTornLine(donePath); err != nil {
+		return fmt.Errorf("repair %s: %w", donePath, err)
+	}
+
+	finished, doneIDs, counted, err := readDoneLog(donePath)
 	if err != nil {
 		return fmt.Errorf("read %s: %w", donePath, err)
+	}
+	// The done log is only worth trusting while the id file still holds what
+	// it vouches for. Removed or cut short between runs, the resume skipped
+	// the shards it lists and their ids were missing from the snapshot, with
+	// nothing to show for it. A checkpoint flushes the ids before it records
+	// state.IDs, so the file holds at least that many lines; and each done
+	// line carries its shard's id count, written after those ids reached the
+	// file, so it holds at least their sum too -- which, unlike the
+	// checkpoint, also covers the shards finished after it. Fewer, or none
+	// while the done log lists shards, means the generation starts over.
+	if resumed {
+		have, err := countLines(partialPath)
+		if err != nil {
+			return fmt.Errorf("read %s: %w", partialPath, err)
+		}
+		want := state.IDs
+		if counted {
+			want = max(want, doneIDs)
+		}
+		if have < want || (have == 0 && len(finished) > 0) {
+			fmt.Fprintf(os.Stderr, "%s holds %d ids, but %d shards already finished wrote %d: "+
+				"it was removed or cut short since, so %s is swept again from the start\n",
+				partialPath, have, len(finished), want, gen.ID())
+			for _, p := range []string{partialPath, donePath} {
+				if err := os.Remove(p); err != nil && !errors.Is(err, os.ErrNotExist) {
+					return fmt.Errorf("remove %s: %w", p, err)
+				}
+			}
+			state = syncState{Generation: gen, SamplePct: samp.Pct, SampleSeed: samp.Seed}
+			finished, resumed = map[string]struct{}{}, false
+			if err := saveState(statePath, state); err != nil {
+				return fmt.Errorf("write %s: %w", statePath, err)
+			}
+		}
 	}
 	// max rather than the bare difference: the two are only guaranteed to be
 	// consistent because loadState now refuses a mismatched sample, and a
@@ -432,19 +518,42 @@ func sweep(
 		}
 	}
 
-	partial, err := os.OpenFile(partialPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	partial, err := openWrite(partialPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
 	if err != nil {
 		return fmt.Errorf("open %s: %w", partialPath, err)
 	}
 	w := bufio.NewWriterSize(partial, 1<<20)
 
-	doneLog, err := os.OpenFile(donePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	doneLog, err := openWrite(donePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
 	if err != nil {
 		// partial is already open, and returning past it leaks the handle.
 		_ = partial.Close()
 		return fmt.Errorf("open %s: %w", donePath, err)
 	}
+	// Both may have just been created. Without the directory synced their
+	// names could be lost to a power loss even after a checkpoint fsynced
+	// their contents; the resume would then sweep the generation again.
+	if err := syncDir(dir); err != nil {
+		_ = partial.Close()
+		_ = doneLog.Close()
+		return fmt.Errorf("create %s and %s: %w", partialPath, donePath, err)
+	}
 	dw := bufio.NewWriterSize(doneLog, 1<<16)
+	// markDone writes url's done line. A shard's ids must reach the file
+	// before its done line does, or a kill in between resumes past a shard
+	// whose ids were never written. Checkpoints flush in that order, but a
+	// buffer also flushes itself when full, and the done log's is the
+	// smaller: with long URLs and few ids it fills first. So when this line
+	// is about to flush the done log, the ids go out first.
+	markDone := func(url string, ids int) error { return writeDoneLine(w, dw, url, ids) }
+	// doneFailed reports a markDone failure against the file that failed.
+	doneFailed := func(err error) {
+		if errors.As(err, new(errFlushIDs)) {
+			failWrite("write "+partialPath, err)
+			return
+		}
+		failWrite("write "+donePath, err)
+	}
 
 	// checkpoint makes progress durable in the only order that cannot lose
 	// work: the ids first, then the record saying the shard is finished. A
@@ -468,6 +577,37 @@ func sweep(
 		return saveState(statePath, state)
 	}
 
+	// endPass makes the pass's progress durable and closes both files, and
+	// on any failure still closes them: returning past an open handle leaked
+	// it, and on Windows kept the directory from being cleaned up.
+	//
+	// The id file is read back by name at the end, so a name that no longer
+	// reaches what this run wrote -- removed, or replaced by another file --
+	// would publish the other file's lines as the snapshot, or resume past
+	// shards whose ids are gone. The state file goes with it, so the rerun
+	// starts the generation clean instead of trusting the done log.
+	endPass := func() error {
+		err := checkpoint()
+		if err == nil {
+			if err = stillOurs(partial, partialPath); err != nil {
+				_ = os.Remove(statePath)
+			}
+		}
+		if err != nil {
+			_ = partial.Close()
+			_ = doneLog.Close()
+			return err
+		}
+		if err := partial.Close(); err != nil {
+			_ = doneLog.Close()
+			return fmt.Errorf("close %s: %w", partialPath, err)
+		}
+		if err := doneLog.Close(); err != nil {
+			return fmt.Errorf("close %s: %w", donePath, err)
+		}
+		return nil
+	}
+
 	started := time.Now()
 	if resumed {
 		fmt.Fprintf(os.Stderr, "resuming %s: %d of %d shards left\n",
@@ -487,6 +627,14 @@ func sweep(
 	// was incremented twice, and remaining = len(pending) - done went
 	// negative. The set is kept beside the slice rather than replacing it,
 	// because the state file's order is what the retry pass walks.
+	// A failure the state file still lists may have been fetched since: a
+	// resume that succeeded on it and checkpointed the done log, then was
+	// killed before the state file caught up. The done log is the record of
+	// what is fetched, so it wins.
+	state.Failed = slices.DeleteFunc(state.Failed, func(u string) bool {
+		_, ok := finished[u]
+		return ok
+	})
 	failedSeen := make(map[string]struct{}, len(state.Failed))
 	for _, u := range state.Failed {
 		failedSeen[u] = struct{}{}
@@ -498,6 +646,17 @@ func sweep(
 		}
 		failedSeen[url] = struct{}{}
 		state.Failed = append(state.Failed, url)
+	}
+	// A shard a previous run recorded as failed is pending again on resume.
+	// When it succeeds it leaves the list: kept, it was fetched a second
+	// time by the retry pass, and if that second fetch failed the sweep
+	// refused to publish ids it already had.
+	noteSucceeded := func(url string) {
+		if _, was := failedSeen[url]; !was {
+			return
+		}
+		delete(failedSeen, url)
+		state.Failed = slices.DeleteFunc(state.Failed, func(u string) bool { return u == url })
 	}
 
 	// Each shard is fetched directly rather than through CatalogSeq: this loop
@@ -514,6 +673,10 @@ func sweep(
 				return // interrupted; the shard is simply not marked done
 			}
 			if isGone(err) {
+				// Not a reason to stop: one 404 does not prove the generation
+				// rolled -- a single shard can go missing while the rest
+				// stand -- and the shards fetched meanwhile are progress a
+				// rerun on the same generation keeps.
 				rolled = true
 			}
 			noteFailed(url)
@@ -528,15 +691,20 @@ func sweep(
 			}
 		}
 		state.IDs += len(pkgs)
-		if _, werr := fmt.Fprintln(dw, url); werr != nil {
-			failWrite("write "+donePath, werr)
+		if werr := markDone(url, len(pkgs)); werr != nil {
+			doneFailed(werr)
 			return
 		}
+		noteSucceeded(url)
 
 		done++
 		if done%500 == 0 {
+			// A checkpoint that cannot be written stops the sweep. It used
+			// to be logged and skipped, so a disk that refused fsync let the
+			// run fetch for hours with nothing it could resume from.
 			if cerr := checkpoint(); cerr != nil {
-				fmt.Fprintf(os.Stderr, "checkpoint: %v\n", cerr)
+				failWrite("checkpoint", cerr)
+				return
 			}
 			fmt.Fprintf(os.Stderr, "%d/%d shards, %d ids, %s elapsed\n",
 				len(shards)-len(pending)+done, len(shards), state.IDs,
@@ -555,14 +723,8 @@ func sweep(
 			"(progress is kept in %s)", writeErr, donePath)
 	}
 
-	if cerr := checkpoint(); cerr != nil {
-		return cerr
-	}
-	if err := partial.Close(); err != nil {
-		return fmt.Errorf("close %s: %w", partialPath, err)
-	}
-	if err := doneLog.Close(); err != nil {
-		return fmt.Errorf("close %s: %w", donePath, err)
+	if err := endPass(); err != nil {
+		return err
 	}
 
 	// Shards that failed get one more pass before the sweep is called done.
@@ -578,12 +740,12 @@ func sweep(
 		state.Failed, failedSeen = nil, map[string]struct{}{}
 		fmt.Fprintf(os.Stderr, "retrying %d failed shards\n", len(retryURLs))
 
-		partial, err = os.OpenFile(partialPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+		partial, err = openWrite(partialPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
 		if err != nil {
 			return fmt.Errorf("reopen %s: %w", partialPath, err)
 		}
 		w = bufio.NewWriterSize(partial, 1<<20)
-		doneLog, err = os.OpenFile(donePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+		doneLog, err = openWrite(donePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
 		if err != nil {
 			_ = partial.Close()
 			return fmt.Errorf("reopen %s: %w", donePath, err)
@@ -613,8 +775,8 @@ func sweep(
 				}
 			}
 			state.IDs += len(pkgs)
-			if _, werr := fmt.Fprintln(dw, url); werr != nil {
-				failWrite("write "+donePath, werr)
+			if werr := markDone(url, len(pkgs)); werr != nil {
+				doneFailed(werr)
 				return
 			}
 			done++
@@ -627,14 +789,8 @@ func sweep(
 			return fmt.Errorf("%w; the sweep stopped rather than fetching the rest "+
 				"(progress is kept in %s)", writeErr, donePath)
 		}
-		if cerr := checkpoint(); cerr != nil {
-			return cerr
-		}
-		if err := partial.Close(); err != nil {
-			return fmt.Errorf("close %s: %w", partialPath, err)
-		}
-		if err := doneLog.Close(); err != nil {
-			return fmt.Errorf("close %s: %w", donePath, err)
+		if err := endPass(); err != nil {
+			return err
 		}
 		if retryErr != nil {
 			return fmt.Errorf("%w (progress kept in %s)", retryErr, donePath)
@@ -642,6 +798,14 @@ func sweep(
 	}
 
 	remaining := len(pending) - done
+
+	// An interrupted run says so first. The retry pass was skipped, so a
+	// failed shard does not mean what the refusal below says -- "after a
+	// retry pass" -- and reporting it in place of the interrupt turned
+	// Ctrl-C into exit 1 instead of 130.
+	if sweepErr != nil && !rolled {
+		return fmt.Errorf("%w (progress kept: %d shards left)", sweepErr, remaining)
+	}
 
 	if len(state.Failed) > 0 && !rolled {
 		// Refusing to write a manifest is deliberate. A snapshot that is
@@ -698,10 +862,20 @@ func finish(
 	ids = slices.Compact(ids)
 
 	snapPath := filepath.Join(dir, "snapshot-"+gen.ID()+".txt.gz")
+	// Rewriting a generation already on disk (-force, or another -sample of
+	// it) replaces the snapshot the old manifest describes. The old manifest
+	// goes first, so a kill partway leaves a generation with no manifest --
+	// incomplete, swept again next time -- rather than a 1% snapshot under a
+	// manifest that says it is the whole catalog.
+	if err := os.Remove(filepath.Join(dir, "manifest-"+gen.ID()+".json")); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	reachedFinishStep("snapshot")
 	sum, err := writeSnapshot(snapPath, ids)
 	if err != nil {
 		return err
 	}
+	reachedFinishStep("delta")
 
 	m := manifest{
 		Generation:  gen,
@@ -713,10 +887,6 @@ func finish(
 		SamplePct:   samp.Pct,
 		SampleSeed:  samp.Seed,
 	}
-	if err := writeJSON(filepath.Join(dir, "manifest-"+gen.ID()+".json"), m); err != nil {
-		return err
-	}
-
 	// Whether there is a delta to write is exactly the question `catalog diff`
 	// already answers, and for a while this asked a weaker version of it: the
 	// generation id alone. A -sample run after a complete one then wrote
@@ -748,6 +918,7 @@ func finish(
 		d, rerr := diffAgainstSnapshot(filepath.Join(dir, prev.File), prev.Generation, gen, ids)
 		if rerr != nil {
 			fmt.Fprintf(os.Stderr, "warning: cannot diff against %s: %v\n", prev.File, rerr)
+			m.DeltaError = fmt.Sprintf("cannot diff against %s: %v", prev.File, rerr)
 			break
 		}
 		if err := writeJSON(filepath.Join(dir, deltaName(prev.Generation, gen)), d); err != nil {
@@ -755,6 +926,20 @@ func finish(
 		}
 		fmt.Fprintf(os.Stderr, "delta: +%d -%d\n", len(d.Added), len(d.Removed))
 	}
+
+	// The manifest last: it is what says this generation is done. Written
+	// before the delta, a kill between the two left a generation that every
+	// later run took as complete and no run ever diffed. Written after, the
+	// same kill leaves the resume state in place, and the next run finishes
+	// again -- snapshot, delta, manifest -- from the files it already has.
+	// What this does not cover: a delta that cannot be computed at all (the
+	// previous snapshot missing or corrupt) is warned about above and skipped,
+	// and the manifest is still written; `catalog diff` can be run by hand.
+	reachedFinishStep("manifest")
+	if err := writeJSON(filepath.Join(dir, "manifest-"+gen.ID()+".json"), m); err != nil {
+		return err
+	}
+	reachedFinishStep("cleanup")
 
 	// A finished sweep leaves nothing to resume from.
 	_ = os.Remove(partialPath)
@@ -807,21 +992,25 @@ func diffAgainstSnapshot(path string, from, to googleplayscraper.Generation, new
 	sc := bufio.NewScanner(r)
 	sc.Buffer(make([]byte, 0, 64*1024), maxLineBytes)
 
+	// Bytes, not Text: Text makes a string of every line, which at catalog
+	// scale is four million strings of garbage the collector lets the heap
+	// grow by -- 120MB on the finish peak. A string(b) conversion inside a
+	// comparison does not allocate; only the removed ids are copied out.
 	j := 0
 	for sc.Scan() {
-		old := strings.TrimSpace(sc.Text())
-		if old == "" {
+		old := bytes.TrimSpace(sc.Bytes())
+		if len(old) == 0 {
 			continue
 		}
-		for j < len(newIDs) && newIDs[j] < old {
+		for j < len(newIDs) && newIDs[j] < string(old) {
 			d.Added = append(d.Added, newIDs[j])
 			j++
 		}
-		if j < len(newIDs) && newIDs[j] == old {
+		if j < len(newIDs) && newIDs[j] == string(old) {
 			j++
 			continue
 		}
-		d.Removed = append(d.Removed, old)
+		d.Removed = append(d.Removed, string(old))
 	}
 	if err := sc.Err(); err != nil {
 		return delta{}, err
@@ -830,27 +1019,204 @@ func diffAgainstSnapshot(path string, from, to googleplayscraper.Generation, new
 	return d, nil
 }
 
-// diff walks two sorted lists once. At a few million ids on each side this is
-// the whole reason snapshots are kept sorted.
-func diff(from, to googleplayscraper.Generation, oldIDs, newIDs []string) delta {
-	d := delta{From: from, To: to, Added: []string{}, Removed: []string{}}
-	i, j := 0, 0
-	for i < len(oldIDs) && j < len(newIDs) {
-		switch {
-		case oldIDs[i] == newIDs[j]:
-			i++
-			j++
-		case oldIDs[i] < newIDs[j]:
-			d.Removed = append(d.Removed, oldIDs[i])
-			i++
-		default:
-			d.Added = append(d.Added, newIDs[j])
-			j++
+// finishStep, when set, is called as finish reaches each of its writes:
+// "snapshot", "delta", "manifest" and "cleanup". It is nil in every build but
+// the killtest one (killtest_hook.go), where it lets a test stop the process
+// exactly between two writes and check what a kill there leaves on disk.
+var finishStep func(step string)
+
+func reachedFinishStep(step string) {
+	if finishStep != nil {
+		finishStep(step)
+	}
+}
+
+// writeDoneLine writes url to the done log, first flushing the ids whenever
+// the line is about to flush the done log's buffer: a shard's done line must
+// never reach the file before its ids. See markDone.
+func writeDoneLine(ids, done *bufio.Writer, url string, n int) error {
+	line := url + "\t" + strconv.Itoa(n)
+	if len(line)+1 > done.Available() {
+		if err := ids.Flush(); err != nil {
+			return errFlushIDs{err}
 		}
 	}
-	d.Removed = append(d.Removed, oldIDs[i:]...)
-	d.Added = append(d.Added, newIDs[j:]...)
-	return d
+	_, err := fmt.Fprintln(done, line)
+	return err
+}
+
+// errFlushIDs marks a failure of the id file inside writeDoneLine, so the
+// message names the file that failed rather than the done log.
+type errFlushIDs struct{ err error }
+
+func (e errFlushIDs) Error() string { return e.err.Error() }
+func (e errFlushIDs) Unwrap() error { return e.err }
+
+// truncateTornLine cuts path back to just after its last newline, so the
+// next append starts on a line of its own. A missing or empty file, or one
+// that already ends in a newline, is left alone.
+func truncateTornLine(path string) error {
+	r, err := os.Open(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	cut, torn, err := lastLineEnd(r)
+	_ = r.Close()
+	if err != nil || !torn {
+		return err
+	}
+	// The cut is made through the writers' seam, so a failing fsync or a
+	// file swapped underneath is caught here as it is everywhere else.
+	f, err := openWrite(path, os.O_WRONLY, 0)
+	if err != nil {
+		return err
+	}
+	if err := f.Truncate(cut); err != nil {
+		_ = f.Close()
+		return err
+	}
+	if err := f.Sync(); err != nil {
+		_ = f.Close()
+		return err
+	}
+	if err := stillOurs(f, path); err != nil {
+		_ = f.Close()
+		return err
+	}
+	return f.Close()
+}
+
+// lastLineEnd returns the size f should be cut to so it ends just after its
+// last newline, and whether that is shorter than it is now.
+func lastLineEnd(f *os.File) (int64, bool, error) {
+	st, err := f.Stat()
+	if err != nil {
+		return 0, false, err
+	}
+	size := st.Size()
+	// Walk back from the end a block at a time to the last newline. An id is
+	// a few hundred bytes at most, so this reads one block in practice.
+	buf := make([]byte, 4096)
+	for end := size; end > 0; {
+		start := max(0, end-int64(len(buf)))
+		n, err := f.ReadAt(buf[:end-start], start)
+		if err != nil && !errors.Is(err, io.EOF) {
+			return 0, false, err
+		}
+		if i := bytes.LastIndexByte(buf[:n], '\n'); i >= 0 {
+			cut := start + int64(i) + 1
+			return cut, cut != size, nil
+		}
+		end = start
+	}
+	return 0, size > 0, nil
+}
+
+// countLines counts the newlines in path; a missing file has none.
+func countLines(path string) (int, error) {
+	f, err := os.Open(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, err
+	}
+	defer func() { _ = f.Close() }()
+	buf := make([]byte, 1<<20)
+	n := 0
+	for {
+		k, err := f.Read(buf)
+		n += bytes.Count(buf[:k], []byte{'\n'})
+		if errors.Is(err, io.EOF) {
+			return n, nil
+		}
+		if err != nil {
+			return n, err
+		}
+	}
+}
+
+// diffSnapshots is diff over two snapshot files, read side by side a line at
+// a time: neither list is held, only the ids that differ. catalog diff used
+// to read both whole, 538MB resident at catalog scale for an answer the size
+// of the change; this is 20MB.
+func diffSnapshots(from, to googleplayscraper.Generation, oldPath, newPath string) (delta, error) {
+	oldR, closeOld, err := openSnapshotLines(oldPath)
+	if err != nil {
+		return delta{}, fmt.Errorf("read %s: %w", oldPath, err)
+	}
+	defer closeOld()
+	newR, closeNew, err := openSnapshotLines(newPath)
+	if err != nil {
+		return delta{}, fmt.Errorf("read %s: %w", newPath, err)
+	}
+	defer closeNew()
+
+	d := delta{From: from, To: to, Added: []string{}, Removed: []string{}}
+	o, oOK := oldR.next()
+	n, nOK := newR.next()
+	for oOK && nOK {
+		switch c := bytes.Compare(o, n); {
+		case c == 0:
+			o, oOK = oldR.next()
+			n, nOK = newR.next()
+		case c < 0:
+			d.Removed = append(d.Removed, string(o))
+			o, oOK = oldR.next()
+		default:
+			d.Added = append(d.Added, string(n))
+			n, nOK = newR.next()
+		}
+	}
+	for ; oOK; o, oOK = oldR.next() {
+		d.Removed = append(d.Removed, string(o))
+	}
+	for ; nOK; n, nOK = newR.next() {
+		d.Added = append(d.Added, string(n))
+	}
+	if err := oldR.sc.Err(); err != nil {
+		return delta{}, fmt.Errorf("read %s: %w", oldPath, err)
+	}
+	if err := newR.sc.Err(); err != nil {
+		return delta{}, fmt.Errorf("read %s: %w", newPath, err)
+	}
+	return d, nil
+}
+
+// snapshotLines yields a snapshot's ids as bytes valid until the next call.
+type snapshotLines struct{ sc *bufio.Scanner }
+
+func (s snapshotLines) next() ([]byte, bool) {
+	for s.sc.Scan() {
+		if line := bytes.TrimSpace(s.sc.Bytes()); len(line) > 0 {
+			return line, true
+		}
+	}
+	return nil, false
+}
+
+func openSnapshotLines(path string) (snapshotLines, func(), error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return snapshotLines{}, nil, err
+	}
+	var r io.Reader = f
+	closeAll := func() { _ = f.Close() }
+	if strings.HasSuffix(path, ".gz") {
+		zr, zerr := gzip.NewReader(f)
+		if zerr != nil {
+			_ = f.Close()
+			return snapshotLines{}, nil, fmt.Errorf("%s: %w", path, zerr)
+		}
+		r = zr
+		closeAll = func() { _ = zr.Close(); _ = f.Close() }
+	}
+	sc := bufio.NewScanner(r)
+	sc.Buffer(make([]byte, 0, 64*1024), maxLineBytes)
+	return snapshotLines{sc}, closeAll, nil
 }
 
 // ---- plumbing ----
@@ -946,27 +1312,41 @@ func saveState(path string, s syncState) error {
 // and what it would discard here is an hours-long sweep.
 func writeJSON(path string, v any) error {
 	tmp := path + ".tmp"
-	f, err := os.Create(tmp)
+	f, err := openWrite(tmp, createFlags, 0o666)
 	if err != nil {
 		return fmt.Errorf("create %s: %w", tmp, err)
+	}
+	// Each failure removes the temporary file, as the snapshot and table
+	// writers already did: a half-written manifest.json.tmp was left beside
+	// the good one until the next run truncated it.
+	fail := func(what string, err error) error {
+		_ = f.Close()
+		_ = os.Remove(tmp)
+		return fmt.Errorf("%s %s: %w", what, tmp, err)
 	}
 	enc := json.NewEncoder(f)
 	enc.SetIndent("", "  ")
 	if err := enc.Encode(v); err != nil {
-		_ = f.Close()
-		return fmt.Errorf("write %s: %w", tmp, err)
+		return fail("write", err)
 	}
 	if err := f.Sync(); err != nil {
-		_ = f.Close()
-		return fmt.Errorf("sync %s: %w", tmp, err)
+		return fail("sync", err)
+	}
+	if err := stillOurs(f, tmp); err != nil {
+		return fail("publish", err)
 	}
 	if err := f.Close(); err != nil {
+		_ = os.Remove(tmp)
 		return fmt.Errorf("close %s: %w", tmp, err)
 	}
-	if err := os.Rename(tmp, path); err != nil {
+	if err := renameFile(tmp, path); err != nil {
+		_ = os.Remove(tmp)
 		return fmt.Errorf("rename %s: %w", tmp, err)
 	}
-	return syncDir(filepath.Dir(path))
+	if err := syncDir(filepath.Dir(path)); err != nil {
+		return fmt.Errorf("publish %s: %w", path, err)
+	}
+	return nil
 }
 
 // syncDir makes a directory entry durable, which is what a rename actually
@@ -974,8 +1354,17 @@ func writeJSON(path string, v any) error {
 // is present but its name may not survive a power loss, and a caller that
 // believes a checkpoint landed when it did not is worse off than one told the
 // truth.
+//
+// Windows has no directory fsync: FlushFileBuffers on a directory handle is
+// refused ("Access is denied"), and NTFS journals the rename itself. There it
+// is a no-op rather than an error on every publish.
 func syncDir(dir string) error {
-	d, err := os.Open(dir)
+	if runtime.GOOS == "windows" {
+		return nil
+	}
+	// Through openWrite, read-only as os.Open would: a test can then fail the
+	// fsync of the directory a write was just renamed into.
+	d, err := openWrite(dir, os.O_RDONLY, 0)
 	if err != nil {
 		return fmt.Errorf("open %s: %w", dir, err)
 	}
@@ -1087,7 +1476,7 @@ func writeSnapshotSerial(path string, ids []string) (string, error) {
 // to stay inside the callback for that to hold.
 func writeSnapshotFile(path string, write func(io.Writer) error) (string, error) {
 	tmp := path + ".tmp"
-	f, err := os.Create(tmp)
+	f, err := openWrite(tmp, createFlags, 0o666)
 	if err != nil {
 		return "", fmt.Errorf("create %s: %w", tmp, err)
 	}
@@ -1103,37 +1492,21 @@ func writeSnapshotFile(path string, write func(io.Writer) error) (string, error)
 	if err := f.Sync(); err != nil {
 		return fail("sync", err)
 	}
+	if err := stillOurs(f, tmp); err != nil {
+		return fail("publish", err)
+	}
 	if err := f.Close(); err != nil {
 		_ = os.Remove(tmp)
 		return "", fmt.Errorf("close %s: %w", tmp, err)
 	}
-	if err := os.Rename(tmp, path); err != nil {
+	if err := renameFile(tmp, path); err != nil {
 		_ = os.Remove(tmp)
 		return "", fmt.Errorf("rename %s: %w", tmp, err)
 	}
 	if err := syncDir(filepath.Dir(path)); err != nil {
-		return "", err
+		return "", fmt.Errorf("publish %s: %w", path, err)
 	}
 	return hex.EncodeToString(h.Sum(nil)), nil
-}
-
-func readSnapshot(path string) ([]string, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = f.Close() }()
-
-	var r io.Reader = f
-	if strings.HasSuffix(path, ".gz") {
-		zr, zerr := gzip.NewReader(f)
-		if zerr != nil {
-			return nil, fmt.Errorf("%s: %w", path, zerr)
-		}
-		defer func() { _ = zr.Close() }()
-		r = zr
-	}
-	return scanLines(r)
 }
 
 // maxLineBytes is the longest line any reader here accepts. It was already the
@@ -1172,18 +1545,6 @@ func readLines(path string) ([]string, error) {
 		}
 	}
 	return out, nil
-}
-
-func scanLines(r io.Reader) ([]string, error) {
-	var out []string
-	sc := bufio.NewScanner(r)
-	sc.Buffer(make([]byte, 0, 64*1024), maxLineBytes)
-	for sc.Scan() {
-		if line := strings.TrimSpace(sc.Text()); line != "" {
-			out = append(out, line)
-		}
-	}
-	return out, sc.Err()
 }
 
 // newerThan orders generations by date, then by run id numerically.
@@ -1252,7 +1613,7 @@ func sortStrings(a []string) []string {
 		return a
 	}
 
-	count, _ := radixPartition(a, 0)
+	count := radixPartition(a, 0)
 
 	// Buckets are disjoint slices of a, so they need no synchronisation.
 	sem := make(chan struct{}, workers)
@@ -1302,7 +1663,7 @@ func radixSort(a []string, depth int) {
 		slices.Sort(a)
 		return
 	}
-	count, _ := radixPartition(a, depth)
+	count := radixPartition(a, depth)
 	pos := count[0]
 	for i := 1; i < radixBuckets; i++ {
 		if count[i] > 1 {
@@ -1314,7 +1675,8 @@ func radixSort(a []string, depth int) {
 
 // radixPartition rearranges a in place so that entries sharing a byte at the
 // given depth are contiguous, and returns the bucket sizes.
-func radixPartition(a []string, depth int) (count, offset [radixBuckets]int) {
+func radixPartition(a []string, depth int) (count [radixBuckets]int) {
+	var offset [radixBuckets]int
 	for _, s := range a {
 		count[byteAt(s, depth)]++
 	}
@@ -1345,7 +1707,7 @@ func radixPartition(a []string, depth int) (count, offset [radixBuckets]int) {
 			next[i]++
 		}
 	}
-	return count, offset
+	return count
 }
 
 // byteAt returns 0 for the end of a string and byte+1 otherwise, so that a
@@ -1373,6 +1735,20 @@ func seedFromGeneration(g googleplayscraper.Generation) int64 {
 // beside it. Nothing had ever deleted them -- only the current generation's
 // files were cleaned -- so an interrupted sweep left about 99MB behind every
 // time the catalog was republished.
+// removeFinishedResumeState removes the resume files of gen, whose manifest
+// says it is complete. state.json goes only if it is gen's.
+func removeFinishedResumeState(dir string, gen googleplayscraper.Generation) {
+	_ = os.Remove(filepath.Join(dir, "partial-"+gen.ID()+".txt"))
+	_ = os.Remove(doneLogPath(dir, gen))
+	statePath := filepath.Join(dir, "state.json")
+	if b, err := os.ReadFile(statePath); err == nil {
+		var st syncState
+		if json.Unmarshal(b, &st) == nil && st.Generation.ID() == gen.ID() {
+			_ = os.Remove(statePath)
+		}
+	}
+}
+
 func removeStaleResumeState(dir string, keep googleplayscraper.Generation) int64 {
 	var freed int64
 	for _, spec := range []struct{ prefix, suffix string }{

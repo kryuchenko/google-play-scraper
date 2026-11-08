@@ -530,7 +530,10 @@
                 "type": "string"
               },
               "free": {
-                "type": "boolean"
+                "type": [
+                  "null",
+                  "boolean"
+                ]
               },
               "price": {
                 "type": "number"
@@ -546,8 +549,7 @@
               "app_id",
               "title",
               "developer",
-              "score",
-              "free"
+              "score"
             ],
             "type": "object"
           },
@@ -760,7 +762,10 @@
                 "type": "string"
               },
               "free": {
-                "type": "boolean"
+                "type": [
+                  "null",
+                  "boolean"
+                ]
               },
               "price": {
                 "type": "number"
@@ -776,8 +781,7 @@
               "app_id",
               "title",
               "developer",
-              "score",
-              "free"
+              "score"
             ],
             "type": "object"
           },
@@ -1080,7 +1084,10 @@
                 "type": "string"
               },
               "free": {
-                "type": "boolean"
+                "type": [
+                  "null",
+                  "boolean"
+                ]
               },
               "price": {
                 "type": "number"
@@ -1096,8 +1103,7 @@
               "app_id",
               "title",
               "developer",
-              "score",
-              "free"
+              "score"
             ],
             "type": "object"
           },
@@ -1219,7 +1225,10 @@
                 "type": "string"
               },
               "free": {
-                "type": "boolean"
+                "type": [
+                  "null",
+                  "boolean"
+                ]
               },
               "price": {
                 "type": "number"
@@ -1235,8 +1244,7 @@
               "app_id",
               "title",
               "developer",
-              "score",
-              "free"
+              "score"
             ],
             "type": "object"
           },

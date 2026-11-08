@@ -128,7 +128,7 @@ func BenchmarkParseSearchPage(b *testing.B) {
 	b.ReportAllocs()
 
 	for b.Loop() {
-		if _, _, err := parseSearchPage(body, 50); err != nil {
+		if _, _, err := parseSearchPage(body); err != nil {
 			b.Fatal(err)
 		}
 	}

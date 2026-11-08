@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"encoding/xml"
+	"errors"
 	"fmt"
 	"io"
 	"maps"
@@ -360,12 +361,19 @@ func TestLocScanDivergenceIsNarrow(t *testing.T) {
 // happy path and each changes the answer.
 
 func TestShardStreamMatchesTheBufferOnRecordedShards(t *testing.T) {
-	for _, name := range []string{"sitemap_shard.xml", "sitemap_index.xml"} {
+	for _, name := range []string{"sitemap_shard.xml"} {
+		// Trimmed from a live shard and index of generation 2026-11-07
+		// (first entries kept, alternate-language links cut to two each).
+		// A missing fixture fails: skipping it silently made this test pass
+		// without a single assertion.
 		body, err := os.ReadFile(filepath.Join("testdata", name))
 		if err != nil {
-			continue // fixture set differs between checkouts; the fuzz covers the rest
+			t.Fatal(err)
 		}
 		want := shardPackages(body)
+		if name == "sitemap_shard.xml" && len(want) == 0 {
+			t.Fatal("the shard fixture yields no apps; the comparison would prove nothing")
+		}
 		got, err := shardPackagesFrom(bytes.NewReader(body))
 		if err != nil {
 			t.Errorf("%s: %v", name, err)
@@ -443,6 +451,8 @@ func FuzzShardStreamMatchesBuffer(f *testing.F) {
 	f.Add([]byte(`<loc>`))
 	f.Add([]byte(`</loc>`))
 	f.Add([]byte(nil))
+	f.Add([]byte("<urlset><url><loc>https://play.google.com/store/apps/details?id=com.a</loc></url></urlset>\n"))
+	f.Add([]byte("<urlset><url><loc>https://play.google.com/store/apps/details?id=com.a</loc></url></urls"))
 
 	f.Fuzz(func(t *testing.T, body []byte) {
 		// The window is bounded on purpose, so the two agree exactly on any
@@ -454,13 +464,22 @@ func FuzzShardStreamMatchesBuffer(f *testing.F) {
 			return
 		}
 		want := shardPackages(body)
-		got, err := shardPackagesFrom(bytes.NewReader(body))
-		if err != nil {
-			t.Fatalf("stream failed on input the buffer read: %v", err)
-		}
-		if !slices.Equal(want, got) {
-			t.Fatalf("stream diverged from the buffered scan\n  input:  %q\n  buffer: %v\n  stream: %v",
-				body, want, got)
+		// The stream fails exactly when the document does not end in
+		// </urlset>, and the ids it read before saying so are the same.
+		// Read a byte at a time too, so the end is found across every
+		// possible chunk boundary.
+		for _, r := range []io.Reader{bytes.NewReader(body), iotest.OneByteReader(bytes.NewReader(body))} {
+			got, err := shardPackagesFrom(r)
+			if closed := shardClosed(body); closed != (err == nil) {
+				t.Fatalf("closed=%v but err=%v for %q", closed, err, body)
+			}
+			if err != nil && !errors.Is(err, ErrShardTruncated) {
+				t.Fatalf("unexpected error %v", err)
+			}
+			if !slices.Equal(want, got) {
+				t.Fatalf("stream diverged from the buffered scan\n  input:  %q\n  buffer: %v\n  stream: %v",
+					body, want, got)
+			}
 		}
 	})
 }
@@ -512,7 +531,7 @@ func locScanDivergesByDesign(body []byte, wrapper string) bool {
 	locs, locsHere := 0, 0
 	for {
 		tok, err := dec.Token()
-		if err == io.EOF {
+		if errors.Is(err, io.EOF) {
 			break
 		}
 		if err != nil {
@@ -600,5 +619,58 @@ func unterminatedBeyondCarry(body []byte) bool {
 			return true
 		}
 		rest = after[j+len(locClose):]
+	}
+}
+
+// The end check holds for trailing whitespace of any length, and for a
+// document whose last <loc> runs past the scan window.
+func TestShardEndEdgeCases(t *testing.T) {
+	loc := "<url><loc>https://play.google.com/store/apps/details?id=com.a</loc></url>"
+	long := "<loc>" + strings.Repeat("x", shardScanCarryMax+10)
+	for name, c := range map[string]struct {
+		body   string
+		closed bool
+	}{
+		"200 spaces after":     {"<urlset>" + loc + "</urlset>" + strings.Repeat(" ", 200), true},
+		"newlines after":       {"<urlset>" + loc + "</urlset>\n\n\r\n", true},
+		"cut":                  {"<urlset>" + loc + "</urls", false},
+		"split by spaces":      {"<urlset>" + loc + "</url" + strings.Repeat(" ", 70) + "set>", false},
+		"long loc then closed": {"<urlset>" + loc + long + "</urlset>", true},
+		"long loc then cut":    {"<urlset>" + loc + long, false},
+	} {
+		for _, r := range []io.Reader{strings.NewReader(c.body), iotest.OneByteReader(strings.NewReader(c.body))} {
+			pkgs, err := shardPackagesFrom(r)
+			if (err == nil) != c.closed {
+				t.Errorf("%s: err = %v, want closed=%v", name, err, c.closed)
+			}
+			if !slices.Equal(pkgs, []string{"com.a"}) {
+				t.Errorf("%s: pkgs = %v", name, pkgs)
+			}
+		}
+		if shardClosed([]byte(c.body)) != c.closed {
+			t.Errorf("%s: shardClosed disagrees", name)
+		}
+	}
+}
+
+// The index fixture, trimmed to its first 50 entries, reads through the
+// index parser -- not the shard one, which rightly calls a <sitemapindex>
+// a document that never closed its <urlset>.
+func TestIndexShardsOnARecordedIndex(t *testing.T) {
+	body, err := os.ReadFile(filepath.Join("testdata", "sitemap_index.xml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	urls := indexShards(body)
+	if len(urls) != 50 {
+		t.Fatalf("%d shard urls, want 50", len(urls))
+	}
+	for _, u := range urls {
+		if !strings.HasPrefix(u, "https://play.google.com/sitemaps/play_sitemaps_") || !strings.HasSuffix(u, ".xml.gz") {
+			t.Errorf("not a shard url: %q", u)
+		}
+	}
+	if _, err := shardPackagesFrom(bytes.NewReader(body)); !errors.Is(err, ErrShardTruncated) {
+		t.Errorf("an index read as a shard: %v, want ErrShardTruncated", err)
 	}
 }

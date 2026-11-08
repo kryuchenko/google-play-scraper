@@ -39,6 +39,16 @@ type PCApp struct {
 	URL string `json:"url" format:"uri" example:"https://play.google.com/pc-store/games/details?id=com.mytona.cookingdiary.android&hl=en&gl=us"`
 	// OnPC is true when the PC store lists the app, which is to say it has a
 	// Windows build. When it is false every field below is empty.
+	//
+	// It reports the public PC listing, not every place the game is
+	// promoted. Some games appear on the Windows storefront
+	// (/store/games?device=windows) before they are released to the public:
+	// on 2026-11-08 Dispatch and Everything is Crab were there with an Install
+	// button, but their PC listing redirected to the phone one, and their
+	// phone listing had no install button, price or downloads and was
+	// region-locked in every country probed. For those OnPC is false, which
+	// is what the public store says; Availability shows them locked
+	// everywhere.
 	OnPC bool `json:"onPC" example:"true"`
 	// Title is the localized app name.
 	Title string `json:"title,omitempty" example:"Cooking Diary® Restaurant Game"`
@@ -108,7 +118,7 @@ func (c *Client) PCApp(ctx context.Context, appID string, opts AppOptions) (*PCA
 	}
 
 	pageURL := fmt.Sprintf("%s%s?id=%s&hl=%s&gl=%s",
-		BaseURL, pcDetailsPath, appID, opts.Lang, opts.Country)
+		BaseURL, pcDetailsPath, url.QueryEscape(appID), opts.Lang, opts.Country)
 
 	hc, exit := c.pcStoreClient()
 	body, err := c.do(ctx, hc, http.MethodGet, pageURL, func() (*http.Request, error) {

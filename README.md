@@ -8,16 +8,15 @@ Read public Google Play Store data from the shell or from Go: app details,
 reviews, search, charts, permissions, data safety, per-country availability,
 and the store's complete list of package ids.
 
-One engine, two surfaces. The `gpscrape` command writes newline-delimited JSON,
-so it composes with `jq` and anything else that reads a stream. The Go package
-exposes the same operations with contexts, iterators and batched lookups. The
-root module imports nothing outside the standard library, and a test fails if
-that ever changes.
+The `gpscrape` command writes newline-delimited JSON for `jq` and other stream
+readers. The Go package exposes the same operations with contexts, iterators
+and batched lookups; its root module imports only the standard library, and a
+test enforces that.
 
 It reads the anonymous web interface of `play.google.com`, so it sees what a
-browser sees. Lists and charts stop at about 200 apps and cannot be paged
-deeper; the whole store is reachable only through the sitemaps. See
-[Limitations](#limitations) before building on either.
+browser sees. Lists and charts stop at about 200 apps; the whole store is
+reachable only through the sitemaps. Read [Limitations](#limitations) before
+building on either.
 
 Requires Go 1.27. Inspired by
 [facundoolano/google-play-scraper](https://github.com/facundoolano/google-play-scraper)
@@ -34,24 +33,24 @@ $ gpscrape app com.spotify.music | jq '{title, developer, score, installs}'
 {
   "title": "Spotify: Music and Podcasts",
   "developer": "Spotify AB",
-  "score": 4.344856,
+  "score": 4.35,
   "installs": "1,000,000,000+"
 }
 ```
 
-One request, one JSON record per app, with every field the store page shows.
-Paging commands write records as they arrive. SIGINT stops a run without
-discarding what it has already written, and a second Ctrl-C exits at once:
+Each app is one JSON record in snake_case, scores rounded to two places;
+`-raw` writes the library's own record instead, every field it parses. Paging
+commands write records as they arrive; Ctrl-C stops a run and keeps what it
+has written, and a second Ctrl-C exits at once:
 
 ```console
-$ gpscrape reviews com.spotify.music -limit 2 | jq -c '{score, text}'
-{"score":3,"text":"I will give these apps three star because I like it a little bit"}
-{"score":5,"text":"so far so good, better than Amazon music."}
+$ gpscrape reviews com.spotify.music -limit 2 | jq -c '{score, untrusted_text}'
+{"score":3,"untrusted_text":"I will give these apps three star because I like it a little bit"}
+{"score":5,"untrusted_text":"so far so good, better than Amazon music."}
 ```
 
 `gpscrape -h` lists the commands, `gpscrape <command> -h` the flags each one
-adds. The [Command line](#command-line) section below walks through the common
-jobs.
+adds. [Command line](#command-line) covers the common jobs.
 
 ## Quick start: Go
 
@@ -84,11 +83,10 @@ func main() {
 ```
 
 Every method takes a `context.Context` and honours cancellation. Errors that
-carry an HTTP status are `*StatusError`, so a missing app is distinguishable
-from a transport failure. Set a throttle: the default is unthrottled, which
-suits one-off lookups and nothing else. Signatures, option fields and
-per-method caveats are on
-[pkg.go.dev](https://pkg.go.dev/github.com/kryuchenko/google-play-scraper).
+carry an HTTP status are `*StatusError`, so you can tell a missing app from a
+transport failure. Set a throttle: the client is unthrottled by default, which
+suits only one-off lookups. Signatures, option fields and per-method caveats
+are on [pkg.go.dev](https://pkg.go.dev/github.com/kryuchenko/google-play-scraper).
 
 ## What you can read
 
@@ -105,31 +103,50 @@ per-method caveats are on
 
 ## Command line
 
-Every command takes `-lang`, `-country`, `-throttle`, `-concurrency` and
-`-timeout`. `-adaptive` turns `-throttle` into a floor and lets the client find
-its own rate. Output is one JSON record per line on stdout; progress and errors
-go to stderr.
+Commands that make requests take `-lang`, `-country`, `-throttle`,
+`-concurrency` and `-timeout`. `-adaptive` turns `-throttle` into a floor and
+lets the client find its own rate. Records go to stdout, one JSON object per
+line; progress and errors go to stderr.
 
 `app`, `search`, `list`, `reviews`, `similar`, `developer`, `permissions`,
 `datasafety` and `availability` write the records of package
 [`records`](https://pkg.go.dev/github.com/kryuchenko/google-play-scraper/records):
-snake_case fields, third-party text in `untrusted_*`, the same objects the
-[MCP server](mcp/) returns, so one jq filter works on both. `-raw` writes the
-library's own types with every field instead. `-fields app_id,score` keeps
-only the keys you need, and `gpscrape schema <command>` lists a command's
-flags and fields as JSON.
+snake_case fields, third-party text in `untrusted_*`. The [MCP server](mcp/)
+returns the same objects, so one jq filter works on both. `-raw` writes the
+library's own types with every field instead, `-fields app_id,score` keeps only
+the keys you name, and `gpscrape schema <command>` lists a command's flags and
+fields as JSON.
 
-Inside Claude Code's sandbox on macOS, Go programs cannot verify TLS (the
-sandbox blocks the system trust service), so every request fails with
-`x509: OSStatus -26276`; the error carries a `hint` with the fix. Set
-`"sandbox": {"enableWeakerNetworkIsolation": true}` (with `play.google.com` an
-allowed domain) or add `"gpscrape *"` to `sandbox.excludedCommands`.
+### Errors and exit codes
 
-A failed run writes `{"error":{"code","message","retryable"}}` to stderr when
-stderr is not a terminal (`GPSCRAPE_ERRORS=json|text` overrides) and exits
-2 for bad arguments, 3 not found, 4 rate limited, 5 timeout, 1 otherwise; the
-codes are the MCP server's. `catalog sweep` and an unlimited `catalog ids`
-need `-yes` when no terminal is attached.
+When stderr is not a terminal, a failed run writes
+`{"error":{"code","message","retryable"}}` to it (`GPSCRAPE_ERRORS=json|text`
+overrides); the codes are the MCP server's, and the exit status follows from
+the code. `catalog sweep` and an unlimited `catalog ids` need `-yes` when no
+terminal is attached.
+
+| Code | Exit | Meaning | Retryable |
+|---|---|---|---|
+| `invalid_argument` | 2 | fix the arguments | no |
+| `confirmation_required` | 2 | an expensive run needs `-yes` | no |
+| `not_found` | 3 | no such app or page in this storefront | no |
+| `not_listed` | 3 | the store returned nothing for this id here | yes |
+| `rate_limited` | 4 | the store is refusing requests; wait | yes |
+| `timeout` | 5 | the store did not answer within `-timeout` | yes |
+| `cancelled` | 130 | interrupted; printed as `gpscrape: interrupted`, no error object | no |
+| `store_error` | 1 | any other failure talking to the store | yes |
+| `internal` | 1 | a bug in gpscrape (a panic); please report it | no |
+| `busy` | - | gpscrape-mcp only: the server is at capacity | yes |
+
+A run that succeeds exits 0.
+
+### Running inside Claude Code's sandbox on macOS
+
+The sandbox blocks the system trust service, so Go cannot verify TLS and every
+request fails with `x509: OSStatus -26276`; the error carries a `hint` with the
+fix. Set `"sandbox": {"enableWeakerNetworkIsolation": true}` (with
+`play.google.com` an allowed domain), or add `"gpscrape *"` to
+`sandbox.excludedCommands`.
 
 ### One app, or many
 
@@ -138,19 +155,24 @@ gpscrape app com.spotify.music | jq .score
 gpscrape app com.spotify.music com.whatsapp com.duolingo   # all three in one request
 gpscrape permissions com.spotify.music com.whatsapp        # likewise
 gpscrape datasafety com.spotify.music
-gpscrape availability com.spotify.music -countries us,de,cn
+gpscrape availability com.spotify.music -countries us,de,jp
 ```
 
 Several ids ride in one `batchexecute` request, so a list of apps costs one
-throttle interval rather than one per app. An id that fails in a batched run
-is still one line of output, in its position — `{"app_id":"…","code":"not_found","error":"…"}` —
-so the stream has one record per id asked for and a pipeline never has to
-reconcile stdout with stderr.
+throttle interval, not one per app. In a batch, an id that fails is still a
+line of output in its position, `{"app_id":"…","code":"not_found","error":"…"}`
+(`-fields` keeps `code` and `error` on it), so stdout holds exactly one record
+per id and a pipeline never needs stderr to line them up. A single id that
+fails writes nothing to stdout; the error and the exit code say why. Ids are
+checked before any request: a name where a package id belongs is
+`invalid_argument`.
 
-`availability` reports one status per country by name under `statuses`:
-`available`, `not_in_region`, `not_found` or `error`, with the reason for an
-`error` under `errors`. `globallyRemoved` is true only when every country
-answered and none of them lists the app.
+`availability` lists the countries under `available`, `region_locked` and
+`not_listed`, counts the conclusive answers in `checked`, and gives the reason
+for any failed probe under `errors`. `-countries` takes Play Store country
+codes only (there is no store in `cn`, for example). A run in which every
+country failed exits with their error code, not 0. With `-raw` the record is
+the library's: a status per country under `statuses`, and `globallyRemoved`.
 
 ### Google Play Games on PC
 
@@ -160,35 +182,35 @@ gpscrape pcapp com.mytona.cookingdiary.android com.whatsapp -lang de
 ```
 
 `pcapp` reads the PC store's listing, one page per app. A game with a PC build
-comes back with `onPC: true` and the PC listing's own media: screenshots
-(sometimes a set made for PC, sometimes a subset of the phone ones), the
-trailer for that language as `video` and `youTubeId`, the rating PC players
-gave, and the system requirements. An app without one is a record too, with
-`onPC: false` and nothing else, because Google answers it with a redirect to
-the phone listing and that redirect is the answer.
+returns `onPC: true` and the PC listing's own media: screenshots (a PC set or a
+subset of the phone ones), the trailer for that language as `video` and
+`youTubeId`, the PC players' rating, and the system requirements. An app
+without a PC build returns `onPC: false` and nothing else, because Google
+redirects it to the phone listing.
 
-`-country` does not tell you where the PC client runs. The PC store serves its
-listing to storefronts the client does not support, Russia and Iran among
-them, so the official region list is a static snapshot instead:
-`PCRegions()` in Go, copied from
-[Google's help page](https://support.google.com/googleplay/answer/11358071).
+`onPC` reflects the public PC listing only. A game the Windows storefront
+promotes before release (Dispatch, in November 2026) reads `onPC: false`, and
+`availability` shows it region-locked everywhere.
+
+`-country` does not tell you where the PC client runs: the PC store also
+serves listings to storefronts the client does not support, Russia and Iran
+among them. For the official region list use `PCRegions()` in Go, a static
+copy of [Google's help page](https://support.google.com/googleplay/answer/11358071).
 
 ### Reviews, including all of them
 
 ```bash
-gpscrape reviews com.spotify.music -limit 500 | jq -r .text
+gpscrape reviews com.spotify.music -limit 500 | jq -r .untrusted_text
 gpscrape reviews com.spotify.music -sort rating -score 1 -limit 100
 gpscrape reviews com.spotify.music -langs en,ru,de -limit 500   # three corpora
 gpscrape reviews com.spotify.music -langs all -limit 500        # every measured corpus
-gpscrape reviews com.spotify.music -limit 500 | jq -r .untrusted_text
 ```
 
-Language does not filter reviews, it partitions them: each `hl` code is served
-its own corpus and the corpora do not overlap, so reading all of an app's
-reviews means reading every language. `-limit` applies per language when
-`-langs` is given, and records carry the corpus they came from. There is no
-country filter, because a review carries no country: `ru/kz` and `ru/us` return
-the same reviews id for id.
+Language partitions reviews rather than filtering them: each `hl` code serves
+its own corpus, and the corpora do not overlap, so reading all of an app's
+reviews means reading every language. With `-langs`, `-limit` applies per
+language and each record names its corpus. There is no country filter because
+a review has no country: `ru/kz` and `ru/us` return the same reviews, id for id.
 
 ### Search and charts
 
@@ -203,27 +225,27 @@ gpscrape developer "Spotify AB"
 ```
 
 `search`, `list`, `similar` and `developer` fetch each result's details in
-batches of 32 by default, because their result rows carry no price (search,
-similar, developer), no developer id, and for charts no tagline. `-full=false`
-skips that and marks unpriced rows `"priceKnown": false`.
+batches of 32 by default, because the result rows lack the developer id, the
+price (search, similar, developer) and the tagline (charts). `-full=false`
+skips that; rows without a price then carry no `free` or `price` field rather
+than a guess (with `-raw`, `"priceKnown": false`).
 
-Google returns roughly one page for any of these, about 200 apps at most, and
-rejects the continuation token for stateless clients. Breadth comes from
-multiplying sources (categories, collections, locales, the similar graph), not
-from paging deeper.
+Each of these returns one page, about 200 apps at most; Google rejects the
+continuation token for stateless clients. For more apps, combine sources
+(categories, collections, locales, the similar graph).
 
 ### The catalog
 
 `catalog` is a group of verbs. The right-hand column is what each costs in
-requests against Google:
+requests to Google:
 
 | Verb | What it does | Requests |
 | --- | --- | --- |
 | `check` | has Google republished the catalog? | 2 |
 | `new` | apps the store lists as recently published | 17 |
 | `size` | how many apps there are, give or take 1% | ~900 |
-| `genres` | genre changes and removals, from a snapshot | ~3.4k, plus ~310 per `-confirm-gone` storefront |
-| `sweep` | the complete id list, and the exact count | 83k |
+| `genres` | genre changes and removals, from a snapshot | ~3.3k, plus ~310 per `-confirm-gone` storefront |
+| `sweep` | the complete id list, and the exact count | ~88k |
 | `apps` | the id list by genre, from what is on disk | none |
 | `diff` | compare two snapshots already on disk | none |
 | `ids` | stream ids without keeping any state | as many as you ask for |
@@ -236,13 +258,15 @@ $ gpscrape catalog size | jq -c '{apps, half_width, shards_read, shards_total, m
 ```
 
 That is 3,549,110 apps give or take 35,366 at 95% confidence, from 866 of
-83,445 shards, in about ninety seconds. The record also carries the dispersion
-check that justifies the interval; the exact count costs a full sweep.
+83,445 shards, in about ninety seconds, on 2026-08-23. The store grows: on
+2026-11-07 it had 87,679 shards and, by a 0.7% sample, about four million
+apps. The record also carries the dispersion check behind the interval; the
+exact count costs a full sweep.
 
-A full sweep is ~83k requests, about four and a half hours at the default
-throttle, so keep a snapshot directory and let the tool decide when a sweep is
-due. Google republishes its sitemaps every few days, not daily, and shard names
-carry the generation that produced them:
+A full sweep is one request per shard, about 88,000 on 2026-11-07, some five
+hours at the default throttle. Keep a snapshot directory and let the tool decide when a sweep is
+due: Google republishes the sitemaps every few days, and shard names carry the
+generation that produced them.
 
 ```bash
 gpscrape catalog sweep -dir ./catalog            # sweeps only if a new generation exists
@@ -250,38 +274,66 @@ gpscrape catalog sweep -dir ./catalog -keep 3    # and keeps the three newest sn
 gpscrape catalog diff -dir ./catalog -changes    # one record per id added or removed
 ```
 
-Within a generation shards are immutable, so an interrupted sweep resumes from
-the shards it has not reached. Each completed sweep writes a sorted snapshot,
-a manifest with the generation id and a checksum, and a delta against the
-previous snapshot, and prints the manifest as its one output record.
+Shards are immutable within a generation, so an interrupted sweep resumes from
+the shards it has not reached. A completed sweep writes a sorted snapshot, a
+manifest with the generation id and a checksum, and a delta against the
+previous snapshot, and prints the manifest as its one output record. If the
+previous snapshot cannot be read, the manifest says why in `delta_error`.
 
-A snapshot directory takes one writer at a time. `sweep` and `genres` hold a
-`sweep.lock` in it while they run, a second run against the same directory is
-refused, and a lock left behind by a process that has died is cleared on the
-next run. `check`, `new`, `size`, `apps`, `diff` and `ids` do not take it;
-`new` only appends to its own signal log.
+`catalog sweep` and `catalog genres` default to `-adaptive`, because over hours
+of requests a fixed interval turns one long `Retry-After` into a failed shard.
+The adaptive client slows down and waits instead, and stops after three
+refused probes. `-adaptive=false` restores the fixed interval.
+`-adaptive` never goes faster than `-throttle` unless `-adaptive-min` allows it:
+`-adaptive-min 40ms` lets it probe for a faster rate, slowly. Each refusal is
+remembered for 30 minutes, and the rate settles at 80% of the median refused
+rate instead of hitting it again. Probing means meeting Google's limit, so it
+is opt-in.
+
+After a sweep, run `catalog size -dir ./catalog` to check the snapshot against
+an independent estimate (`snapshot_ids`, `snapshot_agrees`). It is the only
+check that notices a shard that parsed short without an error, which would
+leave the snapshot with fewer ids than the store has.
+
+A snapshot directory takes one writer at a time. `sweep` and `genres` hold
+`sweep.lock` while they run and refuse a second run against the same
+directory; a lock left by a dead process is cleared on the next run. `check`,
+`new`, `size`, `apps`, `diff` and `ids` take no lock; `new` only appends to its
+own signal log.
 
 The genre table turns a snapshot into an app list by category. Build it once,
-then read it with no network at all:
+then read it offline:
 
 ```bash
-gpscrape catalog genres -dir ./catalog                        # ~3.4k requests, plus ~310 per -confirm-gone storefront
+gpscrape catalog genres -dir ./catalog                        # ~3.3k requests, plus ~310 per -confirm-gone storefront
 gpscrape catalog apps -dir ./catalog -genre 'GAME_*' -ids-only > games.txt
 gpscrape catalog apps -dir ./catalog -genre GAME_PUZZLE
 ```
 
-`genres` asks a thousand ids per request and re-checks apparent removals in
-other storefronts before calling an app gone, because an app can be listed in
-Brazil and invisible from the United States. `-confirm-gone` names those
-storefronts. A lookup that fails in that confirm pass is reported as an
-`error`, not a removal, and the row is kept. `-prune` drops rows for ids the
-snapshot no longer lists.
+`genres` asks a thousand ids per request. Before calling an app gone it
+re-checks it in the storefronts `-confirm-gone` names, because an app can be
+listed in Brazil and invisible from the United States. A lookup that fails in
+that confirm pass is reported as an `error`, not a removal, and the row is
+kept. `-prune` drops rows for ids the snapshot no longer lists.
+
+An interrupted `genres` run over the snapshot resumes. It checkpoints every
+10,000 ids into `genres.tsv.merge` and `genres.tsv.resume.json`; a rerun on the
+same snapshot, table, `-lang` and `-country` continues after the last
+checkpoint, or goes straight to the confirm pass if the walk had finished. Any
+other rerun, and every `-ids` run, starts clean. Records printed before the
+interruption are not printed again, and the summary counts the whole pass.
+After a hard kill (not Ctrl-C), records between the last checkpoint and the
+kill may be missing from stdout or appear twice; the table is unaffected.
 
 Without a snapshot, `catalog ids` streams ids straight from the sitemaps:
 
 ```bash
 gpscrape catalog ids -shards 0-99 -ids-only > ids.txt
 ```
+
+Shards are read in parallel and ids come out as each shard arrives, so the
+order differs between runs; sort the output if you compare it, or sweep for a
+sorted snapshot.
 
 ### Debugging a run
 
@@ -291,10 +343,9 @@ GPSCRAPE_DEBUG=1 gpscrape catalog check                          # the same, for
 gpscrape catalog sweep -dir ./catalog -debug -log-file sweep.log -trace sweep.trace
 ```
 
-`-debug` writes one line per request, response, retry and throttle change,
-and the connection timings behind each request. The first line names the
-build and the settings the run used. Results stay on stdout, so a pipeline
-is unaffected:
+`-debug` logs each request, response, retry and throttle change, with the
+connection timings behind each request; the first line names the build and the
+run's settings. Results stay on stdout, so a pipeline is unaffected:
 
 ```text
 level=DEBUG msg=request method=GET url="https://play.google.com/store/apps/details?id=com.spotify.music&hl=en&gl=us" attempt=1 waited=0s
@@ -303,13 +354,13 @@ level=DEBUG msg=response method=GET url="https://play.google.com/store/apps/deta
 ```
 
 Bodies and headers are never logged. `-trace` keeps a Go execution trace of
-the last minutes of the run in memory and writes it at exit, after Ctrl-C
-too; `go tool trace sweep.trace` then shows where the time went, and how much
-of it was the throttle rather than Google.
+the run's last minutes in memory and writes it at exit, Ctrl-C included;
+`go tool trace sweep.trace` then shows where the time went, throttle versus
+Google.
 
-Two things need no flag. The transport is Go's default, so
-`HTTPS_PROXY=http://127.0.0.1:8080` routes every request through mitmproxy,
-and `GODEBUG=http2debug=1` prints the HTTP/2 frames.
+The transport is Go's default, so `HTTPS_PROXY=http://127.0.0.1:8080` routes
+every request through a proxy such as mitmproxy, and `GODEBUG=http2debug=1`
+prints the HTTP/2 frames.
 
 ## Go package
 
@@ -342,17 +393,15 @@ alpha-2), defaulting to `en`/`us`.
 
 Client options: `WithThrottle`, `WithConcurrency`, `WithTimeout`,
 `WithUserAgent`, `WithHTTPClient`, `WithRetry`, `WithAdaptiveThrottle`,
-`WithHooks`. Every request goes through one path: cache seam, retry with full
-jitter, throttle, HTTP.
+`WithHooks`. Every request takes one path: cache seam, retry with full jitter,
+throttle, HTTP.
 
 ### Batched lookups
 
 `AppsMany`, `PermissionsMany` and `SuggestMany` pack up to 32 lookups into one
-request, and the packs go out over `WithConcurrency` workers. The throttle
-meters requests rather than lookups, so this is the difference between 32
-intervals and one: 32 apps took 9.76s over 32 page
-fetches and 146ms over one batched request, at about 20KB per app instead of a
-megabyte of markup.
+request and send the packs over `WithConcurrency` workers. The throttle meters
+requests, not lookups: 32 apps took 9.76s as 32 page fetches and 146ms as one
+batched request, at about 20KB per app instead of a megabyte of markup.
 
 ```go
 for _, r := range client.AppsMany(ctx, appIDs, gps.AppOptions{}) {
@@ -364,14 +413,14 @@ for _, r := range client.AppsMany(ctx, appIDs, gps.AppOptions{}) {
 }
 ```
 
-Results are positional, `out[i]` describes `appIDs[i]` whatever order Google
-answers in, and each carries its own error, so a failed chunk does not cost the
-rest of the run.
+Results are positional (`out[i]` describes `appIDs[i]` whatever order Google
+answers in), and each carries its own error, so a failed chunk does not cost
+the rest of the run.
 
 ### Iterators
 
-`ReviewsSeq` and `CatalogSeq` are `iter.Seq2` values, so a caller stops where
-it wants to instead of waiting for a sweep to finish:
+`ReviewsSeq` and `CatalogSeq` are `iter.Seq2` values, so a caller can stop at
+any point instead of waiting for a sweep to finish:
 
 ```go
 for pkg, err := range client.CatalogSeq(ctx, opts) {
@@ -394,52 +443,48 @@ logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: gp
 client := gps.NewClient(gps.WithThrottle(200*time.Millisecond), gps.WithLogger(logger))
 ```
 
-The client is silent by default and never logs above Debug: requests,
+The client is silent by default and logs at Debug at most: requests,
 responses, retries, throttle waits and adaptive interval changes. `LevelTrace`
-adds the connection timings behind each request. For anything else,
-`WithHooks` gives callbacks for a metrics registry, `WithHTTPClient` accepts
-an instrumented transport such as `otelhttp.NewTransport`, and every
-operation that makes a request opens a `runtime/trace` task, so
-`go tool trace` attributes each request to the call that made it.
+adds the connection timings behind each request. `WithHooks` gives callbacks
+for a metrics registry, `WithHTTPClient` accepts an instrumented transport such
+as `otelhttp.NewTransport`, and every operation that makes a request opens a
+`runtime/trace` task, so `go tool trace` attributes each request to its call.
 
 ## Limitations
 
-- **Lists and charts cap at ~200 apps** per category and collection. The
-  continuation-token pagination behind `List` and `Search` is rejected for
-  stateless clients. This is server-side; the Node and Python libraries hit
-  the same wall. `CategoryApps` multiplies sources instead, and a single
-  `GAME_ACTION` run reached ~1,800 unique apps, but an app that never charts,
-  never ranks in search and appears in no similarity graph is not reachable
-  this way.
+- **Lists and charts cap at ~200 apps** per category and collection. Google
+  rejects the continuation token behind `List` and `Search` for stateless
+  clients; the Node and Python libraries hit the same server-side wall.
+  `CategoryApps` combines sources instead (one `GAME_ACTION` run reached
+  ~1,800 unique apps), but it cannot reach an app that never charts, never
+  ranks in search and appears in no similarity graph.
 - **The whole store is reachable only through the sitemaps**, and they carry
   package ids and nothing else: no titles, no ratings. Pair a sweep with
   `AppsMany` to resolve the ids you care about.
-- **Rate limits are real and asymmetric.** The sitemap CDN sustained 32
-  requests per second for 90 seconds with no failures. The details endpoint
-  tolerated a short burst but not sustained load, and an availability sweep
-  across 177 countries lost several to fetch errors. Be conservative, or use
+- **Rate limits differ by endpoint.** The sitemap CDN sustained 32 requests
+  per second for 90 seconds with no failures. The details endpoint tolerated a
+  short burst but not sustained load, and an availability sweep across 177
+  countries lost several to fetch errors. Be conservative, or use
   `WithAdaptiveThrottle` and let the client find the rate.
-- **Payload shapes change without notice.** Parsers are defensive by design: a
-  field that moves yields a zero value rather than failing a crawl. A canary
-  suite (build tag `canary`) runs against the live store to catch drift.
-- **No authenticated API.** Real pagination and bulk detail lookups exist on
-  Google Play's mobile protobuf API, which needs a Google account token, a
-  device check-in and ongoing maintenance of reverse-engineered schemas. This
-  library does not implement it. The reference implementation is
-  [AuroraOSS/gplayapi](https://gitlab.com/AuroraOSS/gplayapi).
+- **Payload shapes change without notice.** A field that moves yields a zero
+  value rather than failing a crawl. A canary suite (build tag `canary`) runs
+  against the live store to catch drift.
+- **No authenticated API.** Real pagination and bulk detail lookups exist only
+  on Google Play's mobile protobuf API, which needs a Google account token, a
+  device check-in and maintained reverse-engineered schemas. This library does
+  not implement it; see [AuroraOSS/gplayapi](https://gitlab.com/AuroraOSS/gplayapi).
 
 ## Submodules
 
 - [`apidoc/`](apidoc/): an auto-generated OpenAPI 3.1 description of the
   private, undocumented Google Play endpoints this library calls.
-- [`lightfeed/`](lightfeed/): `FeedBrowser` support for `Cluster`, driving
+- [`lightfeed/`](lightfeed/): `FeedBrowser` support for `Cluster`. It drives
   [Lightpanda](https://lightpanda.io) over CDP to scroll a category page past
-  the depth a stateless client can reach. `Cluster` returns
-  `ErrFeedPaginatorRequired` unless you inject the paginator, so the
-  dependency is always explicit. `FeedMode: FeedLightweight` is the middle
-  step and lives in the root module: it replays the page's own stateless feed
-  tokens, one extra request per topic, and takes `GAME_ACTION` from ~18 apps
-  to ~77 where the browser reaches ~149.
+  the depth a stateless client reaches. `Cluster` returns
+  `ErrFeedPaginatorRequired` unless you inject the paginator. The middle step,
+  `FeedMode: FeedLightweight`, lives in the root module: it replays the page's
+  own stateless feed tokens, one extra request per topic, and takes
+  `GAME_ACTION` from ~18 apps to ~77; the browser reaches ~149.
 - [`mcp/`](mcp/): `gpscrape-mcp`, an MCP server that gives AI agents
   (Claude Code, Codex CLI, OpenCode, ChatGPT and other MCP clients) the
   store's quick lookups as tools, over stdio or Streamable HTTP.

@@ -19,7 +19,7 @@ func TestSimilarIntegration(t *testing.T) {
 		t.Skip("skipping integration test")
 	}
 
-	c := NewClient()
+	c := liveClient(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
@@ -54,7 +54,7 @@ func TestSimilarDifferentDevelopers(t *testing.T) {
 		t.Skip("skipping integration test")
 	}
 
-	c := NewClient()
+	c := liveClient(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
@@ -99,7 +99,7 @@ func TestSimilarMinecraft(t *testing.T) {
 		t.Skip("skipping integration test")
 	}
 
-	c := NewClient()
+	c := liveClient(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
@@ -132,31 +132,25 @@ func TestSimilarOptionsWithFullDetail(t *testing.T) {
 
 func TestFindSimilarCluster(t *testing.T) {
 	// Case 1: No data blocks
-	url, err := findSimilarCluster([]byte("<html></html>"))
-	if err != nil {
-		t.Errorf("unexpected error: %v", err)
-	}
+	url := findSimilarCluster([]byte("<html></html>"))
 	if url != "" {
 		t.Errorf("expected empty url, got %q", url)
 	}
 
 	// Case 2: Data blocks present but no similar cluster
 	// Just generic data
-	_, _ = findSimilarCluster([]byte(`
+	_ = findSimilarCluster([]byte(`
 		<script>AF_initDataCallback({key: 'ds:7', isError: false , hash: '1', data: [[["Test", 1]]]});</script>
 	`))
-	// Should return empty string, no error
+	// Should return an empty string.
 
 	// Case 3: a well-formed script block whose payload is not valid JSON. The
 	// unmarshal loop skips blocks it cannot decode and keeps going, so a single
 	// malformed block must not fail the page -- but it must also not yield a
 	// cluster URL, or callers would follow a link derived from nothing.
-	url, err = findSimilarCluster([]byte(`
+	url = findSimilarCluster([]byte(`
 		<script>AF_initDataCallback({key: 'ds:7', isError: false , hash: '1', data: {invalid-json}});</script>
 	`))
-	if err != nil {
-		t.Fatalf("findSimilarCluster on a malformed data block returned an error, want nil: %v", err)
-	}
 	if url != "" {
 		t.Errorf("findSimilarCluster on a malformed data block returned %q, want empty", url)
 	}
@@ -165,19 +159,13 @@ func TestFindSimilarCluster(t *testing.T) {
 func TestParseSimilarPage(t *testing.T) {
 	// Empty body: no error, no results. Same contract as every other parser
 	// here -- absence of data is a normal outcome, not a failure.
-	res, err := parseSimilarPage([]byte{})
-	if err != nil {
-		t.Fatalf("parseSimilarPage on an empty body returned an error, want nil: %v", err)
-	}
+	res := parseSimilarPage([]byte{})
 	if len(res) != 0 {
 		t.Errorf("parseSimilarPage on an empty body returned %d results, want 0: %+v", len(res), res)
 	}
 
 	// Missing ds:3
-	res, err = parseSimilarPage([]byte(`<html></html>`))
-	if err != nil {
-		t.Fatalf("unexpected error for missing ds:3: %v", err)
-	}
+	res = parseSimilarPage([]byte(`<html></html>`))
 	if len(res) != 0 {
 		t.Error("expected 0 results")
 	}
@@ -186,10 +174,7 @@ func TestParseSimilarPage(t *testing.T) {
 	malformed := `
 		<script>AF_initDataCallback({key: 'ds:3', isError: false , hash: '1', data: []});</script>
 	`
-	res, err = parseSimilarPage([]byte(malformed))
-	if err != nil {
-		t.Fatalf("unexpected error for malformed ds:3: %v", err)
-	}
+	res = parseSimilarPage([]byte(malformed))
 	if len(res) != 0 {
 		t.Error("expected 0 results")
 	}

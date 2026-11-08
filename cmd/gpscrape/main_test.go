@@ -101,7 +101,7 @@ func TestFlagsAreReadOnEitherSideOfPositionals(t *testing.T) {
 			if *countries != "us,de" {
 				t.Errorf("-countries = %q, want \"us,de\"", *countries)
 			}
-			got, err := c.arg(0, "appID")
+			got, err := c.arg("appID")
 			if err != nil {
 				t.Fatalf("positional argument was lost: %v", err)
 			}
@@ -118,7 +118,7 @@ func TestArgReportsWhatIsMissing(t *testing.T) {
 		t.Fatalf("parse: %v", err)
 	}
 
-	_, err := c.arg(0, "appID")
+	_, err := c.arg("appID")
 	if err == nil {
 		t.Fatal("a missing argument was accepted")
 	}

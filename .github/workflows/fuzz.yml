@@ -1,0 +1,73 @@
+name: Fuzz
+
+# The deep fuzz runs. On a pull request each target gets ten seconds on top
+# of its seed corpus (test.yml), enough to stop a parser that panics on known
+# shapes from merging and not enough to explore. Here each target gets ten
+# minutes, in parallel, once a week, and the corpus it builds is kept between
+# runs, so each week starts where the last one stopped.
+on:
+  schedule:
+    - cron: '0 4 * * 3'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  fuzz:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        # The same ten targets as test.yml's "Fuzz parsers briefly".
+        target:
+          - FuzzParseAppPage
+          - FuzzParseDataBlocks
+          - FuzzBatchExecute
+          - FuzzParseReviews
+          - FuzzResultRows
+          - FuzzSitemapLoc
+          - FuzzDataBlockScanMatchesRegex
+          - FuzzShardScanMatchesXML
+          - FuzzIndexScanMatchesXML
+          - FuzzShardStreamMatchesBuffer
+    env:
+      GOWORK: 'off'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      # The build cache setup-go keeps is keyed on go.sum, which this module
+      # does not have, and it would restore the fuzz corpus under one key for
+      # every target. The step below caches the corpus per target instead.
+      - name: Setup Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version: stable
+          cache: false
+
+      - name: Locate the fuzz cache
+        id: cache-dir
+        run: echo "dir=$(go env GOCACHE)/fuzz/github.com/kryuchenko/google-play-scraper/${{ matrix.target }}" >> "$GITHUB_OUTPUT"
+
+      # A cache entry cannot be overwritten, so each run saves under its own
+      # key and restores the newest one for its target.
+      - name: Restore the corpus
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.cache-dir.outputs.dir }}
+          key: fuzz-${{ matrix.target }}-${{ github.run_id }}
+          restore-keys: fuzz-${{ matrix.target }}-
+
+      - name: Fuzz
+        run: go test -run '^$' -fuzz '^${{ matrix.target }}$' -fuzztime 10m .
+
+      # A failing input is written to testdata/fuzz/<Target>/. Committing it
+      # makes it a seed every later run, on every pull request, replays.
+      - name: Upload the failing input
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: fuzz-crasher-${{ matrix.target }}
+          path: testdata/fuzz/${{ matrix.target }}/
+          if-no-files-found: ignore

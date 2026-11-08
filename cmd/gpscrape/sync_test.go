@@ -1,13 +1,18 @@
 package main
 
 import (
+	"bufio"
+	"bytes"
+	"compress/gzip"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"math/rand/v2"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -19,6 +24,7 @@ import (
 	"time"
 
 	googleplayscraper "github.com/kryuchenko/google-play-scraper"
+	"github.com/kryuchenko/google-play-scraper/records"
 )
 
 func TestParseGeneration(t *testing.T) {
@@ -601,7 +607,7 @@ func TestWriteSnapshotParallelIsReadableAndComplete(t *testing.T) {
 	// And by something that is not this package: a member boundary handled
 	// wrongly would truncate silently at the first one.
 	if _, err := exec.LookPath("gunzip"); err == nil {
-		out, gerr := exec.Command("sh", "-c", "gunzip -c "+path+" | wc -l").Output()
+		out, gerr := exec.CommandContext(t.Context(), "sh", "-c", "gunzip -c "+path+" | wc -l").Output()
 		if gerr != nil {
 			t.Errorf("system gunzip could not read the file: %v", gerr)
 		} else if n := strings.TrimSpace(string(out)); n != fmt.Sprint(len(ids)) {
@@ -658,7 +664,7 @@ func TestDoneLogSurvivesATruncatedTail(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	done, err := readDoneLog(path)
+	done, _, _, err := readDoneLog(path)
 	if err != nil {
 		t.Fatalf("readDoneLog: %v", err)
 	}
@@ -679,7 +685,7 @@ func TestDoneLogSurvivesATruncatedTail(t *testing.T) {
 }
 
 func TestDoneLogMissingIsNotAnError(t *testing.T) {
-	done, err := readDoneLog(filepath.Join(t.TempDir(), "absent.log"))
+	done, _, _, err := readDoneLog(filepath.Join(t.TempDir(), "absent.log"))
 	if err != nil {
 		t.Fatalf("a missing done log should read as empty, got %v", err)
 	}
@@ -1082,7 +1088,7 @@ func TestSweepGenerationRollMidSweepRestarts(t *testing.T) {
 	if _, serr := os.Stat(filepath.Join(dir, "manifest-"+fixtureGenA.ID()+".json")); serr == nil {
 		t.Error("a manifest was written for a sweep that hit a rolled generation")
 	}
-	done, err := readDoneLog(doneLogPath(dir, fixtureGenA))
+	done, _, _, err := readDoneLog(doneLogPath(dir, fixtureGenA))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1155,7 +1161,7 @@ func TestSweepRefusesAManifestWhenAShardKeepsFailing(t *testing.T) {
 	if _, serr := os.Stat(filepath.Join(dir, "manifest-"+fixtureGenA.ID()+".json")); serr == nil {
 		t.Error("a manifest was written for an incomplete sweep")
 	}
-	done, err := readDoneLog(doneLogPath(dir, fixtureGenA))
+	done, _, _, err := readDoneLog(doneLogPath(dir, fixtureGenA))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1676,5 +1682,544 @@ func TestSweepCheckpointsWhileItRuns(t *testing.T) {
 	readJSON(t, filepath.Join(dir, "manifest-"+fixtureGenA.ID()+".json"), &m)
 	if m.IDs != 501 {
 		t.Errorf("manifest counts %d ids, want 501", m.IDs)
+	}
+}
+
+// diff walks two sorted lists once. At a few million ids on each side this is
+// the whole reason snapshots are kept sorted.
+func diff(from, to googleplayscraper.Generation, oldIDs, newIDs []string) delta {
+	d := delta{From: from, To: to, Added: []string{}, Removed: []string{}}
+	i, j := 0, 0
+	for i < len(oldIDs) && j < len(newIDs) {
+		switch {
+		case oldIDs[i] == newIDs[j]:
+			i++
+			j++
+		case oldIDs[i] < newIDs[j]:
+			d.Removed = append(d.Removed, oldIDs[i])
+			i++
+		default:
+			d.Added = append(d.Added, newIDs[j])
+			j++
+		}
+	}
+	d.Removed = append(d.Removed, oldIDs[i:]...)
+	d.Added = append(d.Added, newIDs[j:]...)
+	return d
+}
+
+func readSnapshot(path string) ([]string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = f.Close() }()
+
+	var r io.Reader = f
+	if strings.HasSuffix(path, ".gz") {
+		zr, zerr := gzip.NewReader(f)
+		if zerr != nil {
+			return nil, fmt.Errorf("%s: %w", path, zerr)
+		}
+		defer func() { _ = zr.Close() }()
+		r = zr
+	}
+	return scanLines(r)
+}
+
+func scanLines(r io.Reader) ([]string, error) {
+	var out []string
+	sc := bufio.NewScanner(r)
+	sc.Buffer(make([]byte, 0, 64*1024), maxLineBytes)
+	for sc.Scan() {
+		if line := strings.TrimSpace(sc.Text()); line != "" {
+			out = append(out, line)
+		}
+	}
+	return out, sc.Err()
+}
+
+// A run killed mid-write leaves half an id at the end of the partial file.
+// The resume cuts it off instead of gluing it to the next id, and the shard
+// it came from -- not in the done log -- is fetched again whole.
+func TestSweepResumeRepairsATornLine(t *testing.T) {
+	_, f, dir := newSweepFixture(t)
+	preFinished(t, dir, f, sampling{}, 0, 1)
+	torn := f.ids[2][0][:len(f.ids[2][0])-1] // all but the last byte, no newline
+	partial := filepath.Join(dir, "partial-"+f.gen.ID()+".txt")
+	fh, err := os.OpenFile(partial, os.O_APPEND|os.O_WRONLY, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fh.WriteString(torn); err != nil {
+		t.Fatal(err)
+	}
+	_ = fh.Close()
+
+	if _, _, err := runVerb(t, cmdSync, "-dir", dir, "-concurrency", "2"); err != nil {
+		t.Fatalf("sweep: %v", err)
+	}
+	ids, err := readSnapshot(filepath.Join(dir, "snapshot-"+fixtureGenA.ID()+".txt.gz"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"com.a", "com.b", "com.c", "com.d", "com.e"}; !slices.Equal(ids, want) {
+		t.Errorf("snapshot = %v, want %v: no torn or glued ids", ids, want)
+	}
+}
+
+// A shard the previous run recorded as failed is pending again on resume;
+// once it succeeds there, the retry pass does not fetch it a second time.
+func TestSweepResumedFailureThatSucceedsIsNotRetried(t *testing.T) {
+	store, f, dir := newSweepFixture(t)
+	preFinished(t, dir, f, sampling{}, 0, 1)
+	failed := googleplayscraper.BaseURL + f.shardPath(3)
+	if err := saveState(filepath.Join(dir, "state.json"), syncState{
+		Generation: f.gen, IDs: len(f.ids[0]) + len(f.ids[1]), Failed: []string{failed},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	_, stderr, err := runVerb(t, cmdSync, "-dir", dir, "-concurrency", "2")
+	if err != nil {
+		t.Fatalf("sweep: %v", err)
+	}
+	if got := store.hitCount(f.shardPath(3)); got != 1 {
+		t.Errorf("the recovered shard was fetched %d times, want 1", got)
+	}
+	if strings.Contains(stderr, "retrying") {
+		t.Errorf("a retry pass ran with nothing left to retry:\n%s", stderr)
+	}
+}
+
+func TestTruncateTornLine(t *testing.T) {
+	long := strings.Repeat("x", 9000) // past one read block
+	for _, c := range []struct{ in, want string }{
+		{"", ""},
+		{"a\nb\n", "a\nb\n"},
+		{"a\nb", "a\n"},
+		{"torn", ""},
+		{"a\n" + long, "a\n"},
+		{long + "\n" + "tail", long + "\n"},
+	} {
+		path := filepath.Join(t.TempDir(), "partial.txt")
+		if err := os.WriteFile(path, []byte(c.in), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := truncateTornLine(path); err != nil {
+			t.Fatal(err)
+		}
+		got, _ := os.ReadFile(path)
+		if string(got) != c.want {
+			t.Errorf("truncateTornLine(%.20q...) left %.20q..., want %.20q...", c.in, got, c.want)
+		}
+	}
+	if err := truncateTornLine(filepath.Join(t.TempDir(), "missing")); err != nil {
+		t.Errorf("missing file: %v", err)
+	}
+}
+
+// The resume state exists before the first shard is fetched, so a run killed
+// in its first minutes -- before the checkpoint 500 shards in -- leaves files
+// the next run resumes from instead of deleting.
+func TestSweepWritesStateBeforeTheFirstShard(t *testing.T) {
+	store, f, dir := newSweepFixture(t)
+	var sawState atomic.Bool
+	store.setFunc(f.shardPath(0), func(*http.Request) (int, []byte) {
+		if _, err := os.Stat(filepath.Join(dir, "state.json")); err == nil {
+			sawState.Store(true)
+		}
+		return 500, nil
+	})
+	_, _, _ = runVerb(t, cmdSync, "-dir", dir, "-concurrency", "1")
+	if !sawState.Load() {
+		t.Error("no state.json while the first shard was in flight")
+	}
+}
+
+// The manifest is the last thing written: when the delta cannot be written,
+// the sweep fails with no manifest, and the resume state is still there for
+// the next run to finish from.
+func TestSweepWritesTheManifestAfterTheDelta(t *testing.T) {
+	_, f, dir := newSweepFixture(t)
+	if _, _, err := runVerb(t, cmdSync, "-dir", dir, "-concurrency", "2"); err != nil {
+		t.Fatal(err)
+	}
+	f.roll(t, fixtureGenB, fourShards())
+	// A directory where the delta goes makes writing it fail.
+	if err := os.MkdirAll(filepath.Join(dir, deltaName(fixtureGenA, fixtureGenB), "x"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := runVerb(t, cmdSync, "-dir", dir, "-concurrency", "2"); err == nil {
+		t.Fatal("the sweep succeeded although its delta could not be written")
+	}
+	if _, err := os.Stat(filepath.Join(dir, "manifest-"+fixtureGenB.ID()+".json")); err == nil {
+		t.Error("a manifest was written although the delta was not")
+	}
+	if _, err := os.Stat(filepath.Join(dir, "state.json")); err != nil {
+		t.Error("the resume state is gone, so nothing can finish the generation")
+	}
+}
+
+// A shard whose gzip stream is whole but whose document is cut short used to
+// parse as a shard with fewer apps, be marked done, and surface weeks later
+// as removals. It fails now, so the sweep retries it and, if it stays short,
+// refuses to publish.
+func TestSweepTreatsATruncatedShardAsFailed(t *testing.T) {
+	store, f, dir := newSweepFixture(t)
+	full := urlsetTestXML("https://play.google.com/store/apps/details?id=com.c")
+	store.set(f.shardPath(2), http.StatusOK, gzipTestBytes(t, full[:len(full)-len("</urlset>")]))
+
+	_, _, err := runVerb(t, cmdSync, "-dir", dir, "-concurrency", "2")
+	if err == nil || !strings.Contains(err.Error(), "after a retry pass") {
+		t.Fatalf("err = %v, want the sweep to refuse a snapshot missing a shard", err)
+	}
+	if got := store.hitCount(f.shardPath(2)); got != 2 {
+		t.Errorf("the truncated shard was fetched %d times, want 2 (once, then the retry)", got)
+	}
+	if _, serr := os.Stat(filepath.Join(dir, "manifest-"+fixtureGenA.ID()+".json")); serr == nil {
+		t.Error("a manifest was written over a truncated shard")
+	}
+}
+
+// A failure the state file still lists, for a shard the done log says was
+// fetched -- a resume that succeeded on it and was killed before the state
+// caught up -- is dropped on load: the retry pass does not fetch it again,
+// and a failure there cannot refuse a snapshot that already has its ids.
+func TestSweepDropsFailuresTheDoneLogContradicts(t *testing.T) {
+	store, f, dir := newSweepFixture(t)
+	preFinished(t, dir, f, sampling{}, 0, 1)
+	stale := googleplayscraper.BaseURL + f.shardPath(1) // done, but listed failed
+	if err := saveState(filepath.Join(dir, "state.json"), syncState{
+		Generation: f.gen, IDs: len(f.ids[0]) + len(f.ids[1]), Failed: []string{stale},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	store.set(f.shardPath(1), 500, nil) // a retry would fail
+
+	if _, _, err := runVerb(t, cmdSync, "-dir", dir, "-concurrency", "2"); err != nil {
+		t.Fatalf("sweep: %v", err)
+	}
+	if got := store.hitCount(f.shardPath(1)); got != 0 {
+		t.Errorf("a shard the done log holds was fetched %d times", got)
+	}
+}
+
+// Rewriting a generation already on disk removes its manifest before the
+// snapshot is replaced, so a failure partway leaves no manifest describing a
+// snapshot that is no longer there.
+func TestFinishDropsTheOldManifestBeforeReplacingTheSnapshot(t *testing.T) {
+	_, f, dir := newSweepFixture(t)
+	if _, _, err := runVerb(t, cmdSync, "-dir", dir, "-concurrency", "2"); err != nil {
+		t.Fatal(err)
+	}
+	man := filepath.Join(dir, "manifest-"+f.gen.ID()+".json")
+	snap := filepath.Join(dir, "snapshot-"+f.gen.ID()+".txt.gz")
+	// A directory where the snapshot goes makes the rewrite fail after the
+	// manifest step.
+	if err := os.Remove(snap); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(snap, "x"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := runVerb(t, cmdSync, "-dir", dir, "-concurrency", "2", "-force"); err == nil {
+		t.Fatal("the rewrite was expected to fail")
+	}
+	if _, err := os.Stat(man); err == nil {
+		t.Error("the old manifest survived a failed rewrite of its snapshot")
+	}
+}
+
+// orderLog records the order in which two buffered files reach "disk".
+type orderLog struct {
+	name string
+	log  *[]string
+}
+
+func (o orderLog) Write(p []byte) (int, error) {
+	*o.log = append(*o.log, o.name)
+	return len(p), nil
+}
+
+// When a done line would flush the done log, the ids buffered before it are
+// flushed first, so no done line is ever on disk ahead of its shard's ids --
+// whatever the two buffers' sizes and the lines' lengths.
+func TestWriteDoneLineFlushesTheIDsFirst(t *testing.T) {
+	var order []string
+	ids := bufio.NewWriterSize(orderLog{"ids", &order}, 4096)
+	done := bufio.NewWriterSize(orderLog{"done", &order}, 64)
+	for i := range 20 {
+		_, _ = fmt.Fprintln(ids, "com.example.app", i)
+		url := googleplayscraper.BaseURL + "/sitemaps/shard-" + strings.Repeat("x", 20) + fmt.Sprint(i)
+		if err := writeDoneLine(ids, done, url, 1); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if len(order) == 0 {
+		t.Fatal("the done log never flushed; the test does not exercise the ordering")
+	}
+	if order[0] != "ids" {
+		t.Fatalf("flush order %v: the done log reached disk before the ids", order)
+	}
+	for i := 1; i < len(order); i++ {
+		if order[i] == "done" && order[i-1] != "ids" {
+			t.Fatalf("flush order %v: a done flush at %d was not preceded by the ids", order, i)
+		}
+	}
+}
+
+// An interrupted sweep reports the interrupt, even with a failed shard on
+// the books: the retry pass never ran, so "could not be fetched after a
+// retry pass" would be false, and the exit code would hide the interrupt.
+func TestSweepReportsAnInterruptBeforeAFailedShard(t *testing.T) {
+	store, f, dir := newSweepFixture(t)
+	store.set(f.shardPath(0), 500, nil)
+	store.setFunc(f.shardPath(1), func(r *http.Request) (int, []byte) {
+		<-r.Context().Done() // hang until the deadline cancels the run
+		return 500, nil
+	})
+	_, _, err := runVerb(t, cmdSync, "-dir", dir, "-concurrency", "1", "-timeout", "300ms")
+	if err == nil {
+		t.Fatal("the sweep succeeded")
+	}
+	if strings.Contains(err.Error(), "after a retry pass") {
+		t.Errorf("err = %v: an interrupted run reported a retry pass it never ran", err)
+	}
+	if !errors.Is(err, context.DeadlineExceeded) && !errors.Is(err, context.Canceled) {
+		t.Errorf("err = %v, want the interrupt", err)
+	}
+}
+
+// A run killed after its manifest but before its cleanup leaves the resume
+// files of a finished generation. The next run finds the generation done and
+// removes them, instead of keeping ~100MB until the generation rolls.
+func TestSweepRemovesResumeFilesOfAFinishedGeneration(t *testing.T) {
+	_, f, dir := newSweepFixture(t)
+	if _, _, err := runVerb(t, cmdSync, "-dir", dir, "-concurrency", "2"); err != nil {
+		t.Fatal(err)
+	}
+	preFinished(t, dir, f, sampling{}, 0, 1) // what a kill before cleanup leaves
+	_, stderr, err := runVerb(t, cmdSync, "-dir", dir)
+	if err != nil || !strings.Contains(stderr, "already have") {
+		t.Fatalf("err %v, stderr %q", err, stderr)
+	}
+	for _, name := range []string{"state.json", "partial-" + f.gen.ID() + ".txt", "done-" + f.gen.ID() + ".log"} {
+		if _, err := os.Stat(filepath.Join(dir, name)); err == nil {
+			t.Errorf("%s survived although the generation is complete", name)
+		}
+	}
+}
+
+// Each done line carries its shard's id count, so a resume notices ids lost
+// from the partial file after the last checkpoint too -- where state.ids is
+// still the older, smaller count -- and a log from before the count still
+// reads.
+func TestReadDoneLogCountsIDs(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "done.log")
+	if err := os.WriteFile(path, []byte("u1\t3\nu2\t0\n\nu3\t4\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	done, ids, counted, err := readDoneLog(path)
+	if err != nil || len(done) != 3 || ids != 7 || !counted {
+		t.Fatalf("got %d shards, %d ids, counted %v, %v; want 3, 7, true", len(done), ids, counted, err)
+	}
+	if _, ok := done["u3"]; !ok {
+		t.Error("the URL is the part before the tab")
+	}
+	if err := os.WriteFile(path, []byte("u1\t3\nu2\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if done, _, counted, _ := readDoneLog(path); len(done) != 2 || counted {
+		t.Errorf("an old line without a count: %d shards, counted %v; want 2, false", len(done), counted)
+	}
+}
+
+// A plain full sweep says only what happened: no notes about flags it was not
+// given, shard counts that agree, resume state or snapshots it did not remove.
+func TestSweepSaysNothingThatDidNotHappen(t *testing.T) {
+	_, _, dir := newSweepFixture(t)
+	_, stderr, err := runVerb(t, cmdSync, "-dir", dir, "-concurrency", "2", "-keep", "3")
+	if err != nil {
+		t.Fatalf("sweep: %v", err)
+	}
+	for _, s := range []string{
+		"-sample 0 means",        // -sample was not given
+		"warning: filenames say", // the counts agree
+		"of resume state",        // nothing was stale
+		"kept the",               // nothing was pruned
+		"swept again from the start",
+	} {
+		if strings.Contains(stderr, s) {
+			t.Errorf("stderr says %q:\n%s", s, stderr)
+		}
+	}
+}
+
+// Shard filenames without a count leave the cost to the generic figure, and
+// that is not a disagreement with the indexes.
+func TestSweepWithoutAShardCountInTheFilenames(t *testing.T) {
+	store := newFakeStore(t)
+	useFakeClient(t, store.transport())
+	gen := googleplayscraper.Generation{Date: fixtureGenA.Date, Run: fixtureGenA.Run}
+	p := fmt.Sprintf("/sitemaps/play_sitemaps_%s_%s-00000-of-00000.xml.gz", gen.Date, gen.Run)
+	store.set(p, http.StatusOK, gzipTestBytes(t, urlsetTestXML(googleplayscraper.BaseURL+"/store/apps/details?id=com.a")))
+	f := &sitemapFixture{store: store, gen: gen, urls: []string{googleplayscraper.BaseURL + p}, ids: [][]string{{"com.a"}}}
+	f.publish(t)
+	assumeYes = false
+	t.Cleanup(func() { assumeYes = true })
+
+	_, stderr, err := runVerb(t, cmdSync, "-dir", t.TempDir())
+	if err == nil || records.Classify(err) != records.CodeConfirmation || !strings.Contains(err.Error(), "about 88,000 requests") {
+		t.Errorf("err = %v, want a confirmation with the generic cost", err)
+	}
+	if strings.Contains(stderr, "filenames say") {
+		t.Errorf("a missing count was reported as a disagreement:\n%s", stderr)
+	}
+}
+
+// Only a full sweep asks for consent; a sample is cheap.
+func TestSweepSampleNeedsNoConsent(t *testing.T) {
+	_, _, dir := newSweepFixture(t)
+	assumeYes = false
+	t.Cleanup(func() { assumeYes = true })
+	if _, _, err := runVerb(t, cmdSync, "-dir", dir, "-concurrency", "2", "-sample", "50", "-seed", "1"); err != nil {
+		t.Fatalf("a sampled sweep without -yes: %v", err)
+	}
+}
+
+// A full sweep over a sampled snapshot of the same generation says so.
+func TestSweepSaysInFullWhenItIs(t *testing.T) {
+	_, _, dir := newSweepFixture(t)
+	if err := writeJSON(filepath.Join(dir, "manifest-"+fixtureGenA.ID()+".json"), manifest{
+		Generation: fixtureGenA, File: "snapshot-" + fixtureGenA.ID() + ".txt.gz",
+		IDs: 1, SamplePct: 1,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	_, stderr, err := runVerb(t, cmdSync, "-dir", dir, "-concurrency", "2")
+	if err != nil {
+		t.Fatalf("sweep: %v", err)
+	}
+	if !strings.Contains(stderr, "sweeping it in full") {
+		t.Errorf("a full run did not say it was sweeping in full:\n%s", stderr)
+	}
+}
+
+// Resume state from a run killed before its first shard is a resume, not a
+// file that was cut short.
+func TestSweepResumesAnEmptyStart(t *testing.T) {
+	_, f, dir := newSweepFixture(t)
+	preFinished(t, dir, f, sampling{})
+	_, stderr, err := runVerb(t, cmdSync, "-dir", dir, "-concurrency", "2")
+	if err != nil {
+		t.Fatalf("sweep: %v", err)
+	}
+	if strings.Contains(stderr, "swept again from the start") {
+		t.Errorf("an empty resume was taken for a removed id file:\n%s", stderr)
+	}
+}
+
+// A done log from before the per-shard counts, with the id file gone and no
+// checkpoint, cannot vouch for its shards: they are swept again.
+func TestSweepDoesNotTrustAnUncountedDoneLogWithoutIDs(t *testing.T) {
+	_, f, dir := newSweepFixture(t)
+	writeFixtureFile(t, doneLogPath(dir, f.gen), googleplayscraper.BaseURL+f.shardPath(0)+"\n")
+	if err := saveState(filepath.Join(dir, "state.json"), syncState{Generation: f.gen}); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := runVerb(t, cmdSync, "-dir", dir, "-concurrency", "2"); err != nil {
+		t.Fatalf("sweep: %v", err)
+	}
+	ids, err := readSnapshot(filepath.Join(dir, "snapshot-"+fixtureGenA.ID()+".txt.gz"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"com.a", "com.b", "com.c", "com.d", "com.e"}; !slices.Equal(ids, want) {
+		t.Errorf("snapshot = %v, want %v", ids, want)
+	}
+}
+
+func TestLastLineEnd(t *testing.T) {
+	for _, c := range []struct {
+		name, body string
+		cut        int64
+		torn       bool
+	}{
+		{"empty", "", 0, false},
+		{"whole lines", "a\nb\n", 4, false},
+		{"no newline", "abc", 0, true},
+		{"newline first", "\nabc", 1, true},
+		{"newline at a block start", strings.Repeat("x", 99) + "\n" + strings.Repeat("y", 4095), 100, true},
+	} {
+		path := filepath.Join(t.TempDir(), "f")
+		if err := os.WriteFile(path, []byte(c.body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		f, err := os.Open(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		cut, torn, err := lastLineEnd(f)
+		_ = f.Close()
+		if err != nil || cut != c.cut || torn != c.torn {
+			t.Errorf("%s: lastLineEnd = %d %v %v, want %d %v", c.name, cut, torn, err, c.cut, c.torn)
+		}
+	}
+}
+
+// countLines reads past its first buffer.
+func TestCountLinesPastOneBuffer(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "ids")
+	n := 1<<20 + 7
+	if err := os.WriteFile(path, bytes.Repeat([]byte("a\n"), n), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := countLines(path); err != nil || got != n {
+		t.Errorf("countLines = %d %v, want %d", got, err, n)
+	}
+}
+
+// A blank line in a snapshot is not an id.
+func TestDiffSnapshotsSkipsBlankLines(t *testing.T) {
+	dir := t.TempDir()
+	o, n := filepath.Join(dir, "old.txt"), filepath.Join(dir, "new.txt")
+	if err := os.WriteFile(o, []byte("a\n\n  \nb\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(n, []byte("a\nc\n\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	d, err := diffSnapshots(fixtureGenA, fixtureGenB, o, n)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(d.Added, []string{"c"}) || !slices.Equal(d.Removed, []string{"b"}) {
+		t.Errorf("diff = +%q -%q, want +[c] -[b]", d.Added, d.Removed)
+	}
+}
+
+// The parallel snapshot writer splits the ids into parts; a count that leaves
+// the last part one short of a full one is written whole.
+func TestWriteSnapshotLastPartOneShort(t *testing.T) {
+	w := runtime.GOMAXPROCS(0)
+	if w < 2 {
+		t.Skip("the parallel path needs more than one core")
+	}
+	n := ((1<<16)/w+1)*w - 1
+	ids := make([]string, n)
+	for i := range ids {
+		ids[i] = fmt.Sprintf("com.app%07d", i)
+	}
+	path := filepath.Join(t.TempDir(), "snapshot-x.txt.gz")
+	if _, err := writeSnapshot(path, ids); err != nil {
+		t.Fatal(err)
+	}
+	back, err := readSnapshot(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(back, ids) {
+		t.Errorf("read back %d ids, wrote %d", len(back), n)
 	}
 }

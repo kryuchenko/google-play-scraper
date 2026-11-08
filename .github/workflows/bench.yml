@@ -1,0 +1,66 @@
+name: Benchmarks
+
+# A benchmark diff for every pull request, as a report: benchstat over the
+# base and the head, written to the job summary. It does not fail the PR.
+#
+# Time per op is not gated. On a shared runner it moves 10-20% between runs
+# of the same code, so a threshold on it is either noise or slack enough to
+# miss real changes. Allocations are stable to a fraction of a percent, and
+# those are gated by TestAllocBudget in test.yml; this report is for reading
+# the rest -- time, bytes, the benchmarks with no budget -- before merging.
+#
+# Base and head run on the same runner, alternating, so a slow neighbour or a
+# thermal dip lands on both rather than on one side.
+
+on:
+  pull_request:
+    paths:
+      - '**.go'
+      - 'go.mod'
+      - 'testdata/**'
+      - '.github/workflows/bench.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  benchstat:
+    runs-on: ubuntu-latest
+    env:
+      GOWORK: 'off'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          path: head
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          path: base
+
+      - name: Setup Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version: stable
+          cache-dependency-path: head/go.sum
+
+      # The Oracle* benchmarks time the reference implementations the
+      # differential tests compare against, not code this package runs.
+      - name: Run benchmarks, alternating base and head
+        run: |
+          for i in 1 2 3 4 5 6 7 8; do
+            for side in base head; do
+              (cd "$side" && go test -run '^$' -bench . -skip 'Oracle' -benchmem -count 1 -benchtime 300ms . ) >> "$side.txt" 2>&1 || true
+            done
+          done
+
+      # benchstat is untagged; this is the pseudo-version current on
+      # 2026-11-08, pinned so the report does not change under the PR.
+      - name: benchstat
+        run: |
+          {
+            echo '## Benchmarks: base vs head'
+            echo
+            echo '```'
+            go run golang.org/x/perf/cmd/benchstat@v0.0.0-20261009192801-be2c69fb417e base.txt head.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -20,7 +20,7 @@ func TestDeveloperStringID(t *testing.T) {
 		t.Skip("skipping integration test")
 	}
 
-	c := NewClient()
+	c := liveClient(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
@@ -59,7 +59,7 @@ func TestDeveloperNumericID(t *testing.T) {
 		t.Skip("skipping integration test")
 	}
 
-	c := NewClient()
+	c := liveClient(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
@@ -95,7 +95,7 @@ func TestDeveloperLargeRequest(t *testing.T) {
 		t.Skip("skipping integration test")
 	}
 
-	c := NewClient()
+	c := liveClient(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
@@ -121,7 +121,7 @@ func TestDeveloperDifferentLocale(t *testing.T) {
 		t.Skip("skipping integration test")
 	}
 
-	c := NewClient()
+	c := liveClient(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
@@ -168,10 +168,7 @@ func TestParseDeveloperPage(t *testing.T) {
 	// an error: it is zero results and no error, and both halves matter. An
 	// error here would abort callers that are sweeping thousands of pages; a
 	// non-empty result would mean the parser invented apps out of garbage.
-	res, err := parseDeveloperPage([]byte("invalid"), false, 10)
-	if err != nil {
-		t.Fatalf("parseDeveloperPage on unparseable input returned an error, want nil: %v", err)
-	}
+	res := parseDeveloperPage([]byte("invalid"), false, 10)
 	if len(res) != 0 {
 		t.Errorf("parseDeveloperPage on unparseable input returned %d results, want 0: %+v", len(res), res)
 	}
@@ -181,19 +178,13 @@ func TestParseDeveloperPage(t *testing.T) {
 		<script>AF_initDataCallback({key: 'ds:3', isError: false , hash: '1', data: [[1,[[null,[],null]]]]});</script>
 	`
 	// Path to apps for numeric ID: [0][1][0][21][0]
-	res, err = parseDeveloperPage([]byte(body), true, 10)
-	if err != nil {
-		t.Fatalf("unexpected error for empty apps data: %v", err)
-	}
+	res = parseDeveloperPage([]byte(body), true, 10)
 	if len(res) != 0 {
 		t.Error("expected 0 results for empty apps data")
 	}
 
 	// Let's test missing ds:3
-	res, err = parseDeveloperPage([]byte(`<html></html>`), false, 10)
-	if err != nil {
-		t.Fatalf("unexpected error for missing data: %v", err)
-	}
+	res = parseDeveloperPage([]byte(`<html></html>`), false, 10)
 	if len(res) != 0 {
 		t.Error("expected 0 results for missing data")
 	}

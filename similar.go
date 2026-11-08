@@ -31,8 +31,7 @@ func (c *Client) Similar(ctx context.Context, opts SimilarOptions) ([]SearchResu
 	}
 
 	// Step 1: Get app details page to find similar apps cluster URL
-	appURL := fmt.Sprintf("%s/store/apps/details?id=%s&hl=%s&gl=%s",
-		BaseURL, opts.AppID, opts.Lang, opts.Country)
+	appURL := appPageURL(opts.AppID, opts.Lang, opts.Country)
 
 	body, err := c.getPage(ctx, appURL, validateHTMLPage)
 	if err != nil {
@@ -40,11 +39,7 @@ func (c *Client) Similar(ctx context.Context, opts SimilarOptions) ([]SearchResu
 	}
 
 	// Parse page and find similar apps cluster
-	clusterURL, err := findSimilarCluster(body)
-	if err != nil {
-		return nil, err
-	}
-
+	clusterURL := findSimilarCluster(body)
 	if clusterURL == "" {
 		return nil, fmt.Errorf("similar apps not found")
 	}
@@ -57,10 +52,7 @@ func (c *Client) Similar(ctx context.Context, opts SimilarOptions) ([]SearchResu
 		return nil, fmt.Errorf("cluster request failed: %w", err)
 	}
 
-	results, err := parseSimilarPage(clusterBody)
-	if err != nil {
-		return nil, err
-	}
+	results := parseSimilarPage(clusterBody)
 
 	// Fetch full details if requested
 	if opts.FullDetail {
@@ -70,7 +62,7 @@ func (c *Client) Similar(ctx context.Context, opts SimilarOptions) ([]SearchResu
 	return results, nil
 }
 
-func findSimilarCluster(body []byte) (string, error) {
+func findSimilarCluster(body []byte) string {
 
 	// Look for clusters with "Similar" in title
 	// Clusters are typically in ds:7 or ds:8, path [1][1]
@@ -104,32 +96,32 @@ func findSimilarCluster(body []byte) (string, error) {
 					// URL at [21][1][2][4][2]
 					url := getPath(clusterArr, 21, 1, 2, 4, 2)
 					if url != nil {
-						return toString(url), nil
+						return toString(url)
 					}
 				}
 			}
 		}
 	}
 
-	return "", nil
+	return ""
 }
 
-func parseSimilarPage(body []byte) ([]SearchResult, error) {
+func parseSimilarPage(body []byte) []SearchResult {
 
 	// Apps in ds:3 -> [0][1][0][21][0]
 	ds3, ok := dataBlock(body, "ds:3")
 	if !ok {
-		return nil, nil
+		return nil
 	}
 
 	appsSection := getPath(ds3, 0, 1, 0, 21, 0)
 	if appsSection == nil {
-		return nil, nil
+		return nil
 	}
 
 	apps, ok := appsSection.([]any)
 	if !ok {
-		return nil, nil
+		return nil
 	}
 
 	var results []SearchResult
@@ -140,7 +132,7 @@ func parseSimilarPage(body []byte) ([]SearchResult, error) {
 		}
 	}
 
-	return results, nil
+	return results
 }
 
 func parseSimilarApp(item any) SearchResult {

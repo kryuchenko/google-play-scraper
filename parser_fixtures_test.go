@@ -134,7 +134,7 @@ func TestParseAppPageGameFixture(t *testing.T) {
 }
 
 func TestParseSearchPageFixture(t *testing.T) {
-	results, _, err := parseSearchPage(readFixture(t, "search_page.html"), 20)
+	results, _, err := parseSearchPage(readFixture(t, "search_page.html"))
 	if err != nil {
 		t.Fatalf("parseSearchPage: %v", err)
 	}
@@ -151,7 +151,7 @@ func TestParseSearchPageFixture(t *testing.T) {
 // The search fixture ("minecraft") shows Minecraft as a featured card above the
 // grid. It must come first and appear once.
 func TestParseSearchPageFixtureFeatured(t *testing.T) {
-	results, _, err := parseSearchPage(readFixture(t, "search_page.html"), 20)
+	results, _, err := parseSearchPage(readFixture(t, "search_page.html"))
 	if err != nil {
 		t.Fatalf("parseSearchPage: %v", err)
 	}
@@ -294,6 +294,31 @@ func TestParseClusterPageFixture(t *testing.T) {
 	}
 }
 
+// Grid rows carry their offer and description; only the featured card used to
+// get a price and a summary, so 19 of 20 search results had neither.
+func TestGridRowsCarryPriceAndSummary(t *testing.T) {
+	search, _, err := parseSearchPage(readFixture(t, "search_page.html"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cluster, err := parseClusterPage(readFixture(t, "cluster_page.html"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, rs := range map[string][]SearchResult{"search": search, "cluster": cluster} {
+		for _, r := range rs {
+			if !r.PriceKnown || r.Currency != "USD" || r.Summary == "" || strings.Contains(r.Summary, "<") {
+				t.Errorf("%s %s: price known %v, currency %q, summary %q", name, r.AppID, r.PriceKnown, r.Currency, r.Summary)
+			}
+		}
+	}
+	for _, r := range cluster {
+		if r.AppID == "com.chucklefish.stardewvalley" && (r.Price != 4.99 || r.Free) {
+			t.Errorf("Stardew Valley: price %v, free %v; want 4.99, paid", r.Price, r.Free)
+		}
+	}
+}
+
 func TestParseReviewsFixture(t *testing.T) {
 	result, err := parseReviewsResponse(readFixture(t, "reviews_batch.bin"), "com.google.android.apps.maps")
 	if err != nil {
@@ -319,10 +344,7 @@ func TestParseReviewsFixture(t *testing.T) {
 func TestParseDeveloperPageFixture(t *testing.T) {
 	// The fixture uses a numeric developer ID, so Google serves the
 	// /store/apps/dev layout (isNumericID == true).
-	results, err := parseDeveloperPage(readFixture(t, "developer_page.html"), true, 60)
-	if err != nil {
-		t.Fatalf("parseDeveloperPage: %v", err)
-	}
+	results := parseDeveloperPage(readFixture(t, "developer_page.html"), true, 60)
 	if len(results) < 5 {
 		t.Fatalf("got %d apps, want >= 5", len(results))
 	}
@@ -334,10 +356,7 @@ func TestParseDeveloperPageFixture(t *testing.T) {
 }
 
 func TestParseSimilarPageFixture(t *testing.T) {
-	results, err := parseSimilarPage(readFixture(t, "similar_page.html"))
-	if err != nil {
-		t.Fatalf("parseSimilarPage: %v", err)
-	}
+	results := parseSimilarPage(readFixture(t, "similar_page.html"))
 	if len(results) < 5 {
 		t.Fatalf("got %d apps, want >= 5", len(results))
 	}

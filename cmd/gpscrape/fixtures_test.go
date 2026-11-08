@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -63,6 +64,7 @@ type fakeStore struct {
 type failure struct {
 	status int
 	left   int
+	header http.Header // sent with the failure, e.g. Retry-After
 }
 
 func newFakeStore(t *testing.T) *fakeStore {
@@ -92,9 +94,15 @@ func (s *fakeStore) setFunc(path string, fn func(*http.Request) (int, []byte)) {
 // route takes over again: a transient shard, which is what the retry pass
 // exists for.
 func (s *fakeStore) failNext(path string, status, times int) {
+	s.failNextWith(path, status, times, nil)
+}
+
+// failNextWith is failNext with headers on the failure: a 429 or 503 carrying
+// Retry-After, which is how Google asks a client to come back later.
+func (s *fakeStore) failNextWith(path string, status, times int, header http.Header) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.fails[path] = &failure{status: status, left: times}
+	s.fails[path] = &failure{status: status, left: times, header: header}
 }
 
 func (s *fakeStore) hitCount(path string) int {
@@ -109,8 +117,11 @@ func (s *fakeStore) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	fn, known := s.routes[r.URL.Path]
 	if f := s.fails[r.URL.Path]; f != nil && f.left > 0 {
 		f.left--
-		status := f.status
+		status, header := f.status, f.header
 		s.mu.Unlock()
+		for k, v := range header {
+			w.Header()[k] = v
+		}
 		w.WriteHeader(status)
 		return
 	}
@@ -227,7 +238,7 @@ func preFinished(t *testing.T, dir string, f *sitemapFixture, samp sampling, sha
 			ids.WriteString(id + "\n")
 			n++
 		}
-		done.WriteString(googleplayscraper.BaseURL + f.shardPath(i) + "\n")
+		done.WriteString(googleplayscraper.BaseURL + f.shardPath(i) + "\t" + strconv.Itoa(len(f.ids[i])) + "\n")
 	}
 	writeFixtureFile(t, filepath.Join(dir, "partial-"+f.gen.ID()+".txt"), ids.String())
 	writeFixtureFile(t, doneLogPath(dir, f.gen), done.String())

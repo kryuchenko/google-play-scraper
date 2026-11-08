@@ -125,7 +125,7 @@ func secretPath(token string, next http.Handler) http.Handler {
 // other machines must require a token.
 func CheckListen(addr, token string) error {
 	if strings.TrimSpace(token) == "" && !IsLoopback(addr) {
-		return fmt.Errorf("refusing to serve %s without a token: set -token or GPSCRAPE_MCP_TOKEN, or bind 127.0.0.1", addr)
+		return fmt.Errorf("refusing to serve %s without a token: set -token-file or GPSCRAPE_MCP_TOKEN, or bind 127.0.0.1", addr)
 	}
 	return nil
 }

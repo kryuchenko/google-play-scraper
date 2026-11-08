@@ -112,7 +112,7 @@ func FuzzResultRows(f *testing.F) {
 	addFixtureSeeds(f, "search_page.html", "top_charts_page.html", "cluster_page.html")
 
 	f.Fuzz(func(t *testing.T, body []byte) {
-		_, _, _ = parseSearchPage(body, 50)
+		_, _, _ = parseSearchPage(body)
 		_, _ = parseListPage(body, ListOptions{})
 		_ = parseClusterURLs(body)
 	})

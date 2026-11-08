@@ -32,7 +32,7 @@ func (c *Client) App(ctx context.Context, appID string, opts AppOptions) (*App, 
 		opts.Country = "us"
 	}
 
-	url := fmt.Sprintf("%s/store/apps/details?id=%s&hl=%s&gl=%s", BaseURL, appID, opts.Lang, opts.Country)
+	url := appPageURL(appID, opts.Lang, opts.Country)
 
 	body, err := c.getPage(ctx, url, requireBlock("ds:5"))
 	if err != nil {
@@ -58,20 +58,6 @@ func parseAppPage(body []byte, appID, pageURL string) (*App, error) {
 		blocks["ds:5"] = ds5
 	}
 	return extractAppData(blocks, appID, pageURL)
-}
-
-// appDataNode navigates a parsed Google Play app page to the core app-info node
-// (ds:5 → [1][2]). It is the single point every availability-aware caller shares,
-// so the lightweight Availability probe and the full App parser agree on where
-// the app data lives. ok is false when the page has no ds:5 block or the [1][2]
-// node is absent (e.g. a non-app page or a malformed response).
-func appDataNode(body []byte) (appData any, ok bool) {
-	ds5, found := dataBlock(body, "ds:5")
-	if !found {
-		return nil, false
-	}
-	appData = getPath(ds5, 1, 2)
-	return appData, appData != nil
 }
 
 // classifyAvailability interprets the multiplexed availability node -- Ws7gDc

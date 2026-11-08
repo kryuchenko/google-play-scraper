@@ -35,6 +35,7 @@ import (
 	"io"
 	"log/slog"
 	"maps"
+	"net/url"
 	"os"
 	"os/signal"
 	"regexp"
@@ -89,7 +90,8 @@ Commands:
   mcp [flags]           start the gpscrape-mcp server (installed separately)
   version               print the build version
 
-Output: one JSON object per line on stdout. app, search, list, reviews,
+Output: one JSON value per line on stdout -- an object per record, a bare
+string per suggestion or category. app, search, list, reviews,
 similar, developer, permissions, datasafety and availability write the
 snake_case records the gpscrape-mcp tools return; -raw writes the library's
 own types instead. Text written by third parties is in untrusted_* fields.
@@ -145,8 +147,22 @@ func main() {
 	// reader most wants the trace for. runExitHooks empties the list, so the
 	// two paths cannot double-write the trace.
 	defer runExitHooks()
+	// A panic is a bug in gpscrape and is reported as one. Left to the
+	// runtime it exits 2, the status for bad arguments, which tells a script
+	// to change a command that was fine. The stack still goes to stderr.
+	defer func() {
+		if p := recover(); p != nil {
+			runExitHooks()
+			fmt.Fprintf(os.Stderr, "panic: %v\n\n%s\n", p, debug.Stack())
+			reportError(os.Stderr, fmt.Errorf("%s panicked: %v; this is a bug in gpscrape, please report it", cmd, p), records.CodeInternal)
+			os.Exit(records.CodeInternal.ExitCode())
+		}
+	}()
 	err := run(os.Args[2:])
 	runExitHooks()
+	if errors.Is(err, flag.ErrHelp) {
+		return // -h: parse has printed the flags
+	}
 	if err != nil {
 		// A cancelled run is how stopping is spelled, not a failure. Whatever
 		// was written before the interrupt is complete lines of valid JSON.
@@ -299,6 +315,7 @@ type common struct {
 	country     string
 	throttle    time.Duration
 	adaptive    bool
+	adaptiveMin time.Duration
 	concurrency int
 	cached      *googleplayscraper.Client
 	timeout     time.Duration
@@ -325,15 +342,30 @@ type common struct {
 // throttle, and an unthrottled client is the blocked address -throttle exists
 // to avoid.
 func newLocalCommon(name string) *common {
-	c := &common{fs: flag.NewFlagSet(name, flag.ExitOnError)}
+	// ContinueOnError, so that a bad flag is an invalid_argument error like
+	// any other: ExitOnError printed prose and the whole usage to stderr and
+	// exited 2 without the error object a script reads. Output is discarded
+	// for the same reason; parse prints the usage itself for -h.
+	c := &common{fs: flag.NewFlagSet(name, flag.ContinueOnError)}
+	c.fs.SetOutput(io.Discard)
 	c.fs.BoolVar(&c.debug, "debug", false,
 		"log every request, response, retry and throttle change to stderr (GPSCRAPE_DEBUG=1 does the same)")
 	c.fs.StringVar(&c.logFile, "log-file", "", "write the -debug log to this file instead of stderr")
 	c.fs.StringVar(&c.traceFile, "trace", "",
 		"write a Go execution trace to `FILE` for go tool trace; a long run keeps its last minutes")
 	c.fs.StringVar(&c.fields, "fields", "",
-		"keep only these comma-separated keys of each record, e.g. app_id,score (see `gpscrape schema`)")
+		"keep only these comma-separated keys of each record, e.g. app_id,score (gpscrape schema lists them)")
 	return c
+}
+
+// noFields refuses -fields on a command whose lines are bare JSON strings:
+// there are no keys to keep, and the flag used to do nothing at all.
+func (c *common) noFields(line string) error {
+	if c.fields != "" {
+		return records.Invalid("%s prints one JSON string per line (%s), which has no keys for -fields to keep",
+			c.fs.Name(), line)
+	}
+	return nil
 }
 
 // rawFlag registers -raw on a command that emits a shared record: without it
@@ -356,9 +388,35 @@ func newCommon(name string) *common {
 	c.fs.DurationVar(&c.throttle, "throttle", 200*time.Millisecond, "minimum interval between request starts")
 	c.fs.BoolVar(&c.adaptive, "adaptive", false,
 		"find a safe request rate instead of using -throttle as a fixed interval")
+	c.fs.DurationVar(&c.adaptiveMin, "adaptive-min", 0,
+		"with -adaptive, let the rate probe faster than -throttle, down to this interval (0 = no faster than -throttle)")
 	c.fs.IntVar(&c.concurrency, "concurrency", 4, "parallel requests where supported")
 	c.fs.DurationVar(&c.timeout, "timeout", 0, "overall deadline (0 = none)")
 	return c
+}
+
+// probeFloor is the shortest interval -adaptive may reach: -throttle unless
+// -adaptive-min asks it to probe faster. Probing past -throttle is opt-in
+// because finding a ceiling means meeting it, and a refusal is a signal
+// about this address that Google remembers; the controller settles below
+// the refusals it has seen (AdaptivePolicy.CutMemory) rather than looking
+// for them.
+func (c *common) probeFloor() time.Duration {
+	if c.adaptiveMin > 0 && c.adaptiveMin < c.throttle {
+		return c.adaptiveMin
+	}
+	return c.throttle
+}
+
+// adaptiveByDefault turns -adaptive on unless the caller says otherwise, for
+// the verbs that run for hours. A fixed interval treats a Retry-After longer
+// than the retry policy allows (30s) as a failure, so one long refusal four
+// hours into a sweep costs the shard; the adaptive client slows down and
+// pauses instead, and stops the run after three refused probes rather than
+// hammering. -adaptive=false restores the fixed interval.
+func (c *common) adaptiveByDefault() {
+	c.adaptive = true
+	c.fs.Lookup("adaptive").DefValue = "true"
 }
 
 // newClientHook, when non-nil, replaces client construction. It is nil in a
@@ -419,7 +477,7 @@ func (c *common) client() *googleplayscraper.Client {
 		// docs/adr/0001-soft-blocks-and-cooldown.md).
 		opts = append(opts,
 			googleplayscraper.WithAdaptiveThrottle(googleplayscraper.AdaptivePolicy{
-				Min: c.throttle, Max: 2 * time.Second, Cooldown: 30 * time.Second,
+				Min: c.probeFloor(), Max: 2 * time.Second, Cooldown: 30 * time.Second,
 			}),
 			googleplayscraper.WithHooks(googleplayscraper.Hooks{OnBreaker: c.onBreaker}),
 		)
@@ -552,14 +610,32 @@ func (c *common) parse(args []string) error {
 		described = c.fs
 		return errDescribing
 	}
-	if err := c.fs.Parse(args); err != nil {
+	decimalOnly(c.fs)
+	if err := c.parseFlags(args); err != nil {
 		return err
 	}
 	for c.fs.NArg() > 0 {
 		c.args = append(c.args, c.fs.Arg(0))
-		if err := c.fs.Parse(c.fs.Args()[1:]); err != nil {
+		if err := c.parseFlags(c.fs.Args()[1:]); err != nil {
 			return err
 		}
+	}
+	if err := c.checkValues(); err != nil {
+		return err
+	}
+	// No count, limit or size is meaningful below zero, and two of them did
+	// harm there: search -num -1 panicked in the library, and reviews
+	// -limit -1 read as "no limit" and downloaded every review.
+	var negative error
+	c.fs.Visit(func(f *flag.Flag) {
+		if g, ok := f.Value.(flag.Getter); ok && negative == nil {
+			if n, isInt := g.Get().(int); isInt && n < 0 {
+				negative = records.Invalid("-%s must not be negative (got %d)", f.Name, n)
+			}
+		}
+	})
+	if negative != nil {
+		return negative
 	}
 	if c.fs.Lookup("lang") != nil {
 		c.lang = strings.TrimSpace(c.lang)
@@ -573,7 +649,146 @@ func (c *common) parse(args []string) error {
 			projection = append(projection, f)
 		}
 	}
+	if err := c.checkFields(); err != nil {
+		return err
+	}
 	return c.diagnostics()
+}
+
+// parseFlags is fs.Parse with its errors coded: invalid_argument for a bad
+// flag, and flag.ErrHelp, after printing the flags, for -h.
+// decimalOnly makes every integer flag of fs read its value in base 10.
+// The flag package parses integers with base prefixes, so -limit 010 was 8
+// and -num 0x10 was 16: a zero-padded count meant something else entirely.
+func decimalOnly(fs *flag.FlagSet) {
+	fs.VisitAll(func(f *flag.Flag) {
+		if _, done := f.Value.(decimalValue); done {
+			return
+		}
+		if g, ok := f.Value.(flag.Getter); ok {
+			switch g.Get().(type) {
+			case int, int64, uint, uint64:
+				f.Value = decimalValue{g}
+			}
+		}
+	})
+}
+
+// decimalValue refuses anything but an optionally signed run of decimal
+// digits, then hands the value to the flag it wraps.
+type decimalValue struct{ flag.Getter }
+
+func (d decimalValue) Set(s string) error {
+	sign, digits := "", s
+	if digits != "" && (digits[0] == '-' || digits[0] == '+') {
+		sign, digits = digits[:1], digits[1:]
+	}
+	if digits == "" || strings.Trim(digits, "0123456789") != "" {
+		return fmt.Errorf("%q is not a whole decimal number", s)
+	}
+	// The wrapped flag still reads base prefixes, so the zeros that would
+	// make 010 octal go before it sees the digits.
+	if digits = strings.TrimLeft(digits, "0"); digits == "" {
+		digits = "0"
+	}
+	if sign == "+" {
+		sign = ""
+	}
+	return d.Getter.Set(sign + digits)
+}
+
+func (c *common) parseFlags(args []string) error {
+	err := c.fs.Parse(args)
+	switch {
+	case err == nil:
+		return nil
+	case errors.Is(err, flag.ErrHelp):
+		c.fs.SetOutput(os.Stderr)
+		c.fs.Usage()
+		c.fs.SetOutput(io.Discard)
+		return err
+	}
+	return records.Invalid("%s: %v; see `gpscrape %s -h`", c.fs.Name(), err, c.fs.Name())
+}
+
+// checkValues refuses what parsed but cannot be meant, before anything is
+// sent. Each of these used to go out as given.
+func (c *common) checkValues() error {
+	for i, a := range c.args {
+		// An empty argument where an id or a term is not checked -- a
+		// developer, a category -- reached the store as given.
+		if strings.TrimSpace(a) == "" {
+			return records.Invalid("%s: argument %d is empty", c.fs.Name(), i+1)
+		}
+	}
+	if c.fs.Lookup("country") != nil {
+		// The -lang trap again: an unknown gl was sent as given and the run
+		// exited 0.
+		c.country = strings.TrimSpace(c.country)
+		if !countryCode.MatchString(c.country) {
+			return records.Invalid("-country %q: want a two-letter country code, such as us or de", c.country)
+		}
+	}
+	// A negative -throttle was no throttle at all, and a negative -timeout no
+	// deadline; 0 says each of those on purpose.
+	for _, d := range []struct {
+		name string
+		v    time.Duration
+	}{{"throttle", c.throttle}, {"timeout", c.timeout}, {"adaptive-min", c.adaptiveMin}} {
+		if c.fs.Lookup(d.name) != nil && d.v < 0 {
+			return records.Invalid("-%s %v: want 0 or more", d.name, d.v)
+		}
+	}
+	if c.adaptiveMin > 0 {
+		// Both were ignored without a word: -adaptive-min only lowers the
+		// floor of -adaptive, and only below -throttle.
+		if !c.adaptive {
+			return records.Invalid("-adaptive-min %v: only -adaptive uses it; add -adaptive", c.adaptiveMin)
+		}
+		if c.adaptiveMin > c.throttle {
+			return records.Invalid("-adaptive-min %v is above -throttle %v; it lets -adaptive go faster "+
+				"than -throttle, so it must be lower", c.adaptiveMin, c.throttle)
+		}
+	}
+	return nil
+}
+
+// countryCode is the shape of a gl value.
+var countryCode = regexp.MustCompile(`^[A-Za-z]{2}$`)
+
+// checkFields refuses -fields names that no record of this command has,
+// before any request: the check in project only ran on the first record, so a
+// misspelt field cost a live request first. Commands whose records are not
+// listed in commandRecords, and -raw output (the library's own types), are
+// left to project.
+func (c *common) checkFields() error {
+	if len(projection) == 0 {
+		return nil
+	}
+	if r := c.fs.Lookup("raw"); r != nil && r.Value.String() == "true" {
+		return nil
+	}
+	recs, ok := commandRecords[c.fs.Name()]
+	if !ok {
+		return nil
+	}
+	known := map[string]bool{}
+	for _, r := range recs {
+		for _, f := range recordSchema(r).Fields {
+			known[f.Name] = true
+		}
+	}
+	var unknown []string
+	for _, f := range projection {
+		if !known[f] {
+			unknown = append(unknown, f)
+		}
+	}
+	if len(unknown) > 0 {
+		return records.Invalid("-fields %s: not a field of %s records; they have %s",
+			strings.Join(unknown, ","), c.fs.Name(), strings.Join(slices.Sorted(maps.Keys(known)), ","))
+	}
+	return nil
 }
 
 // langCode is the shape of an hl value: a language, optionally a region or
@@ -601,12 +816,47 @@ func checkLang(cmd, lang string) error {
 // arg returns the n-th positional argument, or an error naming what was
 // expected. Commands that take an argument are useless without it, and a
 // generic "missing argument" tells the user nothing about which.
-func (c *common) arg(n int, what string) (string, error) {
-	if len(c.args) <= n {
+func (c *common) arg(what string) (string, error) {
+	if len(c.args) == 0 {
 		return "", records.Invalid("%s: missing %s\n\nusage: gpscrape %s [flags] <%s>",
 			c.fs.Name(), what, c.fs.Name(), what)
 	}
-	return c.args[n], nil
+	if what == "appID" {
+		// Every id, not only the first: the batch commands read c.args
+		// after this. A name sent where an id belongs reached Google, came
+		// back as an HTTP 400, and was reported as a retryable store_error;
+		// it is the caller's mistake, said before any request.
+		for i, raw := range c.args {
+			id, err := checkAppID(raw)
+			if err != nil {
+				return "", err
+			}
+			c.args[i] = id
+		}
+	}
+	if what == "term" && strings.TrimSpace(c.args[0]) == "" {
+		return "", records.Invalid("%s: the term is empty", c.fs.Name())
+	}
+	return c.args[0], nil
+}
+
+// packageID is the shape of an Android package name, the same pattern the
+// MCP server checks.
+var packageID = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z0-9_]+)+$`)
+
+// checkAppID accepts a package id or a store link carrying one (its id=
+// parameter), and refuses anything else as invalid_argument.
+func checkAppID(raw string) (string, error) {
+	id := strings.TrimSpace(raw)
+	if u, err := url.Parse(id); err == nil && u.Host != "" {
+		if q := u.Query().Get("id"); q != "" {
+			id = q
+		}
+	}
+	if !packageID.MatchString(id) {
+		return "", records.Invalid("%q is not a package id (like com.spotify.music); find it with `gpscrape search`", raw)
+	}
+	return id, nil
 }
 
 // progressTo returns the writer for human-facing progress, or nil when stderr
@@ -689,6 +939,17 @@ func project(v any) (any, error) {
 			out[f] = x
 		}
 	}
+	// A failed entry keeps what says it failed. Projected to -fields
+	// app_id,title, {"app_id","code","error"} became {"app_id"} -- a record
+	// whose fields were simply missing, which is exactly what one line per
+	// id with the failure in it exists to prevent.
+	if _, failed := m["error"]; failed {
+		for _, k := range []string{"app_id", "appId", "code", "error"} {
+			if x, ok := m[k]; ok {
+				out[k] = x
+			}
+		}
+	}
 	if len(out) == 0 {
 		return nil, records.Invalid("-fields %s: none of these is a field of this record; its fields are %s (`gpscrape schema` lists them per command)",
 			strings.Join(projection, ","), strings.Join(slices.Sorted(maps.Keys(m)), ","))
@@ -725,8 +986,27 @@ func (e *emitter) flush() error {
 // must not have to reconcile stdout with stderr, and `permissions` has emitted
 // the same shape since it was written.
 type appErrorRecord struct {
-	AppID string `json:"appId"`
-	Error string `json:"error"`
+	AppID string       `json:"appId"`
+	Code  records.Code `json:"code"`
+	Error string       `json:"error"`
+}
+
+func newAppErrorRecord(id string, err error) appErrorRecord {
+	return appErrorRecord{AppID: id, Code: records.Classify(err), Error: err.Error()}
+}
+
+// batchFailed is the error for a batch in which every id failed. When the
+// entries agree on a code -- every id not found, say -- the run carries that
+// code, and its exit status, rather than a generic retryable store_error
+// that would send a caller retrying ids that do not exist.
+func batchFailed(errs []error) error {
+	code := records.Classify(errs[0])
+	for _, err := range errs[1:] {
+		if records.Classify(err) != code {
+			return records.Errorf(records.CodeStore, "all %d apps failed", len(errs))
+		}
+	}
+	return records.Errorf(code, "all %d apps failed (%s): %w", len(errs), code, errs[0])
 }
 
 func cmdApp(args []string) error {
@@ -735,7 +1015,7 @@ func cmdApp(args []string) error {
 	if err := c.parse(args); err != nil {
 		return err
 	}
-	if _, err := c.arg(0, "appID"); err != nil {
+	if _, err := c.arg("appID"); err != nil {
 		return err
 	}
 
@@ -764,10 +1044,10 @@ func cmdApp(args []string) error {
 	e := newEmitter(os.Stdout)
 	defer func() { _ = e.flush() }()
 
-	var failed int
+	var failed []error
 	for _, r := range c.client().AppsMany(ctx, c.args, opts) {
 		if r.Err != nil {
-			failed++
+			failed = append(failed, r.Err)
 			// Both: the record so the stream stays one line per id asked for,
 			// the stderr line so a person watching sees it without a jq
 			// filter. Dropping the id from stdout meant a caller diffing what
@@ -775,7 +1055,7 @@ func cmdApp(args []string) error {
 			_, _ = fmt.Fprintf(os.Stderr, "%s: %v\n", r.AppID, r.Err)
 			var rec any = records.NewAppError(r.AppID, r.Err)
 			if *raw {
-				rec = appErrorRecord{AppID: r.AppID, Error: r.Err.Error()}
+				rec = newAppErrorRecord(r.AppID, r.Err)
 			}
 			if err := e.emit(rec); err != nil {
 				return err
@@ -790,8 +1070,9 @@ func cmdApp(args []string) error {
 			return err
 		}
 	}
-	if failed == len(c.args) {
-		return fmt.Errorf("all %d apps failed", failed)
+	if len(failed) == len(c.args) {
+		_ = e.flush()
+		return batchFailed(failed)
 	}
 	return e.flush()
 }
@@ -808,7 +1089,7 @@ func cmdPCApp(args []string) error {
 	if err := c.parse(args); err != nil {
 		return err
 	}
-	if _, err := c.arg(0, "appID"); err != nil {
+	if _, err := c.arg("appID"); err != nil {
 		return err
 	}
 
@@ -819,7 +1100,7 @@ func cmdPCApp(args []string) error {
 	e := newEmitter(os.Stdout)
 	defer func() { _ = e.flush() }()
 
-	var failed int
+	var failed []error
 	for _, id := range c.args {
 		pc, err := c.client().PCApp(ctx, id, opts)
 		if err != nil {
@@ -828,9 +1109,9 @@ func cmdPCApp(args []string) error {
 			if len(c.args) == 1 || ctx.Err() != nil {
 				return err
 			}
-			failed++
+			failed = append(failed, err)
 			_, _ = fmt.Fprintf(os.Stderr, "%s: %v\n", id, err)
-			if err := e.emit(appErrorRecord{AppID: id, Error: err.Error()}); err != nil {
+			if err := e.emit(newAppErrorRecord(id, err)); err != nil {
 				return err
 			}
 			continue
@@ -839,8 +1120,9 @@ func cmdPCApp(args []string) error {
 			return err
 		}
 	}
-	if failed == len(c.args) {
-		return fmt.Errorf("all %d apps failed", failed)
+	if len(failed) == len(c.args) {
+		_ = e.flush()
+		return batchFailed(failed)
 	}
 	return e.flush()
 }
@@ -856,9 +1138,14 @@ func cmdSearch(args []string) error {
 	if err := c.parse(args); err != nil {
 		return err
 	}
-	term, err := c.arg(0, "term")
+	term, err := c.arg("term")
 	if err != nil {
 		return err
+	}
+	if *num > 50 {
+		// Not an error: the run still does what can be done. But -num 250
+		// returning 50 without a word reads as "the store has 50".
+		fmt.Fprintf(os.Stderr, "warning: -num %d is clamped to 50, as many as Google returns for one query\n", *num)
 	}
 
 	ctx, stop := c.context()
@@ -907,7 +1194,7 @@ func cmdReviews(args []string) error {
 	if err := c.parse(args); err != nil {
 		return err
 	}
-	appID, err := c.arg(0, "appID")
+	appID, err := c.arg("appID")
 	if err != nil {
 		return err
 	}
@@ -971,8 +1258,14 @@ func cmdReviews(args []string) error {
 	// One language is the ordinary case and stays exactly as it was.
 	if len(list) == 1 {
 		opts.Lang = list[0]
-		if _, _, err := emitReviews(ctx, c, e, appID, opts, *limit, nil, record); err != nil {
+		n, _, err := emitReviews(ctx, c, e, appID, opts, *limit, nil, record)
+		if err != nil {
 			return err
+		}
+		if n == 0 {
+			if err := confirmListed(ctx, c, appID); err != nil {
+				return err
+			}
 		}
 		return e.flush()
 	}
@@ -1010,7 +1303,21 @@ func cmdReviews(args []string) error {
 		_, _ = fmt.Fprintf(progress,
 			"%d reviews already seen under another language (aliased corpora)\n", dups)
 	}
+	if total == 0 {
+		if err := confirmListed(ctx, c, appID); err != nil {
+			return err
+		}
+	}
 	return e.flush()
+}
+
+// confirmListed tells an app with no reviews from an id the store does not
+// know: Google answers both with an empty page, so `reviews com.typo` exited
+// 0 with nothing printed. One details request settles it, and only when no
+// review came back. It is the check the MCP reviews tool makes.
+func confirmListed(ctx context.Context, c *common, appID string) error {
+	_, err := c.client().App(ctx, appID, googleplayscraper.AppOptions{Lang: c.lang, Country: c.country})
+	return err
 }
 
 // emitReviews streams one corpus. seen, when non-nil, suppresses ids already
@@ -1078,7 +1385,7 @@ func reviewLangs(langs, single string) ([]string, error) {
 		// Each entry goes out as hl=<entry>, and the store answers a bad one
 		// in English with exit 0, the same trap -lang is checked for.
 		if l == "all" {
-			return nil, fmt.Errorf(`-langs: "all" already covers every corpus; use -langs all with no other codes`)
+			return nil, records.Invalid(`-langs: "all" already covers every corpus; use -langs all with no other codes`)
 		}
 		if !langCode.MatchString(l) {
 			return nil, records.Invalid("-langs: %q is not one language code, such as en or pt-BR", l)
@@ -1166,7 +1473,7 @@ func cmdSimilar(args []string) error {
 	if err := c.parse(args); err != nil {
 		return err
 	}
-	appID, err := c.arg(0, "appID")
+	appID, err := c.arg("appID")
 	if err != nil {
 		return err
 	}
@@ -1189,7 +1496,7 @@ func cmdDeveloper(args []string) error {
 	if err := c.parse(args); err != nil {
 		return err
 	}
-	dev, err := c.arg(0, "developer")
+	dev, err := c.arg("developer")
 	if err != nil {
 		return err
 	}
@@ -1211,6 +1518,7 @@ func cmdDeveloper(args []string) error {
 type permissionsRecord struct {
 	AppID       string                         `json:"appId"`
 	Permissions []googleplayscraper.Permission `json:"permissions,omitempty"`
+	Code        records.Code                   `json:"code,omitempty"`
 	Error       string                         `json:"error,omitempty"`
 }
 
@@ -1220,7 +1528,7 @@ func cmdPermissions(args []string) error {
 	if err := c.parse(args); err != nil {
 		return err
 	}
-	if _, err := c.arg(0, "appID"); err != nil {
+	if _, err := c.arg("appID"); err != nil {
 		return err
 	}
 	ctx, stop := c.context()
@@ -1257,14 +1565,14 @@ func cmdPermissions(args []string) error {
 	}
 	// Every app still gets its line; the exit code is what tells a script the
 	// run produced nothing usable, matching `app`.
-	failed := 0
+	var failed []error
 	for _, r := range results {
 		if r.Err != nil {
-			failed++
+			failed = append(failed, r.Err)
 		}
 	}
-	if failed == len(results) {
-		return fmt.Errorf("all %d apps failed", failed)
+	if len(failed) == len(results) {
+		return batchFailed(failed)
 	}
 	return nil
 }
@@ -1273,14 +1581,14 @@ func cmdPermissions(args []string) error {
 // that failed must still emit a line for each of its apps: a caller diffing
 // input against output would otherwise see apps silently vanish.
 func permissionsRecords(results []googleplayscraper.PermissionsResult) []permissionsRecord {
-	records := make([]permissionsRecord, len(results))
+	out := make([]permissionsRecord, len(results))
 	for i, r := range results {
-		records[i] = permissionsRecord{AppID: r.AppID, Permissions: r.Permissions}
+		out[i] = permissionsRecord{AppID: r.AppID, Permissions: r.Permissions}
 		if r.Err != nil {
-			records[i].Error = r.Err.Error()
+			out[i].Code, out[i].Error = records.Classify(r.Err), r.Err.Error()
 		}
 	}
-	return records
+	return out
 }
 
 func cmdDataSafety(args []string) error {
@@ -1289,7 +1597,7 @@ func cmdDataSafety(args []string) error {
 	if err := c.parse(args); err != nil {
 		return err
 	}
-	appID, err := c.arg(0, "appID")
+	appID, err := c.arg("appID")
 	if err != nil {
 		return err
 	}
@@ -1313,7 +1621,10 @@ func cmdSuggest(args []string) error {
 	if err := c.parse(args); err != nil {
 		return err
 	}
-	term, err := c.arg(0, "term")
+	if err := c.noFields("a suggestion"); err != nil {
+		return err
+	}
+	term, err := c.arg("term")
 	if err != nil {
 		return err
 	}
@@ -1333,6 +1644,9 @@ func cmdCategories(args []string) error {
 	c := newCommon("categories")
 	kind := c.fs.String("kind", "all", `which categories: "all", "game" or "app"`)
 	if err := c.parse(args); err != nil {
+		return err
+	}
+	if err := c.noFields("a category id"); err != nil {
 		return err
 	}
 	ctx, stop := c.context()
@@ -1376,7 +1690,7 @@ func cmdAvailability(args []string) error {
 	if err := c.parse(args); err != nil {
 		return err
 	}
-	appID, err := c.arg(0, "appID")
+	appID, err := c.arg("appID")
 	if err != nil {
 		return err
 	}
@@ -1384,9 +1698,25 @@ func cmdAvailability(args []string) error {
 	ctx, stop := c.context()
 	defer stop()
 
+	// Validated the way the MCP tool validates them. An unknown code is not
+	// a country Google answers for -- `zz` used to come back "available",
+	// because the store serves a default storefront for any gl -- and an
+	// empty list after the commas meant zero probes and exit 0.
 	var list []string
 	if *countries != "" {
-		list = strings.Split(*countries, ",")
+		for _, cc := range strings.Split(*countries, ",") {
+			cc = strings.ToLower(strings.TrimSpace(cc))
+			if cc == "" {
+				continue
+			}
+			if !slices.Contains(googleplayscraper.AllCountries, cc) {
+				return records.Invalid("-countries: %q is not a Play Store country (markets without one, such as cn, are not probed)", cc)
+			}
+			list = append(list, cc)
+		}
+		if len(list) == 0 {
+			return records.Invalid("-countries: no country codes in %q", *countries)
+		}
 	}
 
 	// The default sweep is one request per country, so progress goes to stderr
@@ -1408,10 +1738,33 @@ func cmdAvailability(args []string) error {
 	if err != nil {
 		return err
 	}
+	var out any = records.FromAvailability(appID, res)
 	if *raw {
-		return emitOne(res)
+		out = res
 	}
-	return emitOne(records.FromAvailability(appID, res))
+	if err := emitOne(out); err != nil {
+		return err
+	}
+	// Every country failed: the record lists them under errors, and the run
+	// must not exit 0 as if it had an answer. The shared code -- all of them
+	// rate limited, say -- is the exit status.
+	if len(res.Errors) > 0 && res.Checked == 0 {
+		// In country order, so that the example in the message is the same
+		// on every run.
+		errs := make([]error, 0, len(res.Errors))
+		for _, cc := range slices.Sorted(maps.Keys(res.Errors)) {
+			errs = append(errs, res.Errors[cc])
+		}
+		code := records.Classify(errs[0])
+		for _, err := range errs[1:] {
+			if records.Classify(err) != code {
+				code = records.CodeStore
+				break
+			}
+		}
+		return records.Errorf(code, "every country failed (%d), for example: %v", len(errs), errs[0])
+	}
+	return nil
 }
 
 // idRecord is what `catalog ids` emits: an id and nothing else, because that
@@ -1427,7 +1780,7 @@ func catalogIDs(args []string) error {
 	shards := c.fs.String("shards", "", `shard range, e.g. "0-99" or "0,5,7" (default: every shard)`)
 	idsOnly := c.fs.Bool("ids-only", false, "print bare ids instead of JSON records")
 	limit := c.fs.Int("limit", 0, "stop after this many ids (0 = no limit)")
-	yes := c.fs.Bool("yes", false, "stream the whole catalog without a terminal (an agent or a script); it is about 83,000 requests")
+	yes := c.fs.Bool("yes", false, "stream the whole catalog without a terminal (an agent or a script); it is about 88,000 requests")
 	if err := c.parse(args); err != nil {
 		return err
 	}
@@ -1441,7 +1794,7 @@ func catalogIDs(args []string) error {
 		return err
 	}
 	if *shards == "" && *limit == 0 {
-		if err := confirmExpensive(*yes, "streaming every id is about 83,000 requests; "+
+		if err := confirmExpensive(*yes, "streaming every id is about 88,000 requests; "+
 			"pass -limit N for a sample or -shards for a range"); err != nil {
 			return err
 		}

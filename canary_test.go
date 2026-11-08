@@ -20,6 +20,7 @@ package googleplayscraper_test
 
 import (
 	"context"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -38,8 +39,12 @@ const (
 
 // newCanaryClient builds the shared client: a 1s throttle between request
 // starts keeps the whole suite gentle on Google's rate limiter.
-func newCanaryClient() *googleplayscraper.Client {
-	return googleplayscraper.NewClient(
+//
+// It records into ev (the evidence a failing subtest leaves, and the latencies
+// the history oracle reads), which replaces the HTTP client and the hooks, so
+// its options go first.
+func newCanaryClient(ev *googleplayscraper.Evidence) *googleplayscraper.Client {
+	return googleplayscraper.NewClient(append(ev.Options(),
 		googleplayscraper.WithThrottle(1*time.Second),
 		// Retries, because this suite's job is to detect drift in Google's
 		// payloads and a transient 5xx is not drift. Without them a weekly run
@@ -52,8 +57,12 @@ func newCanaryClient() *googleplayscraper.Client {
 			BaseDelay:         time.Second,
 			RespectRetryAfter: true,
 		}),
-	)
+	)...)
 }
+
+// history collects this run's fill rates and latencies for the oracle in
+// canary_history_test.go.
+var history = newCanaryHistory()
 
 // canaryCtx returns a per-subtest context with a generous timeout. Multi-request
 // methods (CategoryApps, ReviewsSeq) get more headroom via their own contexts.
@@ -66,28 +75,71 @@ func canaryCtx(t *testing.T) (context.Context, context.CancelFunc) {
 // a failure line reads e.g. "TestCanary/App/game_fields" — the method and the
 // broken contract are visible without reading the body.
 func TestCanary(t *testing.T) {
-	client := newCanaryClient()
+	ev := googleplayscraper.NewEvidence()
+	client := newCanaryClient(ev)
 
-	t.Run("App", func(t *testing.T) { canaryApp(t, client) })
-	t.Run("Search", func(t *testing.T) { canarySearch(t, client) })
-	t.Run("List", func(t *testing.T) { canaryList(t, client) })
-	t.Run("ClusterURLs+Cluster", func(t *testing.T) { canaryCluster(t, client) })
-	t.Run("Reviews", func(t *testing.T) { canaryReviews(t, client) })
-	t.Run("ReviewsSeq", func(t *testing.T) { canaryReviewsSeq(t, client) })
-	t.Run("Developer", func(t *testing.T) { canaryDeveloper(t, client) })
-	t.Run("Similar", func(t *testing.T) { canarySimilar(t, client) })
-	t.Run("Permissions", func(t *testing.T) { canaryPermissions(t, client) })
-	t.Run("DataSafety", func(t *testing.T) { canaryDataSafety(t, client) })
-	t.Run("Suggest", func(t *testing.T) { canarySuggest(t, client) })
-	t.Run("Categories", func(t *testing.T) { canaryCategories(t, client) })
-	t.Run("CategoryApps", func(t *testing.T) { canaryCategoryApps(t, client) })
-	t.Run("Availability", func(t *testing.T) { canaryAvailability(t, client) })
-	t.Run("Sitemap", func(t *testing.T) { canarySitemap(t, client) })
-	t.Run("Batched", func(t *testing.T) { canaryBatched(t, client) })
-	t.Run("AvailabilityClasses", func(t *testing.T) { canaryAvailabilityClasses(t, client) })
-	t.Run("Collections", func(t *testing.T) { canaryCollections(t, client) })
-	t.Run("PCApp", func(t *testing.T) { canaryPCApp(t, client) })
+	// Each subtest is watched: one that fails writes the responses it saw.
+	// The subtests run one at a time, so the hook events recorded between a
+	// subtest's start and end are its own (the most recent of them: the
+	// recorder keeps a bounded window, plenty for a median).
+	run := func(name string, f func(*testing.T, *googleplayscraper.Client)) {
+		t.Run(name, func(t *testing.T) {
+			ev.Watch(t)
+			since := ev.Seq()
+			defer func() { history.took(name, ev.EventsSince(since)) }()
+			f(t, client)
+		})
+	}
+	run("App", canaryApp)
+	run("Search", canarySearch)
+	run("List", canaryList)
+	run("ClusterURLs+Cluster", canaryCluster)
+	run("Reviews", canaryReviews)
+	run("ReviewsSeq", canaryReviewsSeq)
+	run("Developer", canaryDeveloper)
+	run("Similar", canarySimilar)
+	run("Permissions", canaryPermissions)
+	run("DataSafety", canaryDataSafety)
+	run("Suggest", canarySuggest)
+	run("Categories", canaryCategories)
+	run("CategoryApps", canaryCategoryApps)
+	run("Availability", canaryAvailability)
+	run("Sitemap", canarySitemap)
+	run("Batched", canaryBatched)
+	run("AvailabilityClasses", canaryAvailabilityClasses)
+	run("Collections", canaryCollections)
+	run("PCApp", canaryPCApp)
 	t.Run("PCRegions", canaryPCRegions)
+	parent := t
+	t.Run("History", func(t *testing.T) { canaryCompareHistory(t, parent.Failed()) })
+}
+
+// canaryCompareHistory is the history oracle's subtest: it runs last, on what
+// the other subtests counted. With UPDATE_CANARY_BASELINE=1 it rewrites the
+// baseline instead, and only from a run in which everything else passed: a
+// baseline taken while a path is broken would make the break the norm.
+func canaryCompareHistory(t *testing.T, othersFailed bool) {
+	if os.Getenv(canaryBaselineEnv) == "1" {
+		if othersFailed {
+			t.Fatalf("not rewriting %s: other subtests failed this run", canaryBaseline)
+		}
+		if err := writeCanaryBaseline(canaryBaseline, history.snapshot("live canary run")); err != nil {
+			t.Fatal(err)
+		}
+		t.Logf("wrote %s", canaryBaseline)
+		return
+	}
+	base, err := readCanaryBaseline(canaryBaseline)
+	if err != nil {
+		t.Fatalf("%s: %v", canaryBaseline, err)
+	}
+	failures, notes := history.compare(base)
+	for _, n := range notes {
+		t.Log(n)
+	}
+	for _, f := range failures {
+		t.Error(f)
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -102,6 +154,7 @@ func canaryApp(t *testing.T, client *googleplayscraper.Client) {
 	if err != nil {
 		t.Fatalf("App(%s): %v", canaryStableApp, err)
 	}
+	history.apps("app_page", app)
 
 	if app.Title != "Google Maps" {
 		t.Errorf("App: Title = %q, want %q — title path [1][2][0][0] may have changed", app.Title, "Google Maps")
@@ -153,6 +206,7 @@ func canaryApp(t *testing.T, client *googleplayscraper.Client) {
 		if err != nil {
 			t.Fatalf("App(%s): %v", canaryGameApp, err)
 		}
+		history.apps("app_page", game)
 
 		if !strings.HasPrefix(game.GenreID, "GAME") {
 			t.Errorf("App(game): GenreID = %q, want GAME* — path [1][2][79][0][0][2] may have changed", game.GenreID)
@@ -189,6 +243,7 @@ func canarySearch(t *testing.T, client *googleplayscraper.Client) {
 	if err != nil {
 		t.Fatalf("Search(minecraft): %v", err)
 	}
+	history.results("search", results)
 
 	if len(results) < 10 {
 		t.Fatalf("Search: got %d results, want >= 10 — apps array path or pagination may have changed", len(results))
@@ -238,6 +293,7 @@ func canaryList(t *testing.T, client *googleplayscraper.Client) {
 	if err != nil {
 		t.Fatalf("List(GAME, TOP_FREE, 50): %v", err)
 	}
+	history.results("list", results)
 
 	if len(results) != want {
 		t.Errorf("List: got %d apps, want %d — vyAe2 apps path [0][1][0][28][0] may have changed", len(results), want)
@@ -301,6 +357,7 @@ func canaryCluster(t *testing.T, client *googleplayscraper.Client) {
 	if err != nil {
 		t.Fatalf("Cluster(%q): %v", clusters[0].Title, err)
 	}
+	history.results("cluster", apps)
 	if len(apps) < 10 {
 		t.Errorf("Cluster: got %d apps, want >= 10 — apps path [0][1][0][21][0] may have changed", len(apps))
 	}
@@ -394,6 +451,7 @@ func canaryReviews(t *testing.T, client *googleplayscraper.Client) {
 	if err != nil {
 		t.Fatalf("Reviews(%s): %v", canaryReviewApp, err)
 	}
+	history.reviews(res.Reviews)
 	if len(res.Reviews) < 1 {
 		t.Fatalf("Reviews: got 0 reviews — oCPfdb response shape (data[0]) may have changed")
 	}
@@ -427,6 +485,7 @@ func canaryReviews(t *testing.T, client *googleplayscraper.Client) {
 		if err != nil {
 			t.Fatalf("Reviews(FilterScore=5): %v", err)
 		}
+		history.reviews(filtered.Reviews)
 		if len(filtered.Reviews) < 1 {
 			t.Fatal("Reviews(FilterScore=5): got 0 reviews")
 		}
@@ -486,6 +545,7 @@ func canaryDeveloper(t *testing.T, client *googleplayscraper.Client) {
 	if err != nil {
 		t.Fatalf("Developer(Google LLC): %v", err)
 	}
+	history.results("developer", results)
 	if len(results) < 5 {
 		t.Errorf("Developer: got %d apps, want >= 5 — apps path [0][1][0][22][0] may have changed", len(results))
 	}
@@ -510,6 +570,7 @@ func canarySimilar(t *testing.T, client *googleplayscraper.Client) {
 	if err != nil {
 		t.Fatalf("Similar(%s): %v", canaryStableApp, err)
 	}
+	history.results("similar", results)
 	if len(results) < 5 {
 		t.Errorf("Similar: got %d apps, want >= 5 — 'Similar' cluster discovery or apps path may have changed", len(results))
 	}
@@ -849,6 +910,7 @@ func canaryBatched(t *testing.T, client *googleplayscraper.Client) {
 		if err != nil {
 			t.Fatalf("App: %v", err)
 		}
+		history.apps("app_page", page)
 		results := client.AppsMany(ctx, []string{canaryStableApp}, googleplayscraper.AppOptions{})
 		if len(results) != 1 {
 			t.Fatalf("AppsMany returned %d results for one app", len(results))
@@ -856,6 +918,7 @@ func canaryBatched(t *testing.T, client *googleplayscraper.Client) {
 		if results[0].Err != nil {
 			t.Fatalf("AppsMany: %v", results[0].Err)
 		}
+		history.apps("app_rpc", results[0].App)
 		rpc := results[0].App
 
 		// Field-by-field, so a failure names the field that stopped arriving
@@ -965,6 +1028,7 @@ func canaryBatched(t *testing.T, client *googleplayscraper.Client) {
 				t.Errorf("%s: %v", r.AppID, r.Err)
 				continue
 			}
+			history.apps("app_rpc", r.App)
 			if r.AppID != ids[i] {
 				t.Errorf("result %d is for %s, want %s", i, r.AppID, ids[i])
 			}

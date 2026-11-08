@@ -20,6 +20,7 @@ import (
 	"time"
 
 	gps "github.com/kryuchenko/google-play-scraper"
+	"github.com/kryuchenko/google-play-scraper/records"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -609,7 +610,7 @@ func TestHTTP(t *testing.T) {
 
 	// No token, wrong token: refused before MCP sees the request.
 	for _, auth := range []string{"", "Bearer nope", "s3cret"} {
-		req, _ := http.NewRequest("POST", ts.URL+"/mcp", strings.NewReader(`{}`))
+		req, _ := http.NewRequestWithContext(t.Context(), "POST", ts.URL+"/mcp", strings.NewReader(`{}`))
 		req.Header.Set("Content-Type", "application/json")
 		if auth != "" {
 			req.Header.Set("Authorization", auth)
@@ -624,7 +625,11 @@ func TestHTTP(t *testing.T) {
 		}
 	}
 
-	resp, err := http.Get(ts.URL + "/healthz")
+	getReq, gerr := http.NewRequestWithContext(t.Context(), http.MethodGet, ts.URL+"/healthz", nil)
+	if gerr != nil {
+		t.Fatal(gerr)
+	}
+	resp, err := http.DefaultClient.Do(getReq)
 	if err != nil || resp.StatusCode != 200 {
 		t.Fatalf("healthz: %v %v", err, resp)
 	}
@@ -647,7 +652,7 @@ func TestHTTP(t *testing.T) {
 
 func post(t *testing.T, url string, hdr map[string]string) int {
 	t.Helper()
-	req, _ := http.NewRequest("POST", url, strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"tools/list"}`))
+	req, _ := http.NewRequestWithContext(t.Context(), "POST", url, strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"tools/list"}`))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json, text/event-stream")
 	for k, v := range hdr {
@@ -1362,5 +1367,14 @@ func TestErrorsCarryCodes(t *testing.T) {
 		if msg := callErr(t, cs, c.tool, c.args); !strings.HasPrefix(msg, c.code) {
 			t.Errorf("%s %v: %q, want it to start with %q", c.tool, c.args, msg, c.code)
 		}
+	}
+}
+
+// An error that wraps an explained one keeps its code and does not panic.
+func TestItemErrorWrappedExplained(t *testing.T) {
+	inner := coded(records.CodeRateLimited, errors.New("slow down"))
+	got := itemError("com.a.b", fmt.Errorf("batch: %w", inner))
+	if got.Code != records.CodeRateLimited || got.AppID != "com.a.b" || !strings.Contains(got.Error, "slow down") {
+		t.Errorf("itemError = %+v", got)
 	}
 }

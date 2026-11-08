@@ -30,7 +30,7 @@ import (
 const iconURL = "https://raw.githubusercontent.com/kryuchenko/google-play-scraper/main/mcp/assets/icon.svg"
 
 // Version is reported to clients in the MCP handshake.
-const Version = "0.1.1"
+const Version = "0.1.2"
 
 // Scraper is the part of *gps.Client the tools use. Tests substitute a fake.
 type Scraper interface {
@@ -290,7 +290,10 @@ func explain(err error) error {
 // itemError is a batch entry's error: the code in its own field, the
 // sentence without it.
 func itemError(id string, err error) records.AppError {
-	ex := explain(err).(explained)
+	// errors.As, not a type assertion: explain returns an error that already
+	// wraps an explained unchanged, and asserting on that would panic.
+	var ex explained
+	errors.As(explain(err), &ex)
 	return records.AppError{AppID: id, Code: ex.code, Error: ex.err.Error()}
 }
 

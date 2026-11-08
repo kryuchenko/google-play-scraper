@@ -9,6 +9,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -46,7 +47,6 @@ const (
 var scriptDataRegex = regexp.MustCompile(`AF_initDataCallback\(\{key:\s*'(ds:\d+)'.*?data:(.*?), sideChannel:`)
 
 func main() {
-	outDir := "testdata"
 	if err := os.MkdirAll(outDir, 0o755); err != nil {
 		fail(err)
 	}
@@ -54,39 +54,39 @@ func main() {
 
 	// 1. App detail page.
 	appPage := get(c, fmt.Sprintf("%s/store/apps/details?id=%s&hl=en&gl=us", baseURL, appID))
-	save(outDir, "app_page.html", appPage)
+	save("app_page.html", appPage)
 
 	// 1b. Game detail page: exercises media/monetization/changelog fields absent
 	// from the Maps fixture.
-	save(outDir, "app_page_game.html",
+	save("app_page_game.html",
 		get(c, fmt.Sprintf("%s/store/apps/details?id=%s&hl=en&gl=us", baseURL, gameAppID)))
 
 	// 1c. Region-locked detail page: a US-only app fetched from Germany, whose
 	// [18] availability node is empty. Backs the offline availability classifier
 	// test and the App.Available=false case.
-	save(outDir, "app_unavailable_region.html",
+	save("app_unavailable_region.html",
 		get(c, fmt.Sprintf("%s/store/apps/details?id=%s&hl=en&gl=%s", baseURL, regionLockedAppID, regionLockedGL)))
 
 	// 2. Search page.
-	save(outDir, "search_page.html",
+	save("search_page.html",
 		get(c, fmt.Sprintf("%s/store/search?q=%s&hl=en&gl=us&price=0&c=apps", baseURL, url.QueryEscape("minecraft"))))
 
 	// 2b. Search that matches nothing. Backs the soft-block classifier: a
 	// genuine empty search must stay an empty result, not become an error.
-	save(outDir, "search_zero_results.html",
+	save("search_zero_results.html",
 		get(c, fmt.Sprintf("%s/store/search?q=%s&hl=en&gl=us&c=apps", baseURL, "zqxjvkwplmqzzx9183")))
 
 	// 3. List via vyAe2 batchexecute (GAME / TOP_FREE), matching listViaBatch.
-	save(outDir, "list_vyae2.bin", listBatch(c))
+	save("list_vyae2.bin", listBatch(c))
 
 	// 3b. Search results via lGYRle (Search with Num > 20), in two storefronts
 	// whose section layouts differ: the grid is a [22] card in the US and a
 	// [21] card in Germany.
-	save(outDir, "search_rpc_us.bin", searchRPC(c, "en", "us"))
-	save(outDir, "search_rpc_de.bin", searchRPC(c, "de", "de"))
+	save("search_rpc_us.bin", searchRPC(c, "en", "us"))
+	save("search_rpc_de.bin", searchRPC(c, "de", "de"))
 
 	// 4. Category page (parseClusterURLs source).
-	save(outDir, "category_page.html",
+	save("category_page.html",
 		get(c, fmt.Sprintf("%s/store/apps/category/GAME_ACTION?hl=en&gl=us", baseURL)))
 
 	// 5. Cluster page: discover a cluster URL from the category page, fetch it.
@@ -101,13 +101,13 @@ func main() {
 	if strings.Contains(clusterURL, "?") {
 		sep = "&"
 	}
-	save(outDir, "cluster_page.html", get(c, clusterURL+sep+"hl=en&gl=us"))
+	save("cluster_page.html", get(c, clusterURL+sep+"hl=en&gl=us"))
 
 	// 6. Reviews batchexecute, matching buildReviewsBody (initial request).
-	save(outDir, "reviews_batch.bin", reviewsBatch(c))
+	save("reviews_batch.bin", reviewsBatch(c))
 
 	// 7. Developer page (numeric dev ID; Google -> /store/apps/dev). Maps' dev.
-	save(outDir, "developer_page.html",
+	save("developer_page.html",
 		get(c, fmt.Sprintf("%s/store/apps/dev?id=%s&hl=en&gl=us", baseURL, url.QueryEscape("5700313618786177705"))))
 
 	// 8. Similar page: find the "Similar" cluster on the app page, fetch it.
@@ -115,26 +115,26 @@ func main() {
 	if simURL == "" {
 		fail(fmt.Errorf("no similar cluster URL found on app page"))
 	}
-	save(outDir, "similar_page.html", get(c, baseURL+simURL+"&gl=us&hl=en"))
+	save("similar_page.html", get(c, baseURL+simURL+"&gl=us&hl=en"))
 
 	// 9. Data safety page.
-	save(outDir, "datasafety_page.html",
+	save("datasafety_page.html",
 		get(c, fmt.Sprintf("%s/store/apps/datasafety?id=%s&hl=en&gl=us", baseURL, appID)))
 
 	// 10. Top-charts page (parseListPage / listViaHTML fallback source). Google
 	// redirects /store/apps/top to /store/apps; the default client follows it,
 	// matching the library's own get.
-	save(outDir, "top_charts_page.html",
+	save("top_charts_page.html",
 		get(c, fmt.Sprintf("%s/store/apps/top?hl=en&gl=us", baseURL)))
 
 	// 11. Google Play Games on PC listing of a game with a PC build.
-	save(outDir, "pc_page_game.html", get(c, pcListingURL(pcGameAppID)))
+	save("pc_page_game.html", get(c, pcListingURL(pcGameAppID)))
 
 	// 11b. The same URL for an app without one: a redirect to the mobile
 	// listing with no body, which PCApp reads as "not on PC". Saved as status
 	// and Location only; the response also sets a cookie, which has no place
 	// in a fixture.
-	save(outDir, "pc_page_not_on_pc.json", redirectOf(c, pcListingURL(nonPCAppID)))
+	save("pc_page_not_on_pc.json", redirectOf(c, pcListingURL(nonPCAppID)))
 
 	fmt.Println("fixtures written to", outDir)
 }
@@ -149,7 +149,7 @@ func pcListingURL(id string) string {
 func redirectOf(c *http.Client, rawURL string) []byte {
 	noFollow := *c
 	noFollow.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
-	req, err := http.NewRequest(http.MethodGet, rawURL, nil)
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, rawURL, nil)
 	if err != nil {
 		fail(err)
 	}
@@ -317,7 +317,7 @@ func str(v any) string {
 }
 
 func get(c *http.Client, rawURL string) []byte {
-	req, err := http.NewRequest(http.MethodGet, rawURL, nil)
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, rawURL, nil)
 	if err != nil {
 		fail(err)
 	}
@@ -328,7 +328,7 @@ func get(c *http.Client, rawURL string) []byte {
 }
 
 func post(c *http.Client, rawURL, contentType, body string) []byte {
-	req, err := http.NewRequest(http.MethodPost, rawURL, strings.NewReader(body))
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, rawURL, strings.NewReader(body))
 	if err != nil {
 		fail(err)
 	}
@@ -354,8 +354,11 @@ func do(c *http.Client, req *http.Request) []byte {
 	return b
 }
 
-func save(dir, name string, data []byte) {
-	path := filepath.Join(dir, name)
+// outDir is where every fixture is written.
+const outDir = "testdata"
+
+func save(name string, data []byte) {
+	path := filepath.Join(outDir, name)
 	if err := os.WriteFile(path, data, 0o644); err != nil {
 		fail(err)
 	}

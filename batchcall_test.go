@@ -52,7 +52,7 @@ func TestBatchCallPairsAnswersByIndexNotPosition(t *testing.T) {
 		{id: "xdSrCf", payload: `[1]`},
 		{id: "xdSrCf", payload: `[2]`},
 	}
-	got, err := c.batchCall(context.Background(), "en", "us", calls)
+	got, err := c.batchCall(context.Background(), "us", calls)
 	if err != nil {
 		t.Fatalf("batchCall: %v", err)
 	}
@@ -76,7 +76,7 @@ func TestBatchCallSingleCallIgnoresTheEchoedIndex(t *testing.T) {
 			return mockResponse{Body: framesEnvelope("xdSrCf",
 				map[string]string{idx: `["only-answer"]`}, []string{idx})}, true
 		})
-		got, err := c.batchCall(context.Background(), "en", "us",
+		got, err := c.batchCall(context.Background(), "us",
 			[]rpcCall{{id: "xdSrCf", payload: `[0]`}})
 		if err != nil {
 			t.Fatalf("index %q: batchCall: %v", idx, err)
@@ -98,7 +98,7 @@ func TestBatchCallMissingFrameLeavesAHole(t *testing.T) {
 			map[string]string{"0": `["a"]`, "2": `["c"]`}, []string{"0", "2"})}, true
 	})
 
-	got, err := c.batchCall(context.Background(), "en", "us", []rpcCall{
+	got, err := c.batchCall(context.Background(), "us", []rpcCall{
 		{id: "xdSrCf", payload: `[0]`},
 		{id: "xdSrCf", payload: `[1]`},
 		{id: "xdSrCf", payload: `[2]`},
@@ -140,7 +140,7 @@ func TestBatchCallDeclaresDistinctRPCIDs(t *testing.T) {
 			map[string]string{"0": `[]`, "1": `[]`, "2": `[]`}, []string{"0", "1", "2"})}, true
 	})
 
-	_, err := c.batchCall(context.Background(), "en", "us", []rpcCall{
+	_, err := c.batchCall(context.Background(), "us", []rpcCall{
 		{id: "xdSrCf", payload: `[0]`},
 		{id: "IJ4APc", payload: `[1]`},
 		{id: "xdSrCf", payload: `[2]`},
@@ -206,7 +206,7 @@ func TestDecodersAcceptTheShortestValidFrame(t *testing.T) {
 			}
 			return mockResponse{Body: body}, true
 		})
-		got, err := c.batchCall(context.Background(), "en", "us",
+		got, err := c.batchCall(context.Background(), "us",
 			[]rpcCall{{id: "xdSrCf", payload: `[0]`}})
 		if err != nil {
 			t.Fatalf("batchCall: %v", err)
@@ -566,4 +566,18 @@ func TestPackedFanOutHonoursConcurrency(t *testing.T) {
 			}
 		}
 	})
+}
+
+// batchCall is batchCallFrames reduced to payloads, in English, for the
+// tests: an RPC that produced no frame gets an empty string.
+func (c *Client) batchCall(ctx context.Context, country string, calls []rpcCall) ([]string, error) {
+	got, err := c.batchCallFrames(ctx, "en", country, calls)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]string, len(got))
+	for i, f := range got {
+		out[i] = f.Payload
+	}
+	return out, nil
 }

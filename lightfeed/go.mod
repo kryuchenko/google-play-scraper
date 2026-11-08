@@ -4,7 +4,7 @@ go 1.27
 
 require (
 	github.com/chromedp/chromedp v0.22.0
-	github.com/kryuchenko/google-play-scraper v1.6.0
+	github.com/kryuchenko/google-play-scraper v1.7.0
 )
 
 require (

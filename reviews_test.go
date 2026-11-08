@@ -196,7 +196,7 @@ func TestReviewsIntegration(t *testing.T) {
 		t.Skip("skipping integration test in short mode")
 	}
 
-	c := NewClient()
+	c := liveClient(t)
 	result, err := c.Reviews(context.Background(), "com.google.android.apps.maps", ReviewOptions{
 		Lang:    "en",
 		Country: "us",
@@ -232,7 +232,7 @@ func TestReviewsSortHelpfulness(t *testing.T) {
 		t.Skip("skipping integration test in short mode")
 	}
 
-	c := NewClient()
+	c := liveClient(t)
 	result, err := c.Reviews(context.Background(), "com.instagram.android", ReviewOptions{
 		Sort:  SortHelpfulness,
 		Count: 10,
@@ -263,7 +263,7 @@ func TestReviewsSortRating(t *testing.T) {
 		t.Skip("skipping integration test in short mode")
 	}
 
-	c := NewClient()
+	c := liveClient(t)
 	result, err := c.Reviews(context.Background(), "com.instagram.android", ReviewOptions{
 		Sort:  SortRating,
 		Count: 10,
@@ -290,7 +290,7 @@ func TestReviewsJapanese(t *testing.T) {
 		t.Skip("skipping integration test in short mode")
 	}
 
-	c := NewClient()
+	c := liveClient(t)
 	result, err := c.Reviews(context.Background(), "com.google.android.apps.maps", ReviewOptions{
 		Lang:    "ja",
 		Country: "jp",
@@ -316,7 +316,7 @@ func TestReviewsPagination(t *testing.T) {
 		t.Skip("skipping integration test in short mode")
 	}
 
-	c := NewClient()
+	c := liveClient(t)
 	ctx := context.Background()
 
 	// Get first page
@@ -358,7 +358,7 @@ func TestReviewsConsistency(t *testing.T) {
 		t.Skip("skipping integration test in short mode")
 	}
 
-	c := NewClient()
+	c := liveClient(t)
 	ctx := context.Background()
 
 	opts := ReviewOptions{

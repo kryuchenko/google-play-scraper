@@ -258,10 +258,7 @@ func TestParseListPageNoDs4(t *testing.T) {
 // "Similar" cluster is present.
 func TestFindSimilarClusterNoCluster(t *testing.T) {
 	page := htmlWithDataBlocks(map[string]string{"ds:7": `[null,[null,[]]]`})
-	url, err := findSimilarCluster(page)
-	if err != nil {
-		t.Fatalf("findSimilarCluster: %v", err)
-	}
+	url := findSimilarCluster(page)
 	if url != "" {
 		t.Errorf("url = %q, want empty", url)
 	}

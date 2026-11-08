@@ -17,11 +17,15 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 )
 
 // buildBinary compiles gpscrape once into the test's temp dir. Testing the
@@ -31,7 +35,7 @@ import (
 func buildBinary(t *testing.T) string {
 	t.Helper()
 	bin := filepath.Join(t.TempDir(), "gpscrape")
-	out, err := exec.Command("go", "build", "-o", bin, ".").CombinedOutput()
+	out, err := exec.CommandContext(t.Context(), "go", "build", "-o", bin, ".").CombinedOutput()
 	if err != nil {
 		t.Fatalf("build gpscrape: %v\n%s", err, out)
 	}
@@ -39,23 +43,103 @@ func buildBinary(t *testing.T) string {
 }
 
 // run executes one gpscrape invocation with a throttle, returning stdout.
+//
+// Every invocation writes its -debug log (each request's URL, status, attempt
+// and latency, each retry) next to a record of the run: arguments, exit
+// status, stderr and the first 4 KB of stdout. A test that fails keeps them
+// under $GPSCRAPE_EVIDENCE_DIR/cli, or a temporary directory it logs; one that
+// passes deletes them. The binary is another process, so this is what can be
+// had of its traffic without a proxy: no response headers or bodies, which
+// the library canary's evidence has.
 func run(t *testing.T, bin string, args ...string) string {
 	t.Helper()
+	ev := cliEvidenceFor(t)
 	// Flags go after the command, and after its verb when it has one: the
 	// dispatchers read those positionally, before any flag parsing.
 	n := 1
 	if len(args) > 1 && args[0] == "catalog" && !strings.HasPrefix(args[1], "-") {
 		n = 2
 	}
-	args = append(append(append([]string{}, args[:n]...), "-throttle", "700ms"), args[n:]...)
-	cmd := exec.Command(bin, args...)
+	ev.n++
+	logFile := filepath.Join(ev.dir, fmt.Sprintf("%02d-%s.log", ev.n, strings.Join(args[:n], "-")))
+	args = append(append(append([]string{}, args[:n]...),
+		"-throttle", "700ms", "-debug", "-log-file", logFile), args[n:]...)
+	cmd := exec.CommandContext(t.Context(), bin, args...)
 	var stderr strings.Builder
 	cmd.Stderr = &stderr
+	start := time.Now()
 	out, err := cmd.Output()
+	ev.runs = append(ev.runs, cliInvocation{
+		Args: args, Started: start.UTC(), Took: time.Since(start).String(),
+		Exit: cmd.ProcessState.ExitCode(), Stderr: stderr.String(),
+		Stdout: string(out[:min(len(out), 4<<10)]), StdoutBytes: len(out), Log: filepath.Base(logFile),
+	})
 	if err != nil {
 		t.Fatalf("gpscrape %s: %v\nstderr: %s", strings.Join(args, " "), err, stderr.String())
 	}
 	return string(out)
+}
+
+type cliInvocation struct {
+	Args        []string  `json:"args"`
+	Started     time.Time `json:"started"`
+	Took        string    `json:"took"`
+	Exit        int       `json:"exit"`
+	Stderr      string    `json:"stderr"`
+	Stdout      string    `json:"stdout"`
+	StdoutBytes int       `json:"stdout_bytes"`
+	Log         string    `json:"log"`
+}
+
+type cliEvidence struct {
+	dir  string
+	n    int
+	runs []cliInvocation
+}
+
+var (
+	cliEvidenceMu   sync.Mutex
+	cliEvidenceByT  = map[*testing.T]*cliEvidence{}
+	cliEvidenceRoot string
+)
+
+// cliEvidenceFor is t's evidence directory, created on first use and kept
+// only if t fails.
+func cliEvidenceFor(t *testing.T) *cliEvidence {
+	t.Helper()
+	cliEvidenceMu.Lock()
+	defer cliEvidenceMu.Unlock()
+	if ev := cliEvidenceByT[t]; ev != nil {
+		return ev
+	}
+	if cliEvidenceRoot == "" {
+		cliEvidenceRoot = os.Getenv("GPSCRAPE_EVIDENCE_DIR")
+		if cliEvidenceRoot == "" {
+			d, err := os.MkdirTemp("", "gpscrape-evidence-")
+			if err != nil {
+				t.Fatal(err)
+			}
+			cliEvidenceRoot = d
+		}
+	}
+	dir := filepath.Join(cliEvidenceRoot, "cli", regexp.MustCompile(`[^A-Za-z0-9._-]+`).ReplaceAllString(t.Name(), "_"))
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	ev := &cliEvidence{dir: dir}
+	cliEvidenceByT[t] = ev
+	t.Cleanup(func() {
+		if !t.Failed() {
+			_ = os.RemoveAll(dir)
+			return
+		}
+		b, _ := json.MarshalIndent(ev.runs, "", "  ")
+		if err := os.WriteFile(filepath.Join(dir, "invocations.json"), b, 0o644); err != nil {
+			t.Logf("evidence: %v", err)
+		}
+		t.Logf("evidence: the runs and their -debug logs are in %s", dir)
+	})
+	return ev
 }
 
 // ndjson parses the output as newline-delimited JSON objects, which is the
@@ -330,14 +414,14 @@ func TestCanaryCLI(t *testing.T) {
 	})
 
 	t.Run("unknown_command_fails", func(t *testing.T) {
-		cmd := exec.Command(bin, "definitely-not-a-command")
+		cmd := exec.CommandContext(t.Context(), bin, "definitely-not-a-command")
 		if err := cmd.Run(); err == nil {
 			t.Error("an unknown command exited 0")
 		}
 	})
 
 	t.Run("missing_argument_fails", func(t *testing.T) {
-		cmd := exec.Command(bin, "app")
+		cmd := exec.CommandContext(t.Context(), bin, "app")
 		out, err := cmd.CombinedOutput()
 		if err == nil {
 			t.Error("app with no appID exited 0")
@@ -418,4 +502,61 @@ func TestConfirmGoneRescuesWhatOneStorefrontCannotSee(t *testing.T) {
 	if _, ok := table["com.imobpower.misericordia"]; ok {
 		t.Error("an app no storefront can see was written to the table")
 	}
+}
+
+// TestCanaryCatalogGames runs the whole-catalog games pipeline -- sweep,
+// genres, apps -genre GAME_* -- on a 0.01% sample: about nine sitemap shards
+// and a few dozen requests. It proves the chain is alive end to end (the
+// sitemap index is reachable, shards parse, genre lookups resolve, the games
+// filter reads the table), not that a full sweep finishes; that is 87k
+// requests and hours, and nobody runs it to check a pipe.
+func TestCanaryCatalogGames(t *testing.T) {
+	bin := buildBinary(t)
+	dir := t.TempDir()
+
+	var sweep map[string]any
+	for _, rec := range ndjson(t, run(t, bin, "catalog", "sweep", "-dir", dir, "-sample", "0.01", "-yes")) {
+		if _, ok := rec["ids"]; ok {
+			sweep = rec
+		}
+	}
+	ids, _ := sweep["ids"].(float64)
+	if ids < 50 {
+		t.Fatalf("sampled sweep listed %.0f ids, want at least 50: %v", ids, sweep)
+	}
+
+	genres := ndjson(t, run(t, bin, "catalog", "genres", "-dir", dir, "-all"))
+	resolved := 0
+	for _, g := range genres {
+		if s, _ := g["genre_id"].(string); s != "" {
+			resolved++
+		}
+	}
+	// About nine in ten resolve; the rest are sitemap entries no storefront
+	// serves any more. Under seven in ten means lookups are failing.
+	if float64(resolved) < 0.7*float64(len(genres)) {
+		t.Errorf("%d of %d apps got a genre, want at least 70%%", resolved, len(genres))
+	}
+
+	// apps reads the table on disk and makes no request, so it takes no
+	// -throttle and runs without the helper that adds one.
+	out, err := exec.CommandContext(t.Context(), bin, "catalog", "apps", "-dir", dir, "-genre", "GAME_*", "-allow-sample").Output()
+	if err != nil {
+		t.Fatalf("catalog apps: %v", err)
+	}
+	games := ndjson(t, string(out))
+	kinds := map[string]bool{}
+	for _, g := range games {
+		id, _ := g["genre_id"].(string)
+		if !strings.HasPrefix(id, "GAME_") {
+			t.Errorf("GAME_* filter let through %v", g)
+		}
+		kinds[id] = true
+		nonEmptyString(t, g, "app_id")
+	}
+	// Games are about a tenth of the store, spread over 17 genres.
+	if len(kinds) < 3 {
+		t.Errorf("%d games in %d genres, want at least 3 genres: %v", len(games), len(kinds), kinds)
+	}
+	t.Logf("sample: %.0f ids, %d with a genre, %d games in %d genres", ids, resolved, len(games), len(kinds))
 }

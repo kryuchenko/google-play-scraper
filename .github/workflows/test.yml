@@ -8,7 +8,7 @@ on:
 
 # Read-only by default. The one job that writes -- the coverage badge push --
 # asks for contents: write itself. Everything else here runs third-party
-# tools (golangci-lint, govulncheck, two npx linters), and none of them should
+# tools (golangci-lint, two npx linters), and none of them should
 # hold a token that can push to this repository.
 permissions:
   contents: read
@@ -60,6 +60,20 @@ jobs:
       # hit play.google.com and flake on Google's jitter / rate limits) and
       # runs the offline, fixture-backed suite. Live drift detection lives in
       # the scheduled canary workflow instead.
+      # unused cannot see code that only tests call; deadcode can: it walks
+      # from the binaries (gpscrape, the examples, fixturegen) without the
+      # tests. Exported names are printed, not failed: a library's API has no
+      # caller inside this repository. Code only tests need lives in
+      # testonly_test.go.
+      - name: Dead code
+        if: matrix.go-version == 'stable'
+        run: |
+          all=$(go run golang.org/x/tools/cmd/deadcode@v0.52.0 ./...)
+          pat='unreachable func: ([A-Za-z0-9_]+\.)?[a-z_]'
+          printf '%s\n' "$all" | grep -vE "$pat" | sed 's/^/exported, no binary calls it: /' || true
+          dead=$(printf '%s\n' "$all" | grep -E "$pat" || true)
+          if [ -n "$dead" ]; then printf '%s\n' "$dead"; exit 1; fi
+
       - name: Run tests with coverage
         run: go test -short -v -race -coverprofile=coverage.out -covermode=atomic ./...
 
@@ -116,16 +130,15 @@ jobs:
           go vet ./...
           go test -race ./...
 
-      # The root Lint and Vulnerability scan steps see only the root module,
-      # which has no dependencies. The server is the module that does: the
-      # go-sdk, oauth2, x/sys. Same pinned tools, same .golangci.yml (found
-      # in the parent directory).
-      - name: Lint and scan mcp submodule
+      # The root Lint step sees only the root module, which has no
+      # dependencies. The server is the module that does: the go-sdk, oauth2,
+      # x/sys. Same pinned linter, same .golangci.yml (found in the parent
+      # directory). Its vulnerability scan is the govulncheck job in
+      # codeql.yml, which covers every module.
+      - name: Lint mcp submodule
         if: matrix.go-version == 'stable'
         working-directory: mcp
-        run: |
-          go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.14.0 run --timeout 10m ./...
-          go run golang.org/x/vuln/cmd/govulncheck@v1.7.0 ./...
+        run: go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.14.0 run --timeout 10m ./...
 
       # The official MCP conformance suite against the real HTTP server. Most
       # of its server scenarios call fixtures of the reference test server
@@ -164,8 +177,9 @@ jobs:
 
       # A short fuzz run per target on top of the seed corpus. Not long enough
       # to explore much, but enough that a parser which panics on the shapes
-      # already in testdata/ cannot merge. Deep runs belong in a scheduled job,
-      # not on the pull-request path.
+      # already in testdata/ cannot merge. Ten seconds a target: at thirty this
+      # step was half the pull request's wall clock. The deep runs are in
+      # fuzz.yml, weekly, ten minutes a target.
       # The differential targets are listed too, and were missing. The six
       # panic-contract fuzzers only assert that a parser does not blow up; the
       # differential ones hold a hand-written scanner against the
@@ -183,18 +197,16 @@ jobs:
                         FuzzDataBlockScanMatchesRegex FuzzShardScanMatchesXML \
                         FuzzIndexScanMatchesXML FuzzShardStreamMatchesBuffer; do
             echo "== $target"
-            go test -run '^$' -fuzz "^$target$" -fuzztime 30s .
+            go test -run '^$' -fuzz "^$target$" -fuzztime 10s .
           done
 
-      - name: Vulnerability scan
-        # Pinned, and the pin has to move with the toolchain: govulncheck
-        # v1.1.4 builds on golang.org/x/tools v0.29.0, whose SSA builder
-        # predates Go 1.27 and panics on it -- "unexpected expr:
-        # *ast.KeyValueExpr" on a composite literal inside a return. v1.7.0
-        # carries x/tools v0.49.0. When `stable` moves to a Go release this
-        # cannot parse, this is the line to bump.
-        if: matrix.go-version == 'stable'
-        run: go run golang.org/x/vuln/cmd/govulncheck@v1.7.0 ./...
+      # Allocation and memory budgets (alloc_budget_test.go). The file is
+      # built only without -race, which counts allocations differently, so
+      # the -race test step never compiles it. Both legs run it: the budgets
+      # carry 10% of slack, which so far covers the difference between the
+      # toolchains; when a Go release moves them past it, re-measure.
+      - name: Allocation and memory budgets
+        run: go test -short -count 1 -run '^Test(AllocBudget|ShardStreamBytesBudget|HeapCeiling)$' .
 
       # Module mode resolves the root from the proxy, i.e. the last tagged
       # release, so this is the consumer's view: does apidoc still build
@@ -205,7 +217,13 @@ jobs:
       - name: Build API docs against the published root (apidoc submodule)
         if: matrix.go-version == 'stable'
         working-directory: apidoc
-        run: go build ./... && go vet ./...
+        run: |
+          go build ./... && go vet ./...
+          # Same linter and config as the root. The endpoint stubs are
+          # annotation carriers swag reads and nothing calls; stubs_test.go
+          # lists them and checks their annotations, which is what keeps
+          # them referenced.
+          go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.14.0 run --config ../.golangci.yml --timeout 10m ./...
 
       # As with lightfeed above: the step before this resolves the root module
       # from the proxy, so the drift test regenerated the spec from the
@@ -249,6 +267,25 @@ jobs:
   # Its own job so that contents: write is scoped to the one step that pushes
   # and to nothing that runs a third-party tool. The trigger is the one the
   # badge always had: a push to main, measured on the stable leg.
+  # gpscrape runs on Windows too -- the PC catalog (pcapp) is what most of
+  # its Windows users want -- and Windows differs where this code is most
+  # careful: renaming onto a file that is still open fails there, file
+  # locks are their own implementation (lock_windows.go), and paths use
+  # backslashes. A table published by renaming over the open original
+  # passed every Linux run and failed on every Windows one.
+  test-windows:
+    runs-on: windows-latest
+    env:
+      GOWORK: 'off'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Setup Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version: stable
+      - name: Test (short)
+        run: go test -short -count=1 ./...
+
   badge:
     needs: test
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'

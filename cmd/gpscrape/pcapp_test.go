@@ -56,8 +56,9 @@ func TestPCAppEmitsOneRecordPerIDInOrder(t *testing.T) {
 	if recs[1]["appId"] != "com.mobile" || recs[1]["onPC"] != false || recs[1]["error"] != nil {
 		t.Errorf("an app without a PC build gave %v, want onPC false and no error", recs[1])
 	}
-	if recs[2]["appId"] != "com.gone" || recs[2]["error"] == nil || len(recs[2]) != 2 {
-		t.Errorf("failure record = %v, want exactly {appId, error}", recs[2])
+	// The failure carries its code like every other command's error entry.
+	if recs[2]["appId"] != "com.gone" || recs[2]["error"] == nil || recs[2]["code"] != "not_found" || len(recs[2]) != 3 {
+		t.Errorf("failure record = %v, want exactly {appId, code: not_found, error}", recs[2])
 	}
 	if !strings.Contains(stderr, "com.gone") {
 		t.Errorf("stderr does not name the app that failed:\n%s", stderr)

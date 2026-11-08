@@ -70,7 +70,7 @@ func TestValidators(t *testing.T) {
 // search an empty result rather than an error.
 func TestClassifySearchPageFixtures(t *testing.T) {
 	zero := readFixture(t, "search_zero_results.html")
-	results, _, _ := parseSearchPage(zero, 20)
+	results, _, _ := parseSearchPage(zero)
 	if len(results) != 0 {
 		t.Fatalf("zero-results fixture parsed to %d results", len(results))
 	}
@@ -79,7 +79,7 @@ func TestClassifySearchPageFixtures(t *testing.T) {
 	}
 
 	full := readFixture(t, "search_page.html")
-	results, _, _ = parseSearchPage(full, 20)
+	results, _, _ = parseSearchPage(full)
 	if v, _ := classifySearchPage(full, results); v != VerdictOK {
 		t.Errorf("populated search = %s, want ok", v)
 	}
@@ -124,7 +124,7 @@ func TestEndpointChecksAcceptFixtures(t *testing.T) {
 func redirectTo(final string, status int, body string, calls *atomic.Int32) *http.Client {
 	return &http.Client{Transport: &MockTransport{RoundTripFunc: func(req *http.Request) (*http.Response, error) {
 		calls.Add(1)
-		end, _ := http.NewRequest(http.MethodGet, final, nil)
+		end, _ := http.NewRequestWithContext(req.Context(), http.MethodGet, final, nil)
 		return &http.Response{
 			StatusCode: status,
 			Body:       io.NopCloser(strings.NewReader(body)),

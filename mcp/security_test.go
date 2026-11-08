@@ -21,7 +21,7 @@ func TestHTTPOriginValidation(t *testing.T) {
 		handler := HTTPHandler(NewServer(&fake{}, Options{}), HTTPOptions{Token: token})
 		for _, method := range []string{"GET", "HEAD", "OPTIONS", "POST", "DELETE"} {
 			for _, origin := range []string{"https://evil.example", "null", "", "http://localhost/path", "http://localhost?x", "http://user@localhost", "http://localhost#x", "ftp://localhost", "http://localhost https://evil.example"} {
-				req := httptest.NewRequest(method, "http://localhost/mcp", strings.NewReader(`{}`))
+				req := httptest.NewRequestWithContext(t.Context(), method, "http://localhost/mcp", strings.NewReader(`{}`))
 				req.Header.Set("Origin", origin)
 				// A Fetch Metadata header must not override an invalid Origin.
 				req.Header.Set("Sec-Fetch-Site", "same-origin")
@@ -33,7 +33,7 @@ func TestHTTPOriginValidation(t *testing.T) {
 				}
 			}
 		}
-		req := httptest.NewRequest("POST", "http://localhost/mcp/secret", nil)
+		req := httptest.NewRequestWithContext(t.Context(), "POST", "http://localhost/mcp/secret", nil)
 		req.Header["Origin"] = []string{"http://localhost", "https://evil.example"}
 		w := httptest.NewRecorder()
 		handler.ServeHTTP(w, req)
@@ -139,7 +139,7 @@ func TestServerDiscover(t *testing.T) {
 	defer ts.Close()
 	send := func(body string, modern bool) map[string]any {
 		t.Helper()
-		req, err := http.NewRequest("POST", ts.URL+"/mcp", strings.NewReader(body))
+		req, err := http.NewRequestWithContext(t.Context(), "POST", ts.URL+"/mcp", strings.NewReader(body))
 		if err != nil {
 			t.Fatal(err)
 		}

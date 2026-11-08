@@ -126,7 +126,7 @@ func New(opts ...Option) (*Paginator, error) {
 
 	if cfg.lightpandaPath != "" {
 		if _, err := os.Stat(cfg.lightpandaPath); err != nil {
-			return nil, fmt.Errorf("%w: %q: %v", ErrLightpandaNotFound, cfg.lightpandaPath, err)
+			return nil, fmt.Errorf("%w: %q: %w", ErrLightpandaNotFound, cfg.lightpandaPath, err)
 		}
 	}
 

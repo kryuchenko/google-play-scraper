@@ -35,13 +35,13 @@ func TestAdaptiveSpeedsUpAfterACleanWindow(t *testing.T) {
 	})
 
 	for range 4 {
-		c.observe(context.Background(), http.StatusOK, time.Millisecond, nil)
+		c.observe(context.Background(), http.StatusOK, time.Millisecond)
 	}
 	if got := c.CurrentThrottle(); got != time.Second {
 		t.Errorf("throttle moved to %v before the window closed", got)
 	}
 
-	c.observe(context.Background(), http.StatusOK, time.Millisecond, nil)
+	c.observe(context.Background(), http.StatusOK, time.Millisecond)
 	if got := c.CurrentThrottle(); got != 500*time.Millisecond {
 		t.Errorf("throttle = %v after a clean window, want 500ms", got)
 	}
@@ -57,13 +57,13 @@ func TestAdaptiveBacksOffHardOnRejection(t *testing.T) {
 			Min: 10 * time.Millisecond, Max: time.Second, Window: 1, Speedup: 0.5, Slowdown: 4,
 		})
 		// Two clean windows: 1s -> 500ms -> 250ms.
-		c.observe(context.Background(), http.StatusOK, time.Millisecond, nil)
-		c.observe(context.Background(), http.StatusOK, time.Millisecond, nil)
+		c.observe(context.Background(), http.StatusOK, time.Millisecond)
+		c.observe(context.Background(), http.StatusOK, time.Millisecond)
 		if got := c.CurrentThrottle(); got != 250*time.Millisecond {
 			t.Fatalf("setup: throttle = %v, want 250ms", got)
 		}
 
-		c.observe(context.Background(), status, time.Millisecond, nil)
+		c.observe(context.Background(), status, time.Millisecond)
 		if got := c.CurrentThrottle(); got != time.Second {
 			t.Errorf("status %d: throttle = %v, want it back at Max", status, got)
 		}
@@ -83,28 +83,28 @@ func TestAdaptiveNeedsAStreakBeforeActingOnLatency(t *testing.T) {
 	// Fill the window so the baseline means something. Until it is half full
 	// the controller deliberately ignores latency entirely.
 	for range 20 {
-		c.observe(context.Background(), http.StatusOK, 100*time.Millisecond, nil)
+		c.observe(context.Background(), http.StatusOK, 100*time.Millisecond)
 	}
 	before := c.CurrentThrottle()
 
 	// Four slow responses in a row: suggestive, not yet evidence.
 	for range 4 {
-		c.observe(context.Background(), http.StatusOK, 300*time.Millisecond, nil)
+		c.observe(context.Background(), http.StatusOK, 300*time.Millisecond)
 	}
 	if got := c.CurrentThrottle(); got != before {
 		t.Errorf("throttle moved to %v after four slow responses; want a full streak first", got)
 	}
 
 	// The fifth completes the streak.
-	c.observe(context.Background(), http.StatusOK, 300*time.Millisecond, nil)
+	c.observe(context.Background(), http.StatusOK, 300*time.Millisecond)
 	if got := c.CurrentThrottle(); got <= before {
 		t.Errorf("throttle = %v after a streak of slow responses, want slower than %v", got, before)
 	}
 
 	// A single slow response after a healthy one starts the count over.
-	c.observe(context.Background(), http.StatusOK, 100*time.Millisecond, nil)
+	c.observe(context.Background(), http.StatusOK, 100*time.Millisecond)
 	now := c.CurrentThrottle()
-	c.observe(context.Background(), http.StatusOK, 300*time.Millisecond, nil)
+	c.observe(context.Background(), http.StatusOK, 300*time.Millisecond)
 	if got := c.CurrentThrottle(); got != now {
 		t.Errorf("throttle = %v; one slow response after a healthy one acted immediately", got)
 	}
@@ -123,20 +123,20 @@ func TestAdaptiveGradesTheSignal(t *testing.T) {
 	}
 
 	hard := newClient()
-	hard.observe(context.Background(), http.StatusTooManyRequests, time.Millisecond, nil)
+	hard.observe(context.Background(), http.StatusTooManyRequests, time.Millisecond)
 	if got := hard.CurrentThrottle(); got != 400*time.Millisecond {
 		t.Errorf("429: throttle = %v, want the full 4x decrease", got)
 	}
 
 	soft := newClient()
-	soft.observe(context.Background(), 500, time.Millisecond, nil)
+	soft.observe(context.Background(), 500, time.Millisecond)
 	if got := soft.CurrentThrottle(); got != 200*time.Millisecond {
 		t.Errorf("500: throttle = %v, want the gentler 2x", got)
 	}
 
 	// 503 is explicit overload, so it counts as a refusal rather than a fault.
 	unavailable := newClient()
-	unavailable.observe(context.Background(), http.StatusServiceUnavailable, time.Millisecond, nil)
+	unavailable.observe(context.Background(), http.StatusServiceUnavailable, time.Millisecond)
 	if got := unavailable.CurrentThrottle(); got != 400*time.Millisecond {
 		t.Errorf("503: throttle = %v, want the full 4x decrease", got)
 	}
@@ -150,13 +150,13 @@ func TestAdaptiveRespectsBounds(t *testing.T) {
 	})
 
 	for range 50 {
-		c.observe(context.Background(), http.StatusOK, time.Millisecond, nil)
+		c.observe(context.Background(), http.StatusOK, time.Millisecond)
 	}
 	if got := c.CurrentThrottle(); got < 100*time.Millisecond {
 		t.Errorf("throttle = %v, went below Min", got)
 	}
 	for range 50 {
-		c.observe(context.Background(), http.StatusTooManyRequests, time.Millisecond, nil)
+		c.observe(context.Background(), http.StatusTooManyRequests, time.Millisecond)
 	}
 	if got := c.CurrentThrottle(); got > 200*time.Millisecond {
 		t.Errorf("throttle = %v, went above Max", got)
@@ -171,7 +171,7 @@ func TestAdaptiveHonoursRetryAfter(t *testing.T) {
 		Min: time.Millisecond, Max: 30 * time.Second, Window: 1, Speedup: 0.01,
 	})
 	// One clean window takes 30s down to 300ms.
-	c.observe(context.Background(), http.StatusOK, time.Millisecond, nil)
+	c.observe(context.Background(), http.StatusOK, time.Millisecond)
 	if got := c.CurrentThrottle(); got != 300*time.Millisecond {
 		t.Fatalf("setup: throttle = %v, want 300ms", got)
 	}
@@ -232,8 +232,8 @@ func TestAdaptiveIsOptIn(t *testing.T) {
 	c := newMockClient(t, routePath("/x", []byte("ok")))
 	WithThrottle(250 * time.Millisecond)(c)
 
-	c.observe(context.Background(), http.StatusTooManyRequests, time.Second, nil)
-	c.observe(context.Background(), http.StatusOK, time.Microsecond, nil)
+	c.observe(context.Background(), http.StatusTooManyRequests, time.Second)
+	c.observe(context.Background(), http.StatusOK, time.Microsecond)
 
 	if got := c.CurrentThrottle(); got != 250*time.Millisecond {
 		t.Errorf("throttle = %v, want the fixed 250ms untouched", got)
@@ -320,5 +320,330 @@ func TestAdaptiveBoundsHoldAtConstruction(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// observe feeds one response into the controller the way the pipeline's
+// record does, without an admission ticket: the interval only, no breaker.
+func (c *Client) observe(ctx context.Context, status int, rtt time.Duration) {
+	c.record(ctx, nil, outcome{status: status, rtt: rtt})
+}
+
+// The CLI's policy (Min = -throttle, Max 2s). Two latency modes that are both normal -- cache hits around 22ms, the rest
+// around 48ms, the occasional 81ms -- must not read as congestion. Against a
+// minimum baseline they did: the interval climbed to the ceiling on a live
+// run where every response was a 200.
+func TestAdaptiveIgnoresABimodalButSteadyLatency(t *testing.T) {
+	c := NewClient(WithThrottle(200*time.Millisecond), WithAdaptiveThrottle(AdaptivePolicy{Min: 200 * time.Millisecond, Max: 2 * time.Second}))
+	// One cache hit in twelve, as on the live run: enough to set a minimum
+	// baseline at 22ms, too rare to break a streak of ordinary responses.
+	pattern := []time.Duration{22, 48, 51, 47, 55, 49, 81, 46, 52, 50, 48, 60}
+	for i := range 2000 {
+		c.observe(context.Background(), http.StatusOK, pattern[i%len(pattern)]*time.Millisecond)
+	}
+	if got := c.CurrentThrottle(); got > 200*time.Millisecond {
+		t.Errorf("throttle climbed to %v on steady latency; it should not slow down", got)
+	}
+}
+
+// A real slowdown -- every response four times the usual -- still slows the
+// client.
+func TestAdaptiveStillSlowsOnARealSlowdown(t *testing.T) {
+	c := NewClient(WithThrottle(200*time.Millisecond), WithAdaptiveThrottle(AdaptivePolicy{Min: 200 * time.Millisecond, Max: 2 * time.Second}))
+	for range 64 {
+		c.observe(context.Background(), http.StatusOK, 50*time.Millisecond)
+	}
+	before := c.CurrentThrottle()
+	for range 10 {
+		c.observe(context.Background(), http.StatusOK, 200*time.Millisecond)
+	}
+	// Ten slow responses are two streaks of five against a median that is
+	// still the usual 50ms.
+	if got := c.CurrentThrottle(); got <= before {
+		t.Errorf("throttle %v after a sustained 4x slowdown, was %v", got, before)
+	}
+}
+
+func probingClient(memory time.Duration) *Client {
+	return NewClient(WithThrottle(200*time.Millisecond), WithAdaptiveThrottle(AdaptivePolicy{
+		Min: 20 * time.Millisecond, Max: 2 * time.Second, Window: 2, ProbeWindow: 4, CutMemory: memory,
+	}))
+}
+
+func clean(c *Client, n int) {
+	for range n {
+		c.observe(context.Background(), http.StatusOK, 50*time.Millisecond)
+	}
+}
+
+// After a refusal the controller recovers to 25% above the interval it was
+// refused at -- 80% of that rate -- and stays there, rather than climbing
+// back into the same refusal.
+func TestAdaptiveSettlesBelowTheRememberedCut(t *testing.T) {
+	c := probingClient(time.Hour)
+	clean(c, 400) // probe down from 200ms
+	at := c.CurrentThrottle()
+	c.observe(context.Background(), http.StatusTooManyRequests, 50*time.Millisecond)
+	clean(c, 2000)
+	want := time.Duration(float64(at) * 1.25)
+	if got := c.CurrentThrottle(); got < want || got > want*11/10 {
+		t.Errorf("settled at %v after a cut at %v; want about %v", got, at, want)
+	}
+}
+
+// The ceiling is the median of the remembered cuts: one refusal at an
+// unusually slow interval -- somebody else's traffic -- does not drag it.
+func TestAdaptiveCeilingIsTheMedianOfCuts(t *testing.T) {
+	c := probingClient(time.Hour)
+	c.throttleLock.Lock()
+	for _, d := range []time.Duration{100, 100, 400} {
+		c.noteCut(d * time.Millisecond)
+	}
+	floor := c.cutFloor()
+	c.throttleLock.Unlock()
+	if floor != 125*time.Millisecond {
+		t.Errorf("floor = %v from cuts 100,100,400ms; want the median plus headroom, 125ms", floor)
+	}
+}
+
+// A cut older than CutMemory is forgotten, so the controller probes again.
+func TestAdaptiveForgetsOldCuts(t *testing.T) {
+	c := probingClient(50 * time.Millisecond)
+	c.throttleLock.Lock()
+	c.noteCut(100 * time.Millisecond)
+	if c.cutFloor() == 0 {
+		t.Fatal("a fresh cut gave no floor")
+	}
+	c.throttleLock.Unlock()
+	time.Sleep(80 * time.Millisecond)
+	c.throttleLock.Lock()
+	defer c.throttleLock.Unlock()
+	if f := c.cutFloor(); f != 0 {
+		t.Errorf("floor %v from a cut older than CutMemory", f)
+	}
+}
+
+// Faster than the caller's own interval, each step waits ProbeWindow clean
+// responses instead of Window.
+func TestAdaptiveProbesSlowlyPastTheCallersInterval(t *testing.T) {
+	c := probingClient(time.Hour)
+	clean(c, 3) // Window is 2, ProbeWindow 4: not yet
+	if got := c.CurrentThrottle(); got != 200*time.Millisecond {
+		t.Errorf("throttle %v after 3 clean responses; the first step past 200ms needs 4", got)
+	}
+	clean(c, 1)
+	if got := c.CurrentThrottle(); got >= 200*time.Millisecond {
+		t.Errorf("throttle %v after 4 clean responses; want a step below 200ms", got)
+	}
+}
+
+// Found by the state-model test: a clean window that would have stepped past
+// the cut floor moved the interval to the floor even when the floor was
+// slower than the interval in use. A cut near Max puts the floor above Max,
+// and the first clean window took the client past its ceiling.
+func TestAdaptiveCleanWindowNeverSlowsDown(t *testing.T) {
+	c := NewClient(WithAdaptiveThrottle(AdaptivePolicy{Min: 20 * time.Millisecond, Max: time.Second, Window: 2}))
+	c.throttleLock.Lock()
+	c.noteCut(900 * time.Millisecond) // floor 1.125s, above Max
+	c.throttleLock.Unlock()
+	clean(c, 2)
+	if got := c.CurrentThrottle(); got != time.Second {
+		t.Errorf("throttle %v after a clean window under a floor above Max; want it to stay at Max", got)
+	}
+}
+
+// Found by the state-model test: a step that would cross the floor stopped
+// one step short of it instead of settling on it.
+func TestAdaptiveSettlesOnTheFloor(t *testing.T) {
+	c := NewClient(WithAdaptiveThrottle(AdaptivePolicy{
+		Min: 20 * time.Millisecond, Max: 2 * time.Second, Start: time.Second, Window: 1, ProbeWindow: 1,
+	}))
+	c.throttleLock.Lock()
+	c.noteCut(400 * time.Millisecond) // floor 500ms
+	c.throttle = 520 * time.Millisecond
+	c.throttleLock.Unlock()
+	clean(c, 1) // 520ms * 0.9 = 468ms would cross it
+	if got := c.CurrentThrottle(); got != 500*time.Millisecond {
+		t.Errorf("throttle %v; want it on the 500ms floor", got)
+	}
+}
+
+// Found by the state-model test: with WithThrottle after WithAdaptiveThrottle
+// the controller forgot the caller's number and probed past it on Window.
+func TestAdaptiveProbesSlowlyWhicheverOrder(t *testing.T) {
+	c := NewClient(WithAdaptiveThrottle(AdaptivePolicy{
+		Min: 20 * time.Millisecond, Max: 2 * time.Second, Window: 2, ProbeWindow: 4,
+	}), WithThrottle(200*time.Millisecond))
+	clean(c, 3)
+	if got := c.CurrentThrottle(); got != 200*time.Millisecond {
+		t.Errorf("throttle %v after 3 clean responses; the first step past 200ms needs 4", got)
+	}
+}
+
+func floorOf(c *Client) time.Duration {
+	c.throttleLock.Lock()
+	defer c.throttleLock.Unlock()
+	return c.cutFloor()
+}
+
+// Only the first refusal of an episode is a cut. The ones after it arrive at
+// an interval the first one doubled, and at Max, and remembering them held
+// the client at Max for CutMemory after every outage.
+func TestAdaptiveOutageLeavesOneCut(t *testing.T) {
+	c := NewClient(WithAdaptiveThrottle(AdaptivePolicy{
+		Min: 20 * time.Millisecond, Max: 2 * time.Second, Start: 100 * time.Millisecond, Window: 2, ProbeWindow: 2,
+	}))
+	for range 10 {
+		c.observe(context.Background(), http.StatusTooManyRequests, 50*time.Millisecond)
+	}
+	if got := c.CurrentThrottle(); got != 2*time.Second {
+		t.Fatalf("throttle %v after an outage, want Max", got)
+	}
+	if f := floorOf(c); f != 125*time.Millisecond {
+		t.Errorf("floor %v after an outage that began at 100ms; want 125ms from its first refusal only", f)
+	}
+	clean(c, 100)
+	if got := c.CurrentThrottle(); got != 125*time.Millisecond {
+		t.Errorf("throttle %v after the outage ended; want it back on the 125ms floor", got)
+	}
+}
+
+// A refusal at Max is no ceiling to settle below, and a 503 is the server
+// unavailable to everyone rather than limiting this client: neither is a cut.
+func TestAdaptiveRefusalsThatAreNotCuts(t *testing.T) {
+	for name, tc := range map[string]struct {
+		start  time.Duration
+		status int
+	}{
+		"429 at Max": {2 * time.Second, http.StatusTooManyRequests},
+		"503":        {100 * time.Millisecond, http.StatusServiceUnavailable},
+	} {
+		c := NewClient(WithAdaptiveThrottle(AdaptivePolicy{Min: 20 * time.Millisecond, Max: 2 * time.Second, Start: tc.start}))
+		c.observe(context.Background(), tc.status, 50*time.Millisecond)
+		if f := floorOf(c); f != 0 {
+			t.Errorf("%s: floor %v, want no cut", name, f)
+		}
+	}
+}
+
+// A refusal from a request sent before the breaker's pause is ignored by the
+// interval as it is by the breaker: it neither slows the client again nor
+// leaves a cut.
+func TestAdaptiveIgnoresStaleRefusals(t *testing.T) {
+	c := NewClient(WithAdaptiveThrottle(AdaptivePolicy{
+		Min: 20 * time.Millisecond, Max: 5 * time.Second, Start: 100 * time.Millisecond, Cooldown: time.Hour,
+	}))
+	ctx := context.Background()
+	t1, t2 := &ticket{gen: c.brk.gen}, &ticket{gen: c.brk.gen}
+	refused := outcome{status: http.StatusTooManyRequests, rtt: 50 * time.Millisecond}
+	c.record(ctx, t1, refused)
+	if s, _ := c.Breaker(); s != BreakerOpen {
+		t.Fatalf("breaker %s after a refusal, want open", s)
+	}
+	thr, floor := c.CurrentThrottle(), floorOf(c)
+	c.record(ctx, t2, refused) // in flight when the first one landed
+	if got := c.CurrentThrottle(); got != thr {
+		t.Errorf("a stale refusal moved the interval %v -> %v", thr, got)
+	}
+	if f := floorOf(c); f != floor {
+		t.Errorf("a stale refusal moved the floor %v -> %v", floor, f)
+	}
+}
+
+// Without a breaker too, requests sent at the old rate and refused after the
+// first refusal slowed the client are that episode, not news: two in flight
+// slow it once. A request admitted after the slowdown and refused again
+// slows it again.
+func TestAdaptiveInFlightRefusalsWithoutABreaker(t *testing.T) {
+	c := NewClient(WithAdaptiveThrottle(AdaptivePolicy{
+		Min: 20 * time.Millisecond, Max: 5 * time.Second, Start: 100 * time.Millisecond,
+	}))
+	ctx := context.Background()
+	refused := outcome{status: http.StatusTooManyRequests, rtt: 50 * time.Millisecond}
+	t1, t2 := &ticket{refusals: c.refusals}, &ticket{refusals: c.refusals}
+	c.record(ctx, t1, refused)
+	once := c.CurrentThrottle()
+	if once <= 100*time.Millisecond {
+		t.Fatalf("a refusal left the interval at %v", once)
+	}
+	c.record(ctx, t2, refused)
+	if got := c.CurrentThrottle(); got != once {
+		t.Errorf("a refusal sent before the slowdown moved the interval %v -> %v", once, got)
+	}
+	c.record(ctx, &ticket{refusals: c.refusals}, refused)
+	if got := c.CurrentThrottle(); got <= once {
+		t.Errorf("a refusal at the new rate left the interval at %v, want above %v", got, once)
+	}
+}
+
+// AdaptivePolicy.Start wins over WithThrottle whichever is applied first.
+func TestAdaptiveStartWinsWhicheverOrder(t *testing.T) {
+	p := AdaptivePolicy{Min: 10 * time.Millisecond, Max: 5 * time.Second, Start: time.Second, Window: 2, ProbeWindow: 4}
+	for name, opts := range map[string][]ClientOption{
+		"throttle first": {WithThrottle(200 * time.Millisecond), WithAdaptiveThrottle(p)},
+		"throttle last":  {WithAdaptiveThrottle(p), WithThrottle(200 * time.Millisecond)},
+	} {
+		c := NewClient(opts...)
+		if got := c.CurrentThrottle(); got != time.Second {
+			t.Errorf("%s: began at %v, want Start (1s)", name, got)
+		}
+		clean(c, 3) // below Start: ProbeWindow
+		if got := c.CurrentThrottle(); got != time.Second {
+			t.Errorf("%s: throttle %v after 3 clean responses; Start is the caller's interval", name, got)
+		}
+	}
+}
+
+// Found by the outage-recovery model test: one slow response ended the clean
+// window. With a latency tail that crosses twice the median every few dozen
+// responses, a ProbeWindow of 100 consecutive clean ones was almost never
+// seen, and the client sat at Max after an outage. It now neither counts
+// towards the window nor ends it.
+func TestAdaptiveOneSlowResponseKeepsTheWindow(t *testing.T) {
+	c := NewClient(WithAdaptiveThrottle(AdaptivePolicy{
+		Min: 20 * time.Millisecond, Max: 2 * time.Second, Start: time.Second, Window: 10, ProbeWindow: 10,
+	}))
+	clean(c, 32) // a baseline: three windows, and two into the fourth
+	at := c.CurrentThrottle()
+	clean(c, 5)
+	c.observe(context.Background(), http.StatusOK, 300*time.Millisecond)
+	clean(c, 2)
+	if got := c.CurrentThrottle(); got != at {
+		t.Fatalf("throttle %v before the window closed, want %v", got, at)
+	}
+	clean(c, 1) // ten clean in the window, one slow among them
+	if got := c.CurrentThrottle(); got >= at {
+		t.Errorf("throttle %v; one slow response should not have ended the clean window", got)
+	}
+}
+
+// A response exactly LatencyRatio times the baseline is not slow: the rule is
+// "more than", and a clean window of them still speeds the client up.
+func TestAdaptiveLatencyAtTheRatioIsClean(t *testing.T) {
+	c := NewClient(WithAdaptiveThrottle(AdaptivePolicy{
+		Min: 10 * time.Millisecond, Max: time.Second, Window: 2, ProbeWindow: 2, LatencyRatio: 2,
+	}))
+	clean(c, 20) // a 50ms baseline: the median needs half its 32-slot window filled
+	before := c.CurrentThrottle()
+	for range 2 {
+		c.observe(context.Background(), http.StatusOK, 100*time.Millisecond)
+	}
+	if got := c.CurrentThrottle(); got >= before {
+		t.Errorf("two responses at exactly 2x the baseline left the interval at %v (was %v); they are clean", got, before)
+	}
+}
+
+// With no number from the caller -- no Start, no WithThrottle -- there is no
+// interval to probe past, so every step moves on Window, not ProbeWindow.
+func TestAdaptiveWithoutAStartMovesOnWindow(t *testing.T) {
+	c := NewClient(WithAdaptiveThrottle(AdaptivePolicy{
+		Min: 10 * time.Millisecond, Max: time.Second, Window: 2, ProbeWindow: 50,
+	}))
+	if got := c.CurrentThrottle(); got != time.Second {
+		t.Fatalf("began at %v, want Max", got)
+	}
+	clean(c, 2)
+	if got := c.CurrentThrottle(); got >= time.Second {
+		t.Errorf("a full Window of clean responses left the interval at %v; with no start it must not wait for ProbeWindow", got)
 	}
 }

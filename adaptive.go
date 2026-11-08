@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"slices"
 	"time"
 )
 
@@ -91,6 +92,37 @@ type AdaptivePolicy struct {
 	// Below 1. Default 0.9, which reaches Min from Max in about 30 windows.
 	Speedup float64
 
+	// ProbeWindow is how many consecutive clean responses justify a step
+	// faster than the interval the controller started at, where Window
+	// governs steps back up to it. Default 5 x Window. Going faster than the
+	// caller's own number is a probe for the server's ceiling, and a probe
+	// that moves every twenty responses measures what a burst survives, not
+	// what a sustained rate does: an endpoint here took 12 rps in a burst and
+	// refused after ~700 requests at that pace.
+	ProbeWindow int
+
+	// CutMemory is how long a refusal is remembered as evidence of the
+	// ceiling. Default 30 minutes.
+	//
+	// The interval at each refusal that marks a rate limit -- the first 429
+	// or soft block after an answer, below Max, with the breaker closed -- is
+	// kept (the last five). The controller
+	// will not speed up past the median of those cuts plus Headroom, so it
+	// settles below the rate that was refused instead of finding it again
+	// every few minutes -- the plateau CUBIC keeps around its last loss point
+	// (Ha, Rhee & Xu 2008). A median, because one refusal can be somebody
+	// else's traffic on a shared CDN. A cut older than CutMemory is
+	// forgotten, which is the re-probe: limits change, and a rate refused an
+	// hour ago may be fine now.
+	CutMemory time.Duration
+
+	// Headroom is how much slower than the remembered ceiling the controller
+	// settles. Default 0.25: an interval 25% longer than the median cut,
+	// which is 80% of the refused rate. Overshooting costs a refusal and
+	// possibly a block; undershooting costs time, and the two are not the
+	// same price.
+	Headroom float64
+
 	// Slowdown is the factor applied when the server says no -- 429, or 503.
 	// Above 1. Default 2, the classic multiplicative decrease: give back much
 	// more than was gained, because the cost of being wrong is asymmetric.
@@ -123,10 +155,10 @@ type AdaptivePolicy struct {
 	// LatencyRatio is how much slower than the recent baseline a response may
 	// be before it counts as trouble. Default 2.
 	//
-	// The baseline is the minimum over a sliding window, not the best ever
-	// seen. An all-time minimum is a trap: one unusually quick response sets a
-	// floor the network cannot hold, and from then on ordinary jitter reads as
-	// congestion. Measured against Google's sitemap CDN, p50 wanders between
+	// The baseline is the median of the last 32 successful responses. A
+	// minimum, all-time or over the window, is a trap: one unusually quick
+	// response -- a cache hit -- sets a floor the network cannot hold, and
+	// from then on ordinary jitter reads as congestion. Measured against Google's sitemap CDN, p50 wanders between
 	// 57ms and 85ms with p95 near 100ms while nothing at all is wrong, so a
 	// ratio of 1.5 against an all-time best fires more or less constantly --
 	// which is exactly what an early version of this did.
@@ -187,6 +219,15 @@ func WithAdaptiveThrottle(p AdaptivePolicy) ClientOption {
 	if p.Window <= 0 {
 		p.Window = 20
 	}
+	if p.ProbeWindow <= 0 {
+		p.ProbeWindow = 5 * p.Window
+	}
+	if p.CutMemory <= 0 {
+		p.CutMemory = 30 * time.Minute
+	}
+	if p.Headroom <= 0 {
+		p.Headroom = 0.25
+	}
 	if p.LatencyRatio <= 1 {
 		p.LatencyRatio = 2
 	}
@@ -218,19 +259,13 @@ func WithAdaptiveThrottle(p AdaptivePolicy) ClientOption {
 			// starting point regardless of option order.
 			c.throttle = min(max(c.throttle, p.Min), p.Max)
 		default:
+			// No number from the caller: nothing to probe past, so every
+			// step moves on Window.
 			c.throttle = p.Max
+			return
 		}
+		c.startThrottle = c.throttle
 	}
-}
-
-// observe feeds one response back into the controller. It is called from the
-// request pipeline for every attempt, successful or not.
-//
-// All of it runs under throttleLock, the same lock waitThrottle takes to
-// reserve a slot: the interval is read on every request and written here, and
-// a mutable field read without a lock is a race whether or not it looks benign.
-func (c *Client) observe(ctx context.Context, status int, rtt time.Duration, err error) {
-	c.record(ctx, nil, outcome{status: status, rtt: rtt, err: err})
 }
 
 // record applies one attempt's outcome to the interval and to the breaker in a
@@ -242,7 +277,14 @@ func (c *Client) record(ctx context.Context, t *ticket, o outcome) {
 	}
 	c.throttleLock.Lock()
 	before := c.throttle
-	reason := c.adjust(o)
+	// A ticket from an older breaker generation was sent before the pause
+	// began. The breaker ignores its refusal, and so does the interval: four
+	// requests in flight when a block lands are one refusal, not four. The
+	// same holds without a breaker: a ticket admitted before the last refusal
+	// slowed the client went out at the old rate, so its refusal is that
+	// episode again, not news.
+	stale := t != nil && ((c.breakerOn() && t.gen != c.brk.gen) || t.refusals != c.refusals)
+	reason := c.adjust(o, stale)
 	ev, moved := c.complete(t, o)
 	after := c.throttle
 	c.throttleLock.Unlock()
@@ -270,11 +312,12 @@ func (c *Client) logThrottle(ctx context.Context, before, after time.Duration, r
 // adjust applies one observation to the interval and names the signal behind
 // the decision. Callers hold throttleLock; whether the interval actually moved
 // is for them to compare, since a decrease at the ceiling changes nothing.
-func (c *Client) adjust(o outcome) string {
+// stale marks an attempt admitted before the breaker's current pause.
+func (c *Client) adjust(o outcome, stale bool) string {
 	p := c.adaptive
 	status, rtt, err := o.status, o.rtt, o.err
 
-	// The baseline is the minimum over a sliding window of recent successes,
+	// The baseline is the median over a sliding window of recent successes,
 	// which is what a delay-based controller actually needs: it tracks the
 	// network as it is now rather than as it was at its luckiest.
 	if err == nil && status == http.StatusOK && rtt > 0 {
@@ -298,7 +341,15 @@ func (c *Client) adjust(o outcome) string {
 	// nothing about rate at all.
 	switch o.signal() {
 	case signalRefusal:
+		if stale {
+			return ""
+		}
 		c.cleanRun, c.slowRun = 0, 0
+		if c.isCut(o) {
+			c.noteCut(c.throttle)
+		}
+		c.refusing = true
+		c.refusals++
 		c.slower(p.Slowdown, p.Max)
 		return "refused"
 
@@ -311,11 +362,16 @@ func (c *Client) adjust(o outcome) string {
 		return ""
 	}
 
+	c.refusing = false // an answer: the next refusal starts a new episode
+	// One slow response neither counts towards a clean window nor ends it:
+	// it says almost nothing, and against a CDN whose p95 is about twice its
+	// median, ending the window on each one meant ProbeWindow consecutive
+	// clean responses were almost never seen and the client never probed.
+	// A streak is evidence, and does end it.
 	if baseline > 0 && rtt > time.Duration(float64(baseline)*p.LatencyRatio) {
-		c.cleanRun = 0
 		c.slowRun++
 		if c.slowRun >= p.SlowStreak {
-			c.slowRun = 0
+			c.cleanRun, c.slowRun = 0, 0
 			c.slower(p.SoftSlowdown, p.Max)
 		}
 		return "latency"
@@ -323,7 +379,11 @@ func (c *Client) adjust(o outcome) string {
 
 	c.slowRun = 0
 	c.cleanRun++
-	if c.cleanRun < p.Window {
+	window := p.Window
+	if c.throttle <= c.startThrottle {
+		window = p.ProbeWindow // past the caller's own number: probe slowly
+	}
+	if c.cleanRun < window {
 		return ""
 	}
 	c.cleanRun = 0
@@ -331,8 +391,64 @@ func (c *Client) adjust(o outcome) string {
 	if next < p.Min {
 		next = p.Min
 	}
+	if floor := c.cutFloor(); next < floor {
+		// Settle at the floor, never past it. And never above the interval
+		// already in use: a clean window does not slow the client down, and
+		// a floor from cuts made at Max lies above Max.
+		next = min(floor, c.throttle)
+		if next == c.throttle {
+			return ""
+		}
+	}
 	c.throttle = next
 	return "clean"
+}
+
+// isCut reports whether a refusal is evidence of a rate ceiling, worth
+// remembering as a cut. Callers hold throttleLock.
+//
+// The floor settles below the interval a working rate began to fail at, so a
+// cut has to be such an interval. Only the first refusal after an answer is:
+// the ones that follow arrive at an interval the previous refusal already
+// doubled, and say the server is still refusing -- an outage or a penalty
+// box -- not where its limit lies. Nothing is a cut at Max either: a refusal
+// at the slowest rate allowed is an outage, not a limit to settle below, and
+// its floor would lie above Max. Nor while the breaker is open or half-open:
+// a probe goes out after a pause, at no rate at all. Remembering those held
+// the client at Max for CutMemory after every outage.
+//
+// And only a 429 or a soft block is: both are the server limiting this
+// client. A 503 is the server unavailable to everyone, which still slows the
+// client and opens the breaker but says nothing about this client's rate.
+func (c *Client) isCut(o outcome) bool {
+	if c.refusing || c.throttle >= c.adaptive.Max || c.brk.state != BreakerClosed {
+		return false
+	}
+	return o.status == http.StatusTooManyRequests || o.verdict == VerdictBlocked
+}
+
+// noteCut remembers the interval a refusal arrived at. Callers hold
+// throttleLock.
+func (c *Client) noteCut(at time.Duration) {
+	c.cuts[c.cutNext%len(c.cuts)] = cut{interval: at, at: time.Now()}
+	c.cutNext++
+}
+
+// cutFloor is the shortest interval the remembered refusals allow: the
+// median of the cuts younger than CutMemory, plus Headroom. Zero when none is
+// remembered. Callers hold throttleLock.
+func (c *Client) cutFloor() time.Duration {
+	var live []time.Duration
+	for _, k := range c.cuts {
+		if k.interval > 0 && time.Since(k.at) < c.adaptive.CutMemory {
+			live = append(live, k.interval)
+		}
+	}
+	if len(live) == 0 {
+		return 0
+	}
+	slices.Sort(live)
+	return time.Duration(float64(live[len(live)/2]) * (1 + c.adaptive.Headroom))
 }
 
 // slower multiplies the interval, clamped to max. Callers hold throttleLock.
@@ -344,26 +460,29 @@ func (c *Client) slower(factor float64, max time.Duration) {
 	c.throttle = next
 }
 
-// baselineRTT is the minimum over the sliding window, ignoring slots that have
+// baselineRTT is the median over the sliding window, ignoring slots that have
 // not been filled yet. It returns zero until the window has enough samples to
 // mean anything -- reacting to latency before knowing what normal looks like
 // is how a controller talks itself into backing off from nothing.
+//
+// The median, not the minimum. Google's sitemap CDN answers some requests from
+// a cache in about 22ms and the rest in about 48ms; the minimum caught the
+// cached ones, so the ordinary half read as "twice the baseline", streaks of
+// five came easily, and a live run on 2026-11-08 ratcheted from 200ms to the
+// 2s ceiling with every response a 200 and the median latency unchanged.
+// Against the median, LatencyRatio means what it says: slower than usual.
 func (c *Client) baselineRTT() time.Duration {
-	var best time.Duration
-	var n int
+	var filled []time.Duration
 	for _, d := range c.rttWindow {
-		if d == 0 {
-			continue
-		}
-		n++
-		if best == 0 || d < best {
-			best = d
+		if d != 0 {
+			filled = append(filled, d)
 		}
 	}
-	if n < len(c.rttWindow)/2 {
+	if len(filled) < len(c.rttWindow)/2 {
 		return 0
 	}
-	return best
+	slices.Sort(filled)
+	return filled[len(filled)/2]
 }
 
 // CurrentThrottle reports the interval the client is presently using between

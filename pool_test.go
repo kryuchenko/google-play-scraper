@@ -2,6 +2,7 @@ package googleplayscraper
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -86,7 +87,7 @@ func TestParallelIndexedSequentialCancel(t *testing.T) {
 			cancel()
 		}
 	})
-	if err != context.Canceled {
+	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("got err %v, want context.Canceled", err)
 	}
 	if ran != 3 { // indices 0,1,2 ran; 3 saw the cancel and stopped
@@ -108,7 +109,7 @@ func TestParallelIndexedConcurrentCancel(t *testing.T) {
 			cancel()
 		}
 	})
-	if err != context.Canceled {
+	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("got err %v, want context.Canceled", err)
 	}
 	if done.Load() >= n {

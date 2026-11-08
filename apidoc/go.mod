@@ -3,7 +3,7 @@ module github.com/kryuchenko/google-play-scraper/apidoc
 go 1.27
 
 require (
-	github.com/kryuchenko/google-play-scraper v1.6.0
+	github.com/kryuchenko/google-play-scraper v1.7.0
 	github.com/pb33f/libopenapi v0.42.3
 	github.com/pb33f/libopenapi-validator v0.16.2
 	github.com/swaggo/swag/v2 v2.0.0-rc6
