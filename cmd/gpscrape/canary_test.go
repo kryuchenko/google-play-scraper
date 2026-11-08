@@ -419,3 +419,60 @@ func TestConfirmGoneRescuesWhatOneStorefrontCannotSee(t *testing.T) {
 		t.Error("an app no storefront can see was written to the table")
 	}
 }
+
+// TestCanaryCatalogGames runs the whole-catalog games pipeline -- sweep,
+// genres, apps -genre GAME_* -- on a 0.01% sample: about nine sitemap shards
+// and a few dozen requests. It proves the chain is alive end to end (the
+// sitemap index is reachable, shards parse, genre lookups resolve, the games
+// filter reads the table), not that a full sweep finishes; that is 87k
+// requests and hours, and nobody runs it to check a pipe.
+func TestCanaryCatalogGames(t *testing.T) {
+	bin := buildBinary(t)
+	dir := t.TempDir()
+
+	var sweep map[string]any
+	for _, rec := range ndjson(t, run(t, bin, "catalog", "sweep", "-dir", dir, "-sample", "0.01", "-yes")) {
+		if _, ok := rec["ids"]; ok {
+			sweep = rec
+		}
+	}
+	ids, _ := sweep["ids"].(float64)
+	if ids < 50 {
+		t.Fatalf("sampled sweep listed %.0f ids, want at least 50: %v", ids, sweep)
+	}
+
+	genres := ndjson(t, run(t, bin, "catalog", "genres", "-dir", dir, "-all"))
+	resolved := 0
+	for _, g := range genres {
+		if s, _ := g["genre_id"].(string); s != "" {
+			resolved++
+		}
+	}
+	// About nine in ten resolve; the rest are sitemap entries no storefront
+	// serves any more. Under seven in ten means lookups are failing.
+	if float64(resolved) < 0.7*float64(len(genres)) {
+		t.Errorf("%d of %d apps got a genre, want at least 70%%", resolved, len(genres))
+	}
+
+	// apps reads the table on disk and makes no request, so it takes no
+	// -throttle and runs without the helper that adds one.
+	out, err := exec.Command(bin, "catalog", "apps", "-dir", dir, "-genre", "GAME_*", "-allow-sample").Output()
+	if err != nil {
+		t.Fatalf("catalog apps: %v", err)
+	}
+	games := ndjson(t, string(out))
+	kinds := map[string]bool{}
+	for _, g := range games {
+		id, _ := g["genre_id"].(string)
+		if !strings.HasPrefix(id, "GAME_") {
+			t.Errorf("GAME_* filter let through %v", g)
+		}
+		kinds[id] = true
+		nonEmptyString(t, g, "app_id")
+	}
+	// Games are about a tenth of the store, spread over 17 genres.
+	if len(kinds) < 3 {
+		t.Errorf("%d games in %d genres, want at least 3 genres: %v", len(games), len(kinds), kinds)
+	}
+	t.Logf("sample: %.0f ids, %d with a genre, %d games in %d genres", ids, resolved, len(games), len(kinds))
+}

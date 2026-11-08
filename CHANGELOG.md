@@ -45,6 +45,13 @@ All notable changes to this project are documented here. The format is based on
   scanned) on every pull request and weekly; CodeQL builds `mcp`; pull
   requests fuzz each target for 10 s instead of 30 s, and a weekly
   `fuzz.yml` fuzzes each for 10 minutes, keeping its corpus between runs.
+- The weekly canary runs the whole-catalog games pipeline -- `catalog sweep`,
+  `catalog genres`, `catalog apps -genre 'GAME_*'` -- on a 0.01% sample:
+  about nine shards and 12 seconds. It checks the chain is alive, not that a
+  full 87k-request sweep finishes.
+
+### Added
+
 - `gpscrape`: an error caused by Claude Code's sandbox on macOS -- where Go
   cannot reach the system trust service and every request fails with
   `x509: OSStatus -26276` -- carries a `hint` naming the setting that fixes
