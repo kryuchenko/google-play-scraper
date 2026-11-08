@@ -96,7 +96,7 @@ func assertResumeStateKept(t *testing.T, dir string, f *sitemapFixture, wantDone
 	if _, err := os.Stat(filepath.Join(dir, "state.json")); err != nil {
 		t.Errorf("state.json missing after an incomplete run: %v", err)
 	}
-	done, err := readDoneLog(doneLogPath(dir, f.gen))
+	done, _, _, err := readDoneLog(doneLogPath(dir, f.gen))
 	if err != nil {
 		t.Fatalf("done log: %v", err)
 	}

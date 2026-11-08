@@ -279,8 +279,11 @@ func (c *Client) record(ctx context.Context, t *ticket, o outcome) {
 	before := c.throttle
 	// A ticket from an older breaker generation was sent before the pause
 	// began. The breaker ignores its refusal, and so does the interval: four
-	// requests in flight when a block lands are one refusal, not four.
-	stale := t != nil && c.breakerOn() && t.gen != c.brk.gen
+	// requests in flight when a block lands are one refusal, not four. The
+	// same holds without a breaker: a ticket admitted before the last refusal
+	// slowed the client went out at the old rate, so its refusal is that
+	// episode again, not news.
+	stale := t != nil && ((c.breakerOn() && t.gen != c.brk.gen) || t.refusals != c.refusals)
 	reason := c.adjust(o, stale)
 	ev, moved := c.complete(t, o)
 	after := c.throttle
@@ -346,6 +349,7 @@ func (c *Client) adjust(o outcome, stale bool) string {
 			c.noteCut(c.throttle)
 		}
 		c.refusing = true
+		c.refusals++
 		c.slower(p.Slowdown, p.Max)
 		return "refused"
 

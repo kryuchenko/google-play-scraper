@@ -49,9 +49,9 @@
         "app_id": 1,
         "developer": 1,
         "icon": 1,
-        "price": 0,
+        "price": 1,
         "score": 1,
-        "summary": 0,
+        "summary": 1,
         "title": 1,
         "url": 1
       }
@@ -92,7 +92,7 @@
         "url": 1,
         "user_image": 1,
         "user_name": 1,
-        "version": 0.63
+        "version": 0.76
       }
     },
     "search": {
@@ -101,9 +101,9 @@
         "app_id": 1,
         "developer": 1,
         "icon": 1,
-        "price": 0.05,
+        "price": 1,
         "score": 1,
-        "summary": 0.05,
+        "summary": 1,
         "title": 1,
         "url": 1
       }
@@ -123,23 +123,23 @@
     }
   },
   "latency_ms": {
-    "App": 296,
-    "Availability": 72,
-    "AvailabilityClasses": 73,
-    "Batched": 85,
-    "CategoryApps": 553,
-    "ClusterURLs+Cluster": 279,
-    "Collections": 210,
-    "DataSafety": 120,
-    "Developer": 188,
-    "List": 296,
-    "PCApp": 129,
-    "Permissions": 87,
-    "Reviews": 383,
-    "ReviewsSeq": 593,
-    "Search": 325,
-    "Similar": 209,
-    "Sitemap": 56,
-    "Suggest": 91
+    "App": 362,
+    "Availability": 73,
+    "AvailabilityClasses": 91,
+    "Batched": 105,
+    "CategoryApps": 434,
+    "ClusterURLs+Cluster": 333,
+    "Collections": 253,
+    "DataSafety": 110,
+    "Developer": 244,
+    "List": 197,
+    "PCApp": 109,
+    "Permissions": 100,
+    "Reviews": 373,
+    "ReviewsSeq": 706,
+    "Search": 371,
+    "Similar": 257,
+    "Sitemap": 43,
+    "Suggest": 87
   }
 }

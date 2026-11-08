@@ -215,12 +215,12 @@ func TestWriteDoneLineMarksAnIDFileFailure(t *testing.T) {
 	ids := bufio.NewWriterSize(failWriter{}, 16)
 	done := bufio.NewWriterSize(io.Discard, 16)
 	_, _ = ids.WriteString("com.example.app\n")
-	err := writeDoneLine(ids, done, strings.Repeat("u", 40))
+	err := writeDoneLine(ids, done, strings.Repeat("u", 40), 1)
 	var flush errFlushIDs
 	if !errors.As(err, &flush) || !strings.Contains(err.Error(), "disk full") || errors.Unwrap(err) == nil {
 		t.Errorf("err = %v (%T), want an errFlushIDs wrapping the write error", err, err)
 	}
-	if err := writeDoneLine(bufio.NewWriter(io.Discard), bufio.NewWriterSize(failWriter{}, 16), strings.Repeat("u", 40)); err == nil || errors.As(err, &flush) {
+	if err := writeDoneLine(bufio.NewWriter(io.Discard), bufio.NewWriterSize(failWriter{}, 16), strings.Repeat("u", 40), 1); err == nil || errors.As(err, &flush) {
 		t.Errorf("a done-log failure: %v, want an error that is not the id file's", err)
 	}
 }

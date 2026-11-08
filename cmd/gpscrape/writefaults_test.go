@@ -578,6 +578,19 @@ func TestSweepRestartsWhenThePartialFileLostIDs(t *testing.T) {
 		}},
 		// The checkpoint that would have counted them never landed: the
 		// done log is ahead of state.json, which records no ids at all.
+		// Lost after the checkpoint: state.json still counts only the first
+		// shard, so the file still holds that many ids, but the done log's
+		// counts say both finished shards wrote more.
+		{"cut after the checkpoint", func(t *testing.T, dir string, f *sitemapFixture) {
+			first := len(f.ids[0])
+			if first == 0 || len(f.ids[1]) == 0 {
+				t.Fatal("the fixture's first two shards need ids")
+			}
+			writeFixtureFile(t, partialOf(dir, f), strings.Join(f.ids[0], "\n")+"\n")
+			if err := saveState(filepath.Join(dir, "state.json"), syncState{Generation: f.gen, IDs: first}); err != nil {
+				t.Fatal(err)
+			}
+		}},
 		{"removed, no count recorded", func(t *testing.T, dir string, f *sitemapFixture) {
 			if err := os.Remove(partialOf(dir, f)); err != nil {
 				t.Fatal(err)

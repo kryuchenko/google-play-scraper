@@ -191,6 +191,19 @@ All notable changes to this project are documented here. The format is based on
 - README lists every error code with its exit status; it named only some
   statuses and none of `not_listed`, `confirmation_required`, `cancelled` or
   `internal`.
+- `gpscrape` integer flags are decimal: `-limit 010` is 10, not 8 (the
+  flag package read a leading zero as octal), and `0x10`, `0b1` and `1_000`
+  are refused as `invalid_argument`.
+- `catalog sweep` resume: each done-log line carries its shard's id count
+  (`<url>\t<ids>`), so ids lost from the partial file after the last
+  checkpoint now restart the generation too; older done logs still read.
+  The partial file and the done log are created with their directory
+  fsynced.
+- Adaptive throttle without a breaker: refusals from requests sent before an
+  earlier refusal slowed the client are that episode, and slow it once,
+  not once each.
+- `suggest` and `categories` refuse `-fields` as `invalid_argument`: they
+  print bare strings, and the flag was silently ignored.
 
 ### Internal
 
@@ -246,7 +259,8 @@ All notable changes to this project are documented here. The format is based on
 - The canary compares per-endpoint fill rates of key fields and median
   latencies with `testdata/canary_baseline.json` (from a live run;
   `UPDATE_CANARY_BASELINE=1` rewrites it): a fill rate down more than 0.25 or
-  under its floor fails, 3x the latency is logged.
+  under its floor fails, 3x the latency is logged. The baseline is from a
+  live run after the grid price and summary fix.
 
 ## gpscrape-mcp 0.1.1 (tag `mcp/v0.1.1`) - 2026-11-07
 

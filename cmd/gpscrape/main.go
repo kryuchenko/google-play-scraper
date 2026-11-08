@@ -358,6 +358,16 @@ func newLocalCommon(name string) *common {
 	return c
 }
 
+// noFields refuses -fields on a command whose lines are bare JSON strings:
+// there are no keys to keep, and the flag used to do nothing at all.
+func (c *common) noFields(line string) error {
+	if c.fields != "" {
+		return records.Invalid("%s prints one JSON string per line (%s), which has no keys for -fields to keep",
+			c.fs.Name(), line)
+	}
+	return nil
+}
+
 // rawFlag registers -raw on a command that emits a shared record: without it
 // the command writes the snake_case records of package records, the same
 // objects the gpscrape-mcp tools return; with it, the library's own types in
@@ -600,6 +610,7 @@ func (c *common) parse(args []string) error {
 		described = c.fs
 		return errDescribing
 	}
+	decimalOnly(c.fs)
 	if err := c.parseFlags(args); err != nil {
 		return err
 	}
@@ -646,6 +657,46 @@ func (c *common) parse(args []string) error {
 
 // parseFlags is fs.Parse with its errors coded: invalid_argument for a bad
 // flag, and flag.ErrHelp, after printing the flags, for -h.
+// decimalOnly makes every integer flag of fs read its value in base 10.
+// The flag package parses integers with base prefixes, so -limit 010 was 8
+// and -num 0x10 was 16: a zero-padded count meant something else entirely.
+func decimalOnly(fs *flag.FlagSet) {
+	fs.VisitAll(func(f *flag.Flag) {
+		if _, done := f.Value.(decimalValue); done {
+			return
+		}
+		if g, ok := f.Value.(flag.Getter); ok {
+			switch g.Get().(type) {
+			case int, int64, uint, uint64:
+				f.Value = decimalValue{g}
+			}
+		}
+	})
+}
+
+// decimalValue refuses anything but an optionally signed run of decimal
+// digits, then hands the value to the flag it wraps.
+type decimalValue struct{ flag.Getter }
+
+func (d decimalValue) Set(s string) error {
+	sign, digits := "", s
+	if digits != "" && (digits[0] == '-' || digits[0] == '+') {
+		sign, digits = digits[:1], digits[1:]
+	}
+	if digits == "" || strings.Trim(digits, "0123456789") != "" {
+		return fmt.Errorf("%q is not a whole decimal number", s)
+	}
+	// The wrapped flag still reads base prefixes, so the zeros that would
+	// make 010 octal go before it sees the digits.
+	if digits = strings.TrimLeft(digits, "0"); digits == "" {
+		digits = "0"
+	}
+	if sign == "+" {
+		sign = ""
+	}
+	return d.Getter.Set(sign + digits)
+}
+
 func (c *common) parseFlags(args []string) error {
 	err := c.fs.Parse(args)
 	switch {
@@ -1570,6 +1621,9 @@ func cmdSuggest(args []string) error {
 	if err := c.parse(args); err != nil {
 		return err
 	}
+	if err := c.noFields("a suggestion"); err != nil {
+		return err
+	}
 	term, err := c.arg("term")
 	if err != nil {
 		return err
@@ -1590,6 +1644,9 @@ func cmdCategories(args []string) error {
 	c := newCommon("categories")
 	kind := c.fs.String("kind", "all", `which categories: "all", "game" or "app"`)
 	if err := c.parse(args); err != nil {
+		return err
+	}
+	if err := c.noFields("a category id"); err != nil {
 		return err
 	}
 	ctx, stop := c.context()

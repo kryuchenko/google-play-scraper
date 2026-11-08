@@ -93,6 +93,10 @@ type ticket struct {
 	gen   uint64
 	probe bool
 	done  bool
+	// refusals is the client's refusal count at admission. A refusal that
+	// lands after another one already slowed the client was sent at the old
+	// rate, and is part of the same episode (see record).
+	refusals uint64
 }
 
 // outcome is everything one attempt tells the controller.
@@ -213,7 +217,10 @@ func (c *Client) emitBreaker(ctx context.Context, ev BreakerEvent) {
 func (c *Client) admit(ctx context.Context) (*ticket, time.Duration, error) {
 	if !c.breakerOn() {
 		waited, err := c.waitThrottle(ctx)
-		return &ticket{}, waited, err
+		c.throttleLock.Lock()
+		t := &ticket{refusals: c.refusals}
+		c.throttleLock.Unlock()
+		return t, waited, err
 	}
 	start := time.Now()
 	for {
@@ -259,7 +266,7 @@ func (c *Client) admit(ctx context.Context) (*ticket, time.Duration, error) {
 			}
 			b.probeOut = true
 			c.lastRequest = now
-			t := &ticket{gen: b.gen, probe: true}
+			t := &ticket{gen: b.gen, probe: true, refusals: c.refusals}
 			c.throttleLock.Unlock()
 			c.emitAll(ctx, events)
 			return t, time.Since(start), nil
@@ -285,9 +292,10 @@ func (c *Client) admit(ctx context.Context) (*ticket, time.Duration, error) {
 			// it would not get.
 			c.throttleLock.Lock()
 			current := c.brk.gen == gen && c.brk.state == BreakerClosed
+			refusals := c.refusals
 			c.throttleLock.Unlock()
 			if current {
-				return &ticket{gen: gen}, time.Since(start), nil
+				return &ticket{gen: gen, refusals: refusals}, time.Since(start), nil
 			}
 		}
 	}

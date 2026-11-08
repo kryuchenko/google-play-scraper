@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"io"
 	"math"
 	"slices"
 	"strconv"
@@ -110,21 +111,21 @@ func positional(cmd string) []string {
 	return nil
 }
 
-// wantAccepted decides one value. Syntax is the flag package's: integers in
-// strconv base 0, so "+5" is 5 and "05" is 5 (octal; "010" would be 8),
-// while " 5", "1.5", "5e2" and "" do not parse. Floats take "5e2" and "NaN",
+// wantAccepted decides one value. Integers are decimal only (decimalOnly):
+// "+5" is 5 and "010" is 10, while "0x10", " 5", "1.5", "5e2" and "" do not
+// parse. Floats take "5e2" and "NaN",
 // and NaN is refused like any value out of range.
 func wantAccepted(f *flag.Flag, r numRule, raw string) bool {
 	var v float64
 	switch f.Value.(flag.Getter).Get().(type) {
 	case int, int64:
-		n, err := strconv.ParseInt(raw, 0, 64)
+		n, err := strconv.ParseInt(raw, 10, 64)
 		if err != nil {
 			return false
 		}
 		v = float64(n)
 	case uint64:
-		n, err := strconv.ParseUint(raw, 0, 64)
+		n, err := strconv.ParseUint(strings.TrimPrefix(raw, "+"), 10, 64)
 		if err != nil {
 			return false
 		}
@@ -149,7 +150,7 @@ func checklist(f *flag.Flag, r numRule) []string {
 	if _, ok := f.Value.(flag.Getter).Get().(time.Duration); ok {
 		return []string{"0s", "-1ms", "1ns", "1h", "garbage", ""}
 	}
-	vals := []string{"0", "1", "-1", "99999999999999999999", "+5", " 5", "05", "1.5", "5e2", ""}
+	vals := []string{"0", "1", "-1", "99999999999999999999", "+5", " 5", "05", "010", "0x10", "0b1", "1_000", "1.5", "5e2", ""}
 	if !math.IsNaN(r.plausible) {
 		vals = append(vals, strconv.FormatFloat(r.plausible, 'f', -1, 64),
 			strconv.FormatFloat(r.plausible+1, 'f', -1, 64))
@@ -166,7 +167,7 @@ func TestNumericFlagDecisions(t *testing.T) {
 	num := &flag.Flag{Value: new(intFlagValue)}
 	for raw, want := range map[string]bool{
 		"0": true, "1": true, "-1": false, "50": true, "51": true, "99999999999999999999": false,
-		"+5": true, " 5": false, "05": true, "1.5": false, "5e2": false, "": false,
+		"+5": true, " 5": false, "05": true, "010": true, "0x10": false, "1_000": false, "1.5": false, "5e2": false, "": false,
 	} {
 		if got := wantAccepted(num, numRules["num"], raw); got != want {
 			t.Errorf("-num %q: accepted = %v, want %v", raw, got, want)
@@ -290,5 +291,27 @@ func TestAdaptiveThrottleAboveTheCeiling(t *testing.T) {
 	res := runCLI(t, "app", cliValidID, "-adaptive", "-throttle", "5s")
 	if res.exit != 0 {
 		t.Errorf("want exit 0\n%s", res)
+	}
+}
+
+// A zero-padded count is the decimal number it looks like, not octal.
+func TestIntegerFlagsAreDecimal(t *testing.T) {
+	for raw, want := range map[string]int64{"010": 10, "+007": 7, "-08": -8, "0": 0, "000": 0, "9": 9} {
+		fs := flag.NewFlagSet("t", flag.ContinueOnError)
+		n := fs.Int64("n", -1, "")
+		decimalOnly(fs)
+		decimalOnly(fs) // twice is harmless
+		if err := fs.Parse([]string{"-n", raw}); err != nil || *n != want {
+			t.Errorf("-n %s = %d, %v; want %d", raw, *n, err, want)
+		}
+	}
+	for _, raw := range []string{"0x10", "0o7", "0b1", "1_000", "", "-", "+", " 5", "1e3"} {
+		fs := flag.NewFlagSet("t", flag.ContinueOnError)
+		fs.SetOutput(io.Discard)
+		fs.Uint64("n", 0, "")
+		decimalOnly(fs)
+		if err := fs.Parse([]string{"-n", raw}); err == nil {
+			t.Errorf("-n %q accepted", raw)
+		}
 	}
 }

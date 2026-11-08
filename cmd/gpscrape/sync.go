@@ -19,6 +19,7 @@ import (
 	"runtime"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -111,28 +112,39 @@ func deltaName(from, to googleplayscraper.Generation) string {
 	return fmt.Sprintf("delta-%s-to-%s.json", from.ID(), to.ID())
 }
 
-// readDoneLog returns the shard URLs a previous run finished. A truncated
-// final line -- the ordinary result of a kill -- is discarded rather than
-// treated as a completed shard.
-func readDoneLog(path string) (map[string]struct{}, error) {
+// readDoneLog returns the shard URLs a previous run finished, and how many
+// ids those shards wrote. A line is "<url>\t<ids>"; a log from before the
+// count reads as URLs only, and then counted is false. A truncated final
+// line -- the ordinary result of a kill -- is discarded rather than treated
+// as a completed shard.
+func readDoneLog(path string) (done map[string]struct{}, ids int, counted bool, err error) {
 	f, err := os.Open(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return map[string]struct{}{}, nil
+			return map[string]struct{}{}, 0, true, nil
 		}
-		return nil, err
+		return nil, 0, false, err
 	}
 	defer func() { _ = f.Close() }()
 
-	done := make(map[string]struct{}, 1<<16)
+	done = make(map[string]struct{}, 1<<16)
+	counted = true
 	sc := bufio.NewScanner(f)
 	sc.Buffer(make([]byte, 0, 64*1024), maxLineBytes)
 	for sc.Scan() {
-		if line := strings.TrimSpace(sc.Text()); line != "" {
-			done[line] = struct{}{}
+		line := strings.TrimSpace(sc.Text())
+		if line == "" {
+			continue
+		}
+		url, n, hasCount := strings.Cut(line, "\t")
+		done[url] = struct{}{}
+		if k, perr := strconv.Atoi(n); hasCount && perr == nil && k >= 0 {
+			ids += k
+		} else {
+			counted = false
 		}
 	}
-	return done, sc.Err()
+	return done, ids, counted, sc.Err()
 }
 
 // manifest describes a finished snapshot.
@@ -458,7 +470,7 @@ func sweep(
 		return fmt.Errorf("repair %s: %w", donePath, err)
 	}
 
-	finished, err := readDoneLog(donePath)
+	finished, doneIDs, counted, err := readDoneLog(donePath)
 	if err != nil {
 		return fmt.Errorf("read %s: %w", donePath, err)
 	}
@@ -466,17 +478,24 @@ func sweep(
 	// it vouches for. Removed or cut short between runs, the resume skipped
 	// the shards it lists and their ids were missing from the snapshot, with
 	// nothing to show for it. A checkpoint flushes the ids before it records
-	// state.IDs, so the file holds at least that many lines; fewer -- or none
-	// while the done log lists shards -- means the generation starts over.
+	// state.IDs, so the file holds at least that many lines; and each done
+	// line carries its shard's id count, written after those ids reached the
+	// file, so it holds at least their sum too -- which, unlike the
+	// checkpoint, also covers the shards finished after it. Fewer, or none
+	// while the done log lists shards, means the generation starts over.
 	if resumed {
 		have, err := countLines(partialPath)
 		if err != nil {
 			return fmt.Errorf("read %s: %w", partialPath, err)
 		}
-		if have < state.IDs || (have == 0 && len(finished) > 0) {
-			fmt.Fprintf(os.Stderr, "%s holds %d ids, but the checkpoint recorded %d from %d shards: "+
+		want := state.IDs
+		if counted {
+			want = max(want, doneIDs)
+		}
+		if have < want || (have == 0 && len(finished) > 0) {
+			fmt.Fprintf(os.Stderr, "%s holds %d ids, but %d shards already finished wrote %d: "+
 				"it was removed or cut short since, so %s is swept again from the start\n",
-				partialPath, have, state.IDs, len(finished), gen.ID())
+				partialPath, have, len(finished), want, gen.ID())
 			for _, p := range []string{partialPath, donePath} {
 				if err := os.Remove(p); err != nil && !errors.Is(err, os.ErrNotExist) {
 					return fmt.Errorf("remove %s: %w", p, err)
@@ -511,6 +530,14 @@ func sweep(
 		_ = partial.Close()
 		return fmt.Errorf("open %s: %w", donePath, err)
 	}
+	// Both may have just been created. Without the directory synced their
+	// names could be lost to a power loss even after a checkpoint fsynced
+	// their contents; the resume would then sweep the generation again.
+	if err := syncDir(dir); err != nil {
+		_ = partial.Close()
+		_ = doneLog.Close()
+		return fmt.Errorf("create %s and %s: %w", partialPath, donePath, err)
+	}
 	dw := bufio.NewWriterSize(doneLog, 1<<16)
 	// markDone writes url's done line. A shard's ids must reach the file
 	// before its done line does, or a kill in between resumes past a shard
@@ -518,7 +545,7 @@ func sweep(
 	// buffer also flushes itself when full, and the done log's is the
 	// smaller: with long URLs and few ids it fills first. So when this line
 	// is about to flush the done log, the ids go out first.
-	markDone := func(url string) error { return writeDoneLine(w, dw, url) }
+	markDone := func(url string, ids int) error { return writeDoneLine(w, dw, url, ids) }
 	// doneFailed reports a markDone failure against the file that failed.
 	doneFailed := func(err error) {
 		if errors.As(err, new(errFlushIDs)) {
@@ -664,7 +691,7 @@ func sweep(
 			}
 		}
 		state.IDs += len(pkgs)
-		if werr := markDone(url); werr != nil {
+		if werr := markDone(url, len(pkgs)); werr != nil {
 			doneFailed(werr)
 			return
 		}
@@ -748,7 +775,7 @@ func sweep(
 				}
 			}
 			state.IDs += len(pkgs)
-			if werr := markDone(url); werr != nil {
+			if werr := markDone(url, len(pkgs)); werr != nil {
 				doneFailed(werr)
 				return
 			}
@@ -1007,13 +1034,14 @@ func reachedFinishStep(step string) {
 // writeDoneLine writes url to the done log, first flushing the ids whenever
 // the line is about to flush the done log's buffer: a shard's done line must
 // never reach the file before its ids. See markDone.
-func writeDoneLine(ids, done *bufio.Writer, url string) error {
-	if len(url)+1 > done.Available() {
+func writeDoneLine(ids, done *bufio.Writer, url string, n int) error {
+	line := url + "\t" + strconv.Itoa(n)
+	if len(line)+1 > done.Available() {
 		if err := ids.Flush(); err != nil {
 			return errFlushIDs{err}
 		}
 	}
-	_, err := fmt.Fprintln(done, url)
+	_, err := fmt.Fprintln(done, line)
 	return err
 }
 

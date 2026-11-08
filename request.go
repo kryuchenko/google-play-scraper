@@ -58,15 +58,17 @@ type Client struct {
 	cuts          [5]cut
 	cutNext       int
 	refusing      bool
-	cleanRun      int
-	slowRun       int
-	brk           breaker // guarded by throttleLock; see breaker.go
-	retry         RetryPolicy
-	budgetLock    sync.Mutex
-	budgetTokens  float64
-	hooks         Hooks
-	logger        *slog.Logger
-	reqIDSeq      int64 // monotonic counter for batchexecute _reqid (see nextReqID)
+	// refusals counts the refusals that slowed the client; tickets carry it.
+	refusals     uint64
+	cleanRun     int
+	slowRun      int
+	brk          breaker // guarded by throttleLock; see breaker.go
+	retry        RetryPolicy
+	budgetLock   sync.Mutex
+	budgetTokens float64
+	hooks        Hooks
+	logger       *slog.Logger
+	reqIDSeq     int64 // monotonic counter for batchexecute _reqid (see nextReqID)
 }
 
 // ClientOption configures the client

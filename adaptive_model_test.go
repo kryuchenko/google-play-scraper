@@ -249,6 +249,7 @@ type refModel struct {
 	slow     int
 	cuts     []cut // the last five cuts
 	refusing bool  // a refusal since the last answer
+	refusals int   // refusals that slowed the client
 }
 
 func (m *refModel) baseline() time.Duration {
@@ -318,6 +319,7 @@ func (m *refModel) classify(o outcome, before time.Duration, now time.Time, st B
 			}
 		}
 		m.refusing = true
+		m.refusals++
 		return stepRefusal
 	case o.err != nil || o.status >= 500:
 		m.clean, m.slow = 0, 0
@@ -354,14 +356,15 @@ type firedEvent struct {
 }
 
 type modelRun struct {
-	t     *testing.T
-	seed  uint64
-	plan  []modelEvent
-	desc  string
-	c     *Client
-	m     refModel
-	fired []firedEvent
-	seen  int // fired events already checked
+	refusalsAt map[*ticket]int // the model's refusal count when each ticket was admitted
+	t          *testing.T
+	seed       uint64
+	plan       []modelEvent
+	desc       string
+	c          *Client
+	m          refModel
+	fired      []firedEvent
+	seen       int // fired events already checked
 
 	i          int // index of the event being executed
 	lastStart  time.Time
@@ -577,6 +580,10 @@ func (r *modelRun) admitOne() (*ticket, int) {
 	r.samples = append(r.samples, thr)
 	r.sampleIdx = append(r.sampleIdx, r.i)
 	r.checkState()
+	if r.refusalsAt == nil {
+		r.refusalsAt = map[*ticket]int{}
+	}
+	r.refusalsAt[t] = r.m.refusals
 	return t, len(r.fired)
 }
 
@@ -605,7 +612,10 @@ func (r *modelRun) resolve(t *ticket, firedAt int, o outcome) {
 	p := r.m.p
 	before, _, st, _ := r.snapshot()
 	now := time.Now()
-	stale := r.c.breakerOn() && len(r.fired) > firedAt
+	// Stale: admitted before the current pause, or before a refusal that
+	// has slowed the client since -- sent at the old rate either way.
+	stale := (r.c.breakerOn() && len(r.fired) > firedAt) || r.refusalsAt[t] != r.m.refusals
+	delete(r.refusalsAt, t)
 	clean, slow := r.m.clean, r.m.slow
 	kind := r.m.classify(o, before, now, st, stale)
 	floor := r.m.floor(now)

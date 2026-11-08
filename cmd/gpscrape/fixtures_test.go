@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -237,7 +238,7 @@ func preFinished(t *testing.T, dir string, f *sitemapFixture, samp sampling, sha
 			ids.WriteString(id + "\n")
 			n++
 		}
-		done.WriteString(googleplayscraper.BaseURL + f.shardPath(i) + "\n")
+		done.WriteString(googleplayscraper.BaseURL + f.shardPath(i) + "\t" + strconv.Itoa(len(f.ids[i])) + "\n")
 	}
 	writeFixtureFile(t, filepath.Join(dir, "partial-"+f.gen.ID()+".txt"), ids.String())
 	writeFixtureFile(t, doneLogPath(dir, f.gen), done.String())

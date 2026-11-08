@@ -550,6 +550,32 @@ func TestAdaptiveIgnoresStaleRefusals(t *testing.T) {
 	}
 }
 
+// Without a breaker too, requests sent at the old rate and refused after the
+// first refusal slowed the client are that episode, not news: two in flight
+// slow it once. A request admitted after the slowdown and refused again
+// slows it again.
+func TestAdaptiveInFlightRefusalsWithoutABreaker(t *testing.T) {
+	c := NewClient(WithAdaptiveThrottle(AdaptivePolicy{
+		Min: 20 * time.Millisecond, Max: 5 * time.Second, Start: 100 * time.Millisecond,
+	}))
+	ctx := context.Background()
+	refused := outcome{status: http.StatusTooManyRequests, rtt: 50 * time.Millisecond}
+	t1, t2 := &ticket{refusals: c.refusals}, &ticket{refusals: c.refusals}
+	c.record(ctx, t1, refused)
+	once := c.CurrentThrottle()
+	if once <= 100*time.Millisecond {
+		t.Fatalf("a refusal left the interval at %v", once)
+	}
+	c.record(ctx, t2, refused)
+	if got := c.CurrentThrottle(); got != once {
+		t.Errorf("a refusal sent before the slowdown moved the interval %v -> %v", once, got)
+	}
+	c.record(ctx, &ticket{refusals: c.refusals}, refused)
+	if got := c.CurrentThrottle(); got <= once {
+		t.Errorf("a refusal at the new rate left the interval at %v, want above %v", got, once)
+	}
+}
+
 // AdaptivePolicy.Start wins over WithThrottle whichever is applied first.
 func TestAdaptiveStartWinsWhicheverOrder(t *testing.T) {
 	p := AdaptivePolicy{Min: 10 * time.Millisecond, Max: 5 * time.Second, Start: time.Second, Window: 2, ProbeWindow: 4}

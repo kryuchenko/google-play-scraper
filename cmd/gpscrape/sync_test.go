@@ -662,7 +662,7 @@ func TestDoneLogSurvivesATruncatedTail(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	done, err := readDoneLog(path)
+	done, _, _, err := readDoneLog(path)
 	if err != nil {
 		t.Fatalf("readDoneLog: %v", err)
 	}
@@ -683,7 +683,7 @@ func TestDoneLogSurvivesATruncatedTail(t *testing.T) {
 }
 
 func TestDoneLogMissingIsNotAnError(t *testing.T) {
-	done, err := readDoneLog(filepath.Join(t.TempDir(), "absent.log"))
+	done, _, _, err := readDoneLog(filepath.Join(t.TempDir(), "absent.log"))
 	if err != nil {
 		t.Fatalf("a missing done log should read as empty, got %v", err)
 	}
@@ -1086,7 +1086,7 @@ func TestSweepGenerationRollMidSweepRestarts(t *testing.T) {
 	if _, serr := os.Stat(filepath.Join(dir, "manifest-"+fixtureGenA.ID()+".json")); serr == nil {
 		t.Error("a manifest was written for a sweep that hit a rolled generation")
 	}
-	done, err := readDoneLog(doneLogPath(dir, fixtureGenA))
+	done, _, _, err := readDoneLog(doneLogPath(dir, fixtureGenA))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1159,7 +1159,7 @@ func TestSweepRefusesAManifestWhenAShardKeepsFailing(t *testing.T) {
 	if _, serr := os.Stat(filepath.Join(dir, "manifest-"+fixtureGenA.ID()+".json")); serr == nil {
 		t.Error("a manifest was written for an incomplete sweep")
 	}
-	done, err := readDoneLog(doneLogPath(dir, fixtureGenA))
+	done, _, _, err := readDoneLog(doneLogPath(dir, fixtureGenA))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1950,7 +1950,7 @@ func TestWriteDoneLineFlushesTheIDsFirst(t *testing.T) {
 	for i := range 20 {
 		_, _ = fmt.Fprintln(ids, "com.example.app", i)
 		url := googleplayscraper.BaseURL + "/sitemaps/shard-" + strings.Repeat("x", 20) + fmt.Sprint(i)
-		if err := writeDoneLine(ids, done, url); err != nil {
+		if err := writeDoneLine(ids, done, url, 1); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -2006,5 +2006,29 @@ func TestSweepRemovesResumeFilesOfAFinishedGeneration(t *testing.T) {
 		if _, err := os.Stat(filepath.Join(dir, name)); err == nil {
 			t.Errorf("%s survived although the generation is complete", name)
 		}
+	}
+}
+
+// Each done line carries its shard's id count, so a resume notices ids lost
+// from the partial file after the last checkpoint too -- where state.ids is
+// still the older, smaller count -- and a log from before the count still
+// reads.
+func TestReadDoneLogCountsIDs(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "done.log")
+	if err := os.WriteFile(path, []byte("u1\t3\nu2\t0\n\nu3\t4\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	done, ids, counted, err := readDoneLog(path)
+	if err != nil || len(done) != 3 || ids != 7 || !counted {
+		t.Fatalf("got %d shards, %d ids, counted %v, %v; want 3, 7, true", len(done), ids, counted, err)
+	}
+	if _, ok := done["u3"]; !ok {
+		t.Error("the URL is the part before the tab")
+	}
+	if err := os.WriteFile(path, []byte("u1\t3\nu2\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if done, _, counted, _ := readDoneLog(path); len(done) != 2 || counted {
+		t.Errorf("an old line without a count: %d shards, counted %v; want 2, false", len(done), counted)
 	}
 }

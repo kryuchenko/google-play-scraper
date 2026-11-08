@@ -454,7 +454,10 @@ func TestCLIPairwise(t *testing.T) {
 			// against the first record written.
 			_, shared := commandRecords[row.cmd.name]
 			fieldsChecked := shared && !row.raw && strings.Contains(row.fields, "unknown")
-			invalidArg := row.lang == "invalid" || row.ctry == "invalid" || fieldsChecked ||
+			// suggest and categories write bare strings, so any -fields is
+			// refused there.
+			fieldsOnStrings := !row.cmd.objects && row.fields != "none"
+			invalidArg := row.lang == "invalid" || row.ctry == "invalid" || fieldsChecked || fieldsOnStrings ||
 				(row.cmd.arg && row.input == "empty") || (row.cmd.id && row.input == "malformed")
 			errs := stderrErrors(res.stderr)
 			switch {
@@ -624,5 +627,23 @@ func TestCLIFoundFailures(t *testing.T) {
 				t.Errorf("%s\n%s", fmt.Sprintf(format, a...), res)
 			})
 		})
+	}
+}
+
+// suggest and categories print one JSON string per line: there is nothing
+// for -fields to keep, and it used to be ignored without a word.
+func TestFieldsOnStringCommandsIsRefused(t *testing.T) {
+	for _, args := range [][]string{
+		{"suggest", "photo", "-fields", "title"},
+		{"categories", "-fields", "title"},
+	} {
+		res := runCLI(t, args...)
+		errs := stderrErrors(res.stderr)
+		if res.exit != 2 || len(errs) == 0 || errs[len(errs)-1].Code != string(records.CodeInvalid) {
+			t.Errorf("%v: exit %d, stderr %s; want exit 2 with invalid_argument", args, res.exit, res.stderr)
+		}
+		if res.stdout != "" {
+			t.Errorf("%v wrote %q; a refused command writes nothing", args, res.stdout)
+		}
 	}
 }

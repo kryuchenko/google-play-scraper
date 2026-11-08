@@ -323,7 +323,8 @@ func checkPartialState(t *testing.T, label string, store *killStore, dir string,
 		return // no done log yet
 	}
 	lines := strings.Split(string(b), "\n")
-	for _, u := range lines[:len(lines)-1] { // the last element is after the final newline
+	for _, line := range lines[:len(lines)-1] { // the last element is after the final newline
+		u, n, _ := strings.Cut(line, "\t")
 		path := strings.TrimPrefix(u, googleplayscraper.BaseURL)
 		store.mu.Lock()
 		i, ok := store.paths[path]
@@ -331,6 +332,9 @@ func checkPartialState(t *testing.T, label string, store *killStore, dir string,
 		if !ok {
 			t.Errorf("%s: done log names %q, not a shard", label, u)
 			continue
+		}
+		if want := strconv.Itoa(len(killShardIDs(gen, i))); n != want {
+			t.Errorf("%s: done log counts %q ids for shard %d, which wrote %s", label, n, i, want)
 		}
 		for _, id := range killShardIDs(gen, i) {
 			if !have[id] {
