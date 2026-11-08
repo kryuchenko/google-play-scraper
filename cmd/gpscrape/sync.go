@@ -432,6 +432,15 @@ func sweep(
 		}
 	}
 
+	// A run killed in the middle of a write leaves the partial file ending
+	// in half an id. Appending to it glued that half to the next id --
+	// com.exa + com.example became com.exacom.example, an app that does not
+	// exist, in the snapshot. The torn line belongs to a shard whose done
+	// line was never written, so the shard is fetched again whole; cutting
+	// the file back to its last newline loses nothing.
+	if err := truncateTornLine(partialPath); err != nil {
+		return fmt.Errorf("repair %s: %w", partialPath, err)
+	}
 	partial, err := os.OpenFile(partialPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
 	if err != nil {
 		return fmt.Errorf("open %s: %w", partialPath, err)
@@ -499,6 +508,17 @@ func sweep(
 		failedSeen[url] = struct{}{}
 		state.Failed = append(state.Failed, url)
 	}
+	// A shard a previous run recorded as failed is pending again on resume.
+	// When it succeeds it leaves the list: kept, it was fetched a second
+	// time by the retry pass, and if that second fetch failed the sweep
+	// refused to publish ids it already had.
+	noteSucceeded := func(url string) {
+		if _, was := failedSeen[url]; !was {
+			return
+		}
+		delete(failedSeen, url)
+		state.Failed = slices.DeleteFunc(state.Failed, func(u string) bool { return u == url })
+	}
 
 	// Each shard is fetched directly rather than through CatalogSeq: this loop
 	// needs to know which URL produced which ids so an interrupted run can
@@ -532,11 +552,16 @@ func sweep(
 			failWrite("write "+donePath, werr)
 			return
 		}
+		noteSucceeded(url)
 
 		done++
 		if done%500 == 0 {
+			// A checkpoint that cannot be written stops the sweep. It used
+			// to be logged and skipped, so a disk that refused fsync let the
+			// run fetch for hours with nothing it could resume from.
 			if cerr := checkpoint(); cerr != nil {
-				fmt.Fprintf(os.Stderr, "checkpoint: %v\n", cerr)
+				failWrite("checkpoint", cerr)
+				return
 			}
 			fmt.Fprintf(os.Stderr, "%d/%d shards, %d ids, %s elapsed\n",
 				len(shards)-len(pending)+done, len(shards), state.IDs,
@@ -828,6 +853,53 @@ func diffAgainstSnapshot(path string, from, to googleplayscraper.Generation, new
 	}
 	d.Added = append(d.Added, newIDs[j:]...)
 	return d, nil
+}
+
+// truncateTornLine cuts path back to just after its last newline, so the
+// next append starts on a line of its own. A missing or empty file, or one
+// that already ends in a newline, is left alone.
+func truncateTornLine(path string) error {
+	f, err := os.OpenFile(path, os.O_RDWR, 0)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	defer func() { _ = f.Close() }()
+	st, err := f.Stat()
+	if err != nil {
+		return err
+	}
+	size := st.Size()
+	if size == 0 {
+		return nil
+	}
+	// Walk back from the end a block at a time to the last newline. An id is
+	// a few hundred bytes at most, so this reads one block in practice.
+	buf := make([]byte, 4096)
+	for end := size; end > 0; {
+		start := max(0, end-int64(len(buf)))
+		n, err := f.ReadAt(buf[:end-start], start)
+		if err != nil && !errors.Is(err, io.EOF) {
+			return err
+		}
+		if i := bytes.LastIndexByte(buf[:n], '\n'); i >= 0 {
+			cut := start + int64(i) + 1
+			if cut == size {
+				return nil
+			}
+			if err := f.Truncate(cut); err != nil {
+				return err
+			}
+			return f.Sync()
+		}
+		end = start
+	}
+	if err := f.Truncate(0); err != nil {
+		return err
+	}
+	return f.Sync()
 }
 
 // diff walks two sorted lists once. At a few million ids on each side this is

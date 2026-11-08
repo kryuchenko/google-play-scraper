@@ -5,6 +5,21 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Fixed
+
+- `gpscrape catalog sweep`, resuming after a hard kill: the partial id file
+  could end in half an id, and appending glued it to the next one
+  (`com.c` + `com.d` became `com.com.d`, an app that does not exist, in the
+  snapshot). The resume now cuts the file back to its last full line; the
+  torn shard is fetched again whole.
+- A shard a previous run recorded as failed, and that succeeded on resume,
+  was fetched again by the retry pass -- and if that fetch failed, the sweep
+  refused to publish ids it already had. It leaves the failed list once it
+  succeeds.
+- A checkpoint that could not be written was logged and skipped, so a disk
+  refusing fsync let a sweep fetch for hours with nothing to resume from. It
+  stops the sweep now.
+
 ### Added
 
 - `gpscrape`: an error caused by Claude Code's sandbox on macOS -- where Go
