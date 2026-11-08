@@ -461,6 +461,33 @@ func sweep(
 	if err != nil {
 		return fmt.Errorf("read %s: %w", donePath, err)
 	}
+	// The done log is only worth trusting while the id file still holds what
+	// it vouches for. Removed or cut short between runs, the resume skipped
+	// the shards it lists and their ids were missing from the snapshot, with
+	// nothing to show for it. A checkpoint flushes the ids before it records
+	// state.IDs, so the file holds at least that many lines; fewer -- or none
+	// while the done log lists shards -- means the generation starts over.
+	if resumed {
+		have, err := countLines(partialPath)
+		if err != nil {
+			return fmt.Errorf("read %s: %w", partialPath, err)
+		}
+		if have < state.IDs || (have == 0 && len(finished) > 0) {
+			fmt.Fprintf(os.Stderr, "%s holds %d ids, but the checkpoint recorded %d from %d shards: "+
+				"it was removed or cut short since, so %s is swept again from the start\n",
+				partialPath, have, state.IDs, len(finished), gen.ID())
+			for _, p := range []string{partialPath, donePath} {
+				if err := os.Remove(p); err != nil && !errors.Is(err, os.ErrNotExist) {
+					return fmt.Errorf("remove %s: %w", p, err)
+				}
+			}
+			state = syncState{Generation: gen, SamplePct: samp.Pct, SampleSeed: samp.Seed}
+			finished, resumed = map[string]struct{}{}, false
+			if err := saveState(statePath, state); err != nil {
+				return fmt.Errorf("write %s: %w", statePath, err)
+			}
+		}
+	}
 	// max rather than the bare difference: the two are only guaranteed to be
 	// consistent because loadState now refuses a mismatched sample, and a
 	// capacity hint is not the place to find out that they are not.
@@ -471,13 +498,13 @@ func sweep(
 		}
 	}
 
-	partial, err := os.OpenFile(partialPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	partial, err := openWrite(partialPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
 	if err != nil {
 		return fmt.Errorf("open %s: %w", partialPath, err)
 	}
 	w := bufio.NewWriterSize(partial, 1<<20)
 
-	doneLog, err := os.OpenFile(donePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	doneLog, err := openWrite(donePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
 	if err != nil {
 		// partial is already open, and returning past it leaks the handle.
 		_ = partial.Close()
@@ -520,6 +547,37 @@ func sweep(
 			return fmt.Errorf("sync %s: %w", donePath, err)
 		}
 		return saveState(statePath, state)
+	}
+
+	// endPass makes the pass's progress durable and closes both files, and
+	// on any failure still closes them: returning past an open handle leaked
+	// it, and on Windows kept the directory from being cleaned up.
+	//
+	// The id file is read back by name at the end, so a name that no longer
+	// reaches what this run wrote -- removed, or replaced by another file --
+	// would publish the other file's lines as the snapshot, or resume past
+	// shards whose ids are gone. The state file goes with it, so the rerun
+	// starts the generation clean instead of trusting the done log.
+	endPass := func() error {
+		err := checkpoint()
+		if err == nil {
+			if err = stillOurs(partial, partialPath); err != nil {
+				_ = os.Remove(statePath)
+			}
+		}
+		if err != nil {
+			_ = partial.Close()
+			_ = doneLog.Close()
+			return err
+		}
+		if err := partial.Close(); err != nil {
+			_ = doneLog.Close()
+			return fmt.Errorf("close %s: %w", partialPath, err)
+		}
+		if err := doneLog.Close(); err != nil {
+			return fmt.Errorf("close %s: %w", donePath, err)
+		}
+		return nil
 	}
 
 	started := time.Now()
@@ -637,14 +695,8 @@ func sweep(
 			"(progress is kept in %s)", writeErr, donePath)
 	}
 
-	if cerr := checkpoint(); cerr != nil {
-		return cerr
-	}
-	if err := partial.Close(); err != nil {
-		return fmt.Errorf("close %s: %w", partialPath, err)
-	}
-	if err := doneLog.Close(); err != nil {
-		return fmt.Errorf("close %s: %w", donePath, err)
+	if err := endPass(); err != nil {
+		return err
 	}
 
 	// Shards that failed get one more pass before the sweep is called done.
@@ -660,12 +712,12 @@ func sweep(
 		state.Failed, failedSeen = nil, map[string]struct{}{}
 		fmt.Fprintf(os.Stderr, "retrying %d failed shards\n", len(retryURLs))
 
-		partial, err = os.OpenFile(partialPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+		partial, err = openWrite(partialPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
 		if err != nil {
 			return fmt.Errorf("reopen %s: %w", partialPath, err)
 		}
 		w = bufio.NewWriterSize(partial, 1<<20)
-		doneLog, err = os.OpenFile(donePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+		doneLog, err = openWrite(donePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
 		if err != nil {
 			_ = partial.Close()
 			return fmt.Errorf("reopen %s: %w", donePath, err)
@@ -709,14 +761,8 @@ func sweep(
 			return fmt.Errorf("%w; the sweep stopped rather than fetching the rest "+
 				"(progress is kept in %s)", writeErr, donePath)
 		}
-		if cerr := checkpoint(); cerr != nil {
-			return cerr
-		}
-		if err := partial.Close(); err != nil {
-			return fmt.Errorf("close %s: %w", partialPath, err)
-		}
-		if err := doneLog.Close(); err != nil {
-			return fmt.Errorf("close %s: %w", donePath, err)
+		if err := endPass(); err != nil {
+			return err
 		}
 		if retryErr != nil {
 			return fmt.Errorf("%w (progress kept in %s)", retryErr, donePath)
@@ -981,22 +1027,47 @@ func (e errFlushIDs) Unwrap() error { return e.err }
 // next append starts on a line of its own. A missing or empty file, or one
 // that already ends in a newline, is left alone.
 func truncateTornLine(path string) error {
-	f, err := os.OpenFile(path, os.O_RDWR, 0)
+	r, err := os.Open(path)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil
 	}
 	if err != nil {
 		return err
 	}
-	defer func() { _ = f.Close() }()
-	st, err := f.Stat()
+	cut, torn, err := lastLineEnd(r)
+	_ = r.Close()
+	if err != nil || !torn {
+		return err
+	}
+	// The cut is made through the writers' seam, so a failing fsync or a
+	// file swapped underneath is caught here as it is everywhere else.
+	f, err := openWrite(path, os.O_WRONLY, 0)
 	if err != nil {
 		return err
 	}
-	size := st.Size()
-	if size == 0 {
-		return nil
+	if err := f.Truncate(cut); err != nil {
+		_ = f.Close()
+		return err
 	}
+	if err := f.Sync(); err != nil {
+		_ = f.Close()
+		return err
+	}
+	if err := stillOurs(f, path); err != nil {
+		_ = f.Close()
+		return err
+	}
+	return f.Close()
+}
+
+// lastLineEnd returns the size f should be cut to so it ends just after its
+// last newline, and whether that is shorter than it is now.
+func lastLineEnd(f *os.File) (int64, bool, error) {
+	st, err := f.Stat()
+	if err != nil {
+		return 0, false, err
+	}
+	size := st.Size()
 	// Walk back from the end a block at a time to the last newline. An id is
 	// a few hundred bytes at most, so this reads one block in practice.
 	buf := make([]byte, 4096)
@@ -1004,24 +1075,39 @@ func truncateTornLine(path string) error {
 		start := max(0, end-int64(len(buf)))
 		n, err := f.ReadAt(buf[:end-start], start)
 		if err != nil && !errors.Is(err, io.EOF) {
-			return err
+			return 0, false, err
 		}
 		if i := bytes.LastIndexByte(buf[:n], '\n'); i >= 0 {
 			cut := start + int64(i) + 1
-			if cut == size {
-				return nil
-			}
-			if err := f.Truncate(cut); err != nil {
-				return err
-			}
-			return f.Sync()
+			return cut, cut != size, nil
 		}
 		end = start
 	}
-	if err := f.Truncate(0); err != nil {
-		return err
+	return 0, size > 0, nil
+}
+
+// countLines counts the newlines in path; a missing file has none.
+func countLines(path string) (int, error) {
+	f, err := os.Open(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return 0, nil
 	}
-	return f.Sync()
+	if err != nil {
+		return 0, err
+	}
+	defer func() { _ = f.Close() }()
+	buf := make([]byte, 1<<20)
+	n := 0
+	for {
+		k, err := f.Read(buf)
+		n += bytes.Count(buf[:k], []byte{'\n'})
+		if errors.Is(err, io.EOF) {
+			return n, nil
+		}
+		if err != nil {
+			return n, err
+		}
+	}
 }
 
 // diffSnapshots is diff over two snapshot files, read side by side a line at
@@ -1197,27 +1283,41 @@ func saveState(path string, s syncState) error {
 // and what it would discard here is an hours-long sweep.
 func writeJSON(path string, v any) error {
 	tmp := path + ".tmp"
-	f, err := os.Create(tmp)
+	f, err := openWrite(tmp, createFlags, 0o666)
 	if err != nil {
 		return fmt.Errorf("create %s: %w", tmp, err)
+	}
+	// Each failure removes the temporary file, as the snapshot and table
+	// writers already did: a half-written manifest.json.tmp was left beside
+	// the good one until the next run truncated it.
+	fail := func(what string, err error) error {
+		_ = f.Close()
+		_ = os.Remove(tmp)
+		return fmt.Errorf("%s %s: %w", what, tmp, err)
 	}
 	enc := json.NewEncoder(f)
 	enc.SetIndent("", "  ")
 	if err := enc.Encode(v); err != nil {
-		_ = f.Close()
-		return fmt.Errorf("write %s: %w", tmp, err)
+		return fail("write", err)
 	}
 	if err := f.Sync(); err != nil {
-		_ = f.Close()
-		return fmt.Errorf("sync %s: %w", tmp, err)
+		return fail("sync", err)
+	}
+	if err := stillOurs(f, tmp); err != nil {
+		return fail("publish", err)
 	}
 	if err := f.Close(); err != nil {
+		_ = os.Remove(tmp)
 		return fmt.Errorf("close %s: %w", tmp, err)
 	}
-	if err := os.Rename(tmp, path); err != nil {
+	if err := renameFile(tmp, path); err != nil {
+		_ = os.Remove(tmp)
 		return fmt.Errorf("rename %s: %w", tmp, err)
 	}
-	return syncDir(filepath.Dir(path))
+	if err := syncDir(filepath.Dir(path)); err != nil {
+		return fmt.Errorf("publish %s: %w", path, err)
+	}
+	return nil
 }
 
 // syncDir makes a directory entry durable, which is what a rename actually
@@ -1226,7 +1326,9 @@ func writeJSON(path string, v any) error {
 // believes a checkpoint landed when it did not is worse off than one told the
 // truth.
 func syncDir(dir string) error {
-	d, err := os.Open(dir)
+	// Through openWrite, read-only as os.Open would: a test can then fail the
+	// fsync of the directory a write was just renamed into.
+	d, err := openWrite(dir, os.O_RDONLY, 0)
 	if err != nil {
 		return fmt.Errorf("open %s: %w", dir, err)
 	}
@@ -1338,7 +1440,7 @@ func writeSnapshotSerial(path string, ids []string) (string, error) {
 // to stay inside the callback for that to hold.
 func writeSnapshotFile(path string, write func(io.Writer) error) (string, error) {
 	tmp := path + ".tmp"
-	f, err := os.Create(tmp)
+	f, err := openWrite(tmp, createFlags, 0o666)
 	if err != nil {
 		return "", fmt.Errorf("create %s: %w", tmp, err)
 	}
@@ -1354,16 +1456,19 @@ func writeSnapshotFile(path string, write func(io.Writer) error) (string, error)
 	if err := f.Sync(); err != nil {
 		return fail("sync", err)
 	}
+	if err := stillOurs(f, tmp); err != nil {
+		return fail("publish", err)
+	}
 	if err := f.Close(); err != nil {
 		_ = os.Remove(tmp)
 		return "", fmt.Errorf("close %s: %w", tmp, err)
 	}
-	if err := os.Rename(tmp, path); err != nil {
+	if err := renameFile(tmp, path); err != nil {
 		_ = os.Remove(tmp)
 		return "", fmt.Errorf("rename %s: %w", tmp, err)
 	}
 	if err := syncDir(filepath.Dir(path)); err != nil {
-		return "", err
+		return "", fmt.Errorf("publish %s: %w", path, err)
 	}
 	return hex.EncodeToString(h.Sum(nil)), nil
 }

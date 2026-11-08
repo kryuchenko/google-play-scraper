@@ -702,7 +702,7 @@ func streamGenres(dir string, fn func(appID, genreID string)) (string, int, erro
 // new one and never half of either.
 func writeTableAtomic(path string, fill func(*bufio.Writer) error) error {
 	tmp := path + ".tmp"
-	f, err := os.Create(tmp)
+	f, err := openWrite(tmp, createFlags, 0o666)
 	if err != nil {
 		return err
 	}
@@ -725,17 +725,23 @@ func writeTableAtomic(path string, fill func(*bufio.Writer) error) error {
 	if err := f.Sync(); err != nil {
 		return fail(err)
 	}
+	if err := stillOurs(f, tmp); err != nil {
+		return fail(err)
+	}
 	if err := f.Close(); err != nil {
 		_ = os.Remove(tmp)
 		return err
 	}
-	if err := os.Rename(tmp, path); err != nil {
+	if err := renameFile(tmp, path); err != nil {
 		_ = os.Remove(tmp)
 		return err
 	}
 	// The rename is what a reader sees, and a rename lives in the page cache
 	// like anything else until the directory entry is durable.
-	return syncDir(filepath.Dir(path))
+	if err := syncDir(filepath.Dir(path)); err != nil {
+		return fmt.Errorf("publish %s: %w", path, err)
+	}
+	return nil
 }
 
 // ---- new ----
