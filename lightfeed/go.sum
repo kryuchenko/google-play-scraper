@@ -4,5 +4,5 @@ github.com/chromedp/chromedp v0.22.0 h1:LmiA4TMBsfNG5ZwioC4n+aInRdnu9NCtHryKab2N
 github.com/chromedp/chromedp v0.22.0/go.mod h1:hJcPsoPrgxu4ulIXhO1WmtKjosCD8jbZh0+TeVFsod8=
 github.com/go-json-experiment/json v0.0.0-20260623181947-01eb4420fa68 h1:KZaTBSyshWX3MP5jukJcNSuXDQTO+rNpt0J564dX/eg=
 github.com/go-json-experiment/json v0.0.0-20260623181947-01eb4420fa68/go.mod h1:tphK2c80bpPhMOI4v6bIc2xWywPfbqi1Z06+RcrMkDg=
-github.com/kryuchenko/google-play-scraper v1.6.0 h1:5A9Dkymbo+Op/ICAl1Xyu2eJf9ZxH0ksOTyr7jR9lt4=
-github.com/kryuchenko/google-play-scraper v1.6.0/go.mod h1:PGZSQMAFQXuLqxFqv5vRd21A1950nkA9DvNNo/L4JZQ=
+github.com/kryuchenko/google-play-scraper v1.7.0 h1:xRXQWkT6p51nU4yFh3tSVUaHfbRnbgCr3UPaqbBBf7o=
+github.com/kryuchenko/google-play-scraper v1.7.0/go.mod h1:PGZSQMAFQXuLqxFqv5vRd21A1950nkA9DvNNo/L4JZQ=

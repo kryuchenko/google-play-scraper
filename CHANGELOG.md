@@ -9,7 +9,8 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
-- Requires the library at v1.7.0, and takes its fixes: search and cluster
+- Requires the library at v1.7.0 (so do `apidoc` and `lightfeed`), and takes
+  its fixes: search and cluster
   results carry price and summary for every row, not only the first; a
   price the store did not give leaves `free` out of the record instead of
   reporting `true` (the output schema marks it optional); responses and
