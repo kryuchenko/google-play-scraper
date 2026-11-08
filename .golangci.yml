@@ -3,9 +3,10 @@ version: "2"
 # The default set (errcheck, govet, ineffassign, staticcheck, unused) passes
 # clean, so it is the floor rather than an aspiration. Everything it reports
 # was either fixed or made explicit at the call site -- there are deliberately
-# no exclusions here. An ignored error should be visible as `_ =` in the code
-# that ignores it, not hidden in this file where a reader of that code will
-# never look for it.
+# no exclusions for it. An ignored error should be visible as `_ =` in the
+# code that ignores it, not hidden in this file where a reader of that code
+# will never look for it. The single exclusion below is unparam in tests, and
+# it says why.
 linters:
   default: standard
   enable:
@@ -22,6 +23,23 @@ linters:
     - bodyclose
     - copyloopvar
     - unconvert
+    # Six more, chosen by running a wide set over this code and keeping the
+    # ones whose findings were all real (2026-11): unparam because an error
+    # result that is always nil, or a parameter every caller passes the same
+    # value, means the code handling it is dead; errorlint because the
+    # library wraps errors and == against one breaks on wrapping; nilerr,
+    # wastedassign, makezero and mirror for dead stores, append onto make(n)
+    # and needless []byte<->string copies. gosec, gocritic, perfsprint,
+    # prealloc, exhaustive and the complexity linters were tried too: every
+    # finding was intended (paths from the user, math/rand for jitter,
+    # positional-JSON parsers that branch by nature), so they would only
+    # breed nolint comments.
+    - unparam
+    - errorlint
+    - nilerr
+    - wastedassign
+    - makezero
+    - mirror
 
   settings:
     errcheck:
@@ -29,6 +47,15 @@ linters:
       # written out is the point: `_ = resp.Body.Close()` documents that the
       # error was considered, which a bare call does not.
       check-blank: false
+
+  exclusions:
+    rules:
+      # The one exclusion. A test helper is general on purpose -- routeQuery
+      # matches any path, clusterHTMLPage any category -- and narrowing it to
+      # the one value today's tests pass, as unparam asks, makes the next
+      # test write its own.
+      - path: _test\.go
+        linters: [unparam]
 
 formatters:
   enable:

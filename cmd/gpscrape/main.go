@@ -601,12 +601,12 @@ func checkLang(cmd, lang string) error {
 // arg returns the n-th positional argument, or an error naming what was
 // expected. Commands that take an argument are useless without it, and a
 // generic "missing argument" tells the user nothing about which.
-func (c *common) arg(n int, what string) (string, error) {
-	if len(c.args) <= n {
+func (c *common) arg(what string) (string, error) {
+	if len(c.args) == 0 {
 		return "", records.Invalid("%s: missing %s\n\nusage: gpscrape %s [flags] <%s>",
 			c.fs.Name(), what, c.fs.Name(), what)
 	}
-	return c.args[n], nil
+	return c.args[0], nil
 }
 
 // progressTo returns the writer for human-facing progress, or nil when stderr
@@ -735,7 +735,7 @@ func cmdApp(args []string) error {
 	if err := c.parse(args); err != nil {
 		return err
 	}
-	if _, err := c.arg(0, "appID"); err != nil {
+	if _, err := c.arg("appID"); err != nil {
 		return err
 	}
 
@@ -808,7 +808,7 @@ func cmdPCApp(args []string) error {
 	if err := c.parse(args); err != nil {
 		return err
 	}
-	if _, err := c.arg(0, "appID"); err != nil {
+	if _, err := c.arg("appID"); err != nil {
 		return err
 	}
 
@@ -856,7 +856,7 @@ func cmdSearch(args []string) error {
 	if err := c.parse(args); err != nil {
 		return err
 	}
-	term, err := c.arg(0, "term")
+	term, err := c.arg("term")
 	if err != nil {
 		return err
 	}
@@ -907,7 +907,7 @@ func cmdReviews(args []string) error {
 	if err := c.parse(args); err != nil {
 		return err
 	}
-	appID, err := c.arg(0, "appID")
+	appID, err := c.arg("appID")
 	if err != nil {
 		return err
 	}
@@ -1166,7 +1166,7 @@ func cmdSimilar(args []string) error {
 	if err := c.parse(args); err != nil {
 		return err
 	}
-	appID, err := c.arg(0, "appID")
+	appID, err := c.arg("appID")
 	if err != nil {
 		return err
 	}
@@ -1189,7 +1189,7 @@ func cmdDeveloper(args []string) error {
 	if err := c.parse(args); err != nil {
 		return err
 	}
-	dev, err := c.arg(0, "developer")
+	dev, err := c.arg("developer")
 	if err != nil {
 		return err
 	}
@@ -1220,7 +1220,7 @@ func cmdPermissions(args []string) error {
 	if err := c.parse(args); err != nil {
 		return err
 	}
-	if _, err := c.arg(0, "appID"); err != nil {
+	if _, err := c.arg("appID"); err != nil {
 		return err
 	}
 	ctx, stop := c.context()
@@ -1289,7 +1289,7 @@ func cmdDataSafety(args []string) error {
 	if err := c.parse(args); err != nil {
 		return err
 	}
-	appID, err := c.arg(0, "appID")
+	appID, err := c.arg("appID")
 	if err != nil {
 		return err
 	}
@@ -1313,7 +1313,7 @@ func cmdSuggest(args []string) error {
 	if err := c.parse(args); err != nil {
 		return err
 	}
-	term, err := c.arg(0, "term")
+	term, err := c.arg("term")
 	if err != nil {
 		return err
 	}
@@ -1376,7 +1376,7 @@ func cmdAvailability(args []string) error {
 	if err := c.parse(args); err != nil {
 		return err
 	}
-	appID, err := c.arg(0, "appID")
+	appID, err := c.arg("appID")
 	if err != nil {
 		return err
 	}

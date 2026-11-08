@@ -20,6 +20,7 @@ import (
 	"time"
 
 	gps "github.com/kryuchenko/google-play-scraper"
+	"github.com/kryuchenko/google-play-scraper/records"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -1362,5 +1363,14 @@ func TestErrorsCarryCodes(t *testing.T) {
 		if msg := callErr(t, cs, c.tool, c.args); !strings.HasPrefix(msg, c.code) {
 			t.Errorf("%s %v: %q, want it to start with %q", c.tool, c.args, msg, c.code)
 		}
+	}
+}
+
+// An error that wraps an explained one keeps its code and does not panic.
+func TestItemErrorWrappedExplained(t *testing.T) {
+	inner := coded(records.CodeRateLimited, errors.New("slow down"))
+	got := itemError("com.a.b", fmt.Errorf("batch: %w", inner))
+	if got.Code != records.CodeRateLimited || got.AppID != "com.a.b" || !strings.Contains(got.Error, "slow down") {
+		t.Errorf("itemError = %+v", got)
 	}
 }

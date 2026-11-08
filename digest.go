@@ -329,7 +329,7 @@ func (c *Client) digestBatch(ctx context.Context, ids []string, fields []int, op
 			out[i].Listed = false
 			continue
 		}
-		d, err := parseDigest(f.Payload, out[i].AppID, fields)
+		d, err := parseDigest(f.Payload, out[i].AppID)
 		if err != nil {
 			out[i].Err = err
 			continue
@@ -341,7 +341,7 @@ func (c *Client) digestBatch(ctx context.Context, ids []string, fields []int, op
 }
 
 // parseDigest reads one lean payload.
-func parseDigest(payload, appID string, fields []int) (AppDigest, error) {
+func parseDigest(payload, appID string) (AppDigest, error) {
 	var ds5 any
 	if err := json.Unmarshal([]byte(payload), &ds5); err != nil {
 		return AppDigest{}, fmt.Errorf("parse %s: %w", shortenID(appID), err)

@@ -54,10 +54,7 @@ func (c *Client) Developer(ctx context.Context, opts DeveloperOptions) ([]Search
 		return nil, fmt.Errorf("request failed: %w", err)
 	}
 
-	results, err := parseDeveloperPage(body, isNumeric, opts.Num)
-	if err != nil {
-		return nil, err
-	}
+	results := parseDeveloperPage(body, isNumeric, opts.Num)
 
 	// Fetch full details if requested
 	if opts.FullDetail {
@@ -67,12 +64,12 @@ func (c *Client) Developer(ctx context.Context, opts DeveloperOptions) ([]Search
 	return results, nil
 }
 
-func parseDeveloperPage(body []byte, isNumericID bool, num int) ([]SearchResult, error) {
+func parseDeveloperPage(body []byte, isNumericID bool, num int) []SearchResult {
 
 	// Apps are in ds:3
 	ds3, ok := dataBlock(body, "ds:3")
 	if !ok {
-		return nil, nil
+		return nil
 	}
 
 	// Path depends on whether devId is numeric or name
@@ -85,12 +82,12 @@ func parseDeveloperPage(body []byte, isNumericID bool, num int) ([]SearchResult,
 
 	appsSection := getPath(ds3, appsPath...)
 	if appsSection == nil {
-		return nil, nil
+		return nil
 	}
 
 	apps, ok := appsSection.([]any)
 	if !ok {
-		return nil, nil
+		return nil
 	}
 
 	var results []SearchResult
@@ -104,7 +101,7 @@ func parseDeveloperPage(body []byte, isNumericID bool, num int) ([]SearchResult,
 		}
 	}
 
-	return results, nil
+	return results
 }
 
 func parseDeveloperApp(item any, isNumericID bool) SearchResult {
