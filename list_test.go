@@ -15,7 +15,7 @@ func TestListPopularApps(t *testing.T) {
 	if testing.Short() {
 		t.Skip("network test")
 	}
-	client := NewClient()
+	client := liveClient(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
@@ -56,7 +56,7 @@ func TestListDifferentSections(t *testing.T) {
 	if testing.Short() {
 		t.Skip("network test")
 	}
-	client := NewClient()
+	client := liveClient(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
@@ -84,7 +84,7 @@ func TestListAppsFromCategory(t *testing.T) {
 	if testing.Short() {
 		t.Skip("network test")
 	}
-	client := NewClient()
+	client := liveClient(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
@@ -111,7 +111,7 @@ func TestListDefaults(t *testing.T) {
 	if testing.Short() {
 		t.Skip("network test")
 	}
-	client := NewClient()
+	client := liveClient(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
@@ -133,7 +133,7 @@ func TestListLimitResults(t *testing.T) {
 	if testing.Short() {
 		t.Skip("network test")
 	}
-	client := NewClient()
+	client := liveClient(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
@@ -305,7 +305,7 @@ func TestListBatchCollections(t *testing.T) {
 		t.Skip("skipping integration test in short mode")
 	}
 
-	client := NewClient()
+	client := liveClient(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
@@ -340,7 +340,7 @@ func TestListAgeFilterIsNoOpOnBatch(t *testing.T) {
 		t.Skip("skipping integration test in short mode")
 	}
 
-	client := NewClient()
+	client := liveClient(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 

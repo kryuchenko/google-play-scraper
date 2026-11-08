@@ -294,6 +294,31 @@ func TestParseClusterPageFixture(t *testing.T) {
 	}
 }
 
+// Grid rows carry their offer and description; only the featured card used to
+// get a price and a summary, so 19 of 20 search results had neither.
+func TestGridRowsCarryPriceAndSummary(t *testing.T) {
+	search, _, err := parseSearchPage(readFixture(t, "search_page.html"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cluster, err := parseClusterPage(readFixture(t, "cluster_page.html"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, rs := range map[string][]SearchResult{"search": search, "cluster": cluster} {
+		for _, r := range rs {
+			if !r.PriceKnown || r.Currency != "USD" || r.Summary == "" || strings.Contains(r.Summary, "<") {
+				t.Errorf("%s %s: price known %v, currency %q, summary %q", name, r.AppID, r.PriceKnown, r.Currency, r.Summary)
+			}
+		}
+	}
+	for _, r := range cluster {
+		if r.AppID == "com.chucklefish.stardewvalley" && (r.Price != 4.99 || r.Free) {
+			t.Errorf("Stardew Valley: price %v, free %v; want 4.99, paid", r.Price, r.Free)
+		}
+	}
+}
+
 func TestParseReviewsFixture(t *testing.T) {
 	result, err := parseReviewsResponse(readFixture(t, "reviews_batch.bin"), "com.google.android.apps.maps")
 	if err != nil {

@@ -45,7 +45,7 @@ func TestSearchIntegration(t *testing.T) {
 		t.Skip("skipping integration test in short mode")
 	}
 
-	c := NewClient()
+	c := liveClient(t)
 	results, err := c.Search(context.Background(), SearchOptions{
 		Term:    "maps",
 		Lang:    "en",
@@ -81,7 +81,7 @@ func TestSearchFreeApps(t *testing.T) {
 		t.Skip("skipping integration test in short mode")
 	}
 
-	c := NewClient()
+	c := liveClient(t)
 	results, err := c.Search(context.Background(), SearchOptions{
 		Term:  "game",
 		Num:   5,
@@ -112,7 +112,7 @@ func TestSearchPagination(t *testing.T) {
 	// count above one page proved nothing about this code and failed
 	// whenever the store had fewer.
 	var rpcOK atomic.Bool
-	c := NewClient(WithHooks(Hooks{
+	c := liveClient(t, WithHooks(Hooks{
 		OnResponse: func(_, url string, _, status int, _ time.Duration, err error) {
 			if strings.Contains(url, "batchexecute") && status == http.StatusOK && err == nil {
 				rpcOK.Store(true)
@@ -154,7 +154,7 @@ func TestSearchLocalization(t *testing.T) {
 		t.Skip("skipping integration test in short mode")
 	}
 
-	c := NewClient()
+	c := liveClient(t)
 
 	// Test Spanish
 	results, err := c.Search(context.Background(), SearchOptions{
@@ -180,7 +180,7 @@ func TestSearchEmptyResults(t *testing.T) {
 		t.Skip("skipping integration test in short mode")
 	}
 
-	c := NewClient()
+	c := liveClient(t)
 	results, err := c.Search(context.Background(), SearchOptions{
 		Term: "xyznonexistentappquery12345",
 		Num:  5,
@@ -199,7 +199,7 @@ func TestSearchSpecificApp(t *testing.T) {
 		t.Skip("skipping integration test in short mode")
 	}
 
-	c := NewClient()
+	c := liveClient(t)
 	results, err := c.Search(context.Background(), SearchOptions{
 		Term: "Netflix",
 		Num:  10,
@@ -231,7 +231,7 @@ func TestSearchGames(t *testing.T) {
 		t.Skip("skipping integration test in short mode")
 	}
 
-	c := NewClient()
+	c := liveClient(t)
 	results, err := c.Search(context.Background(), SearchOptions{
 		Term: "puzzle games",
 		Num:  10,
@@ -254,7 +254,7 @@ func TestSearchFullDetail(t *testing.T) {
 		t.Skip("skipping integration test in short mode")
 	}
 
-	c := NewClient()
+	c := liveClient(t)
 	results, err := c.Search(context.Background(), SearchOptions{
 		Term:       "calculator",
 		Num:        3,
@@ -289,7 +289,7 @@ func TestSearchFullDetailConcurrentPreservesOrder(t *testing.T) {
 
 	opts := SearchOptions{Term: "weather", Num: 8, Country: "us", Lang: "en"}
 
-	plain, err := NewClient().Search(context.Background(), opts)
+	plain, err := liveClient(t).Search(context.Background(), opts)
 	if err != nil {
 		t.Fatalf("plain search failed: %v", err)
 	}
@@ -299,7 +299,7 @@ func TestSearchFullDetailConcurrentPreservesOrder(t *testing.T) {
 
 	detailOpts := opts
 	detailOpts.FullDetail = true
-	enriched, err := NewClient(WithConcurrency(4)).Search(context.Background(), detailOpts)
+	enriched, err := liveClient(t, WithConcurrency(4)).Search(context.Background(), detailOpts)
 	if err != nil {
 		t.Fatalf("full-detail search failed: %v", err)
 	}
@@ -383,7 +383,7 @@ func TestSearchLargePagination(t *testing.T) {
 		t.Skip("skipping integration test in short mode")
 	}
 
-	c := NewClient()
+	c := liveClient(t)
 	results, err := c.Search(context.Background(), SearchOptions{
 		Term: "game",
 		Num:  100, // Request more than first page

@@ -19,7 +19,7 @@ func TestSimilarIntegration(t *testing.T) {
 		t.Skip("skipping integration test")
 	}
 
-	c := NewClient()
+	c := liveClient(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
@@ -54,7 +54,7 @@ func TestSimilarDifferentDevelopers(t *testing.T) {
 		t.Skip("skipping integration test")
 	}
 
-	c := NewClient()
+	c := liveClient(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
@@ -99,7 +99,7 @@ func TestSimilarMinecraft(t *testing.T) {
 		t.Skip("skipping integration test")
 	}
 
-	c := NewClient()
+	c := liveClient(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 

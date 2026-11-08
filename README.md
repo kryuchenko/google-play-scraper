@@ -121,10 +121,24 @@ fields as JSON.
 
 When stderr is not a terminal, a failed run writes
 `{"error":{"code","message","retryable"}}` to it (`GPSCRAPE_ERRORS=json|text`
-overrides); the codes are the MCP server's. Exit status: 2 bad arguments or a
-missing confirmation, 3 not found, 4 rate limited, 5 timeout, 130 interrupted,
-1 otherwise. `catalog sweep` and an unlimited `catalog ids` need `-yes` when
-no terminal is attached.
+overrides); the codes are the MCP server's, and the exit status follows from
+the code. `catalog sweep` and an unlimited `catalog ids` need `-yes` when no
+terminal is attached.
+
+| Code | Exit | Meaning | Retryable |
+|---|---|---|---|
+| `invalid_argument` | 2 | fix the arguments | no |
+| `confirmation_required` | 2 | an expensive run needs `-yes` | no |
+| `not_found` | 3 | no such app or page in this storefront | no |
+| `not_listed` | 3 | the store returned nothing for this id here | yes |
+| `rate_limited` | 4 | the store is refusing requests; wait | yes |
+| `timeout` | 5 | the store did not answer within `-timeout` | yes |
+| `cancelled` | 130 | interrupted; printed as `gpscrape: interrupted`, no error object | no |
+| `store_error` | 1 | any other failure talking to the store | yes |
+| `internal` | 1 | a bug in gpscrape (a panic); please report it | no |
+| `busy` | - | gpscrape-mcp only: the server is at capacity | yes |
+
+A run that succeeds exits 0.
 
 ### Running inside Claude Code's sandbox on macOS
 

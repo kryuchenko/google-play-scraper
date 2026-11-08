@@ -10,7 +10,7 @@ func TestDataSafety(t *testing.T) {
 	if testing.Short() {
 		t.Skip("network test")
 	}
-	client := NewClient()
+	client := liveClient(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
@@ -70,7 +70,7 @@ func TestDataSafetyGoogleApp(t *testing.T) {
 	if testing.Short() {
 		t.Skip("network test")
 	}
-	client := NewClient()
+	client := liveClient(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
@@ -99,7 +99,7 @@ func TestDataSafetySimpleApp(t *testing.T) {
 	if testing.Short() {
 		t.Skip("network test")
 	}
-	client := NewClient()
+	client := liveClient(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 

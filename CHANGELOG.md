@@ -181,6 +181,16 @@ All notable changes to this project are documented here. The format is based on
 - `permissions -raw` error entries carry `code`.
 - `App`, `Similar`, `DataSafety` and `PCApp` escape the app id in the URL: an
   id holding `&` rewrote the query (`x&gl=de` read the German storefront).
+- `gpscrape`: a panic exited 2, the status for bad arguments, with no error
+  object. It is reported as `internal` and exits 1; the stack still goes to
+  stderr.
+- `Search` and `Cluster` results after the featured card had no price
+  (`priceKnown` false) and no summary, though each grid row carries its offer
+  and description: 1 in 20 of a live search had either. Both are read now;
+  the summary is the description's first paragraph, as for `List`.
+- README lists every error code with its exit status; it named only some
+  statuses and none of `not_listed`, `confirmation_required`, `cancelled` or
+  `internal`.
 
 ### Internal
 
@@ -221,6 +231,22 @@ All notable changes to this project are documented here. The format is based on
   numeric and duration flag, read from the commands' flag sets. Both run the
   binary against an offline store and check that stdout is JSON lines, that
   the exit status matches the error code, and that nothing panics.
+- Error-code traceability: `TestErrorCodeMatrix` in `cmd/gpscrape` runs the
+  test binary as `gpscrape` against a fake store and reads each code and exit
+  status back from the process; the one in `mcp` reads them from tool errors,
+  and a cancelled call's from the wire. Codes come from `records/errors.go`,
+  so a new one fails both until a scenario produces it and the READMEs list
+  it. `-v` prints the matrix.
+- Live tests (integration, the library canary) build their client with
+  `LiveClient`/`Evidence`: a failing test writes the last 20 responses --
+  URL, status, headers, first 4 KB of body, time -- and the hook events
+  around them to `$GPSCRAPE_EVIDENCE_DIR`, or a temporary directory it logs.
+  The CLI canary keeps each run's `-debug` log, stderr and stdout head. The
+  canary workflow uploads the directory when it fails.
+- The canary compares per-endpoint fill rates of key fields and median
+  latencies with `testdata/canary_baseline.json` (from a live run;
+  `UPDATE_CANARY_BASELINE=1` rewrites it): a fill rate down more than 0.25 or
+  under its floor fails, 3x the latency is logged.
 
 ## gpscrape-mcp 0.1.1 (tag `mcp/v0.1.1`) - 2026-11-07
 

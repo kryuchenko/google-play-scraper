@@ -473,12 +473,22 @@ func hasPackagePrefix(s string) bool {
 }
 
 // searchGridPaths is the search/cluster grid row layout. Rows may arrive wrapped
-// ([[actual]]) and carry no price node (the grid never prices apps, so rows stay
-// free). The appID slot can hold non-package noise across the page variants, so
-// candidates are gated on a package-name prefix (requireAppID).
+// ([[actual]]). The appID slot can hold non-package noise across the page
+// variants, so candidates are gated on a package-name prefix (requireAppID).
+//
+// A row carries its offer at [8][1][0] as [micros, currency, ""] and the full
+// HTML description at [13][1], but no tagline. Neither was read: an earlier
+// comment here said the grid never prices apps, so every result after the
+// featured card came back with PriceKnown false and no summary (1 in 20 of a
+// live search had either). The summary is the description's first paragraph,
+// as for the chart rows of List, which carry no tagline either.
 var searchGridPaths = rowPaths{
-	unwrapSingleton: true,
-	requireAppID:    true,
+	price:                [][]int{{8, 1, 0, 0}},
+	currency:             [][]int{{8, 1, 0, 1}},
+	summary:              [][]int{{13, 1}},
+	summaryIsDescription: true,
+	unwrapSingleton:      true,
+	requireAppID:         true,
 	appID: [][]int{
 		{0, 0, 0, 0}, // developer page format with extra wrap
 		{0, 0, 0},    // developer page format
