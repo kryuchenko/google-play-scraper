@@ -113,7 +113,7 @@ func TestFault429WithRetryAfterIsWaitedOut(t *testing.T) {
 	store.failNextWith(f.shardPath(2), http.StatusTooManyRequests, 1, http.Header{"Retry-After": {"1"}})
 
 	start := time.Now()
-	_, stderr, err := runVerb(t, cmdSync, "-dir", dir, "-concurrency", "1", "-throttle", "0")
+	_, stderr, err := runVerb(t, cmdSync, "-dir", dir, "-concurrency", "1", "-throttle", "0", "-adaptive=false")
 	if err != nil {
 		t.Fatalf("sweep: %v\n%s", err, stderr)
 	}
@@ -134,12 +134,15 @@ func TestFault429WithRetryAfterIsWaitedOut(t *testing.T) {
 // A shard that answers 503 every time is retried by the client, then by the
 // sweep's retry pass, and the sweep refuses to publish: the failure line names
 // the shard, no manifest is written, and the other shards' progress is kept.
+// The fault tests that do not pass -adaptive pass -adaptive=false: they pin
+// the fixed-interval behaviour, and catalog sweep now defaults to -adaptive,
+// whose breaker pauses and then stops on a shard that refuses every time.
 func TestFault503EveryTimeIsRefusedAndNamed(t *testing.T) {
 	store, f, dir := faultFixture(t)
 	useRealClient(t, store)
 	store.set(f.shardPath(2), http.StatusServiceUnavailable, nil)
 
-	_, stderr, err := runVerb(t, cmdSync, "-dir", dir, "-concurrency", "1", "-throttle", "0")
+	_, stderr, err := runVerb(t, cmdSync, "-dir", dir, "-concurrency", "1", "-throttle", "0", "-adaptive=false")
 	if err == nil || !strings.Contains(err.Error(), "after a retry pass") {
 		t.Fatalf("err = %v, want the refusal", err)
 	}
@@ -175,7 +178,7 @@ func TestFaultSlowResponseTimesOutAndIsRetried(t *testing.T) {
 		return http.StatusOK, body
 	})
 
-	_, stderr, err := runVerb(t, cmdSync, "-dir", dir, "-concurrency", "1", "-throttle", "0")
+	_, stderr, err := runVerb(t, cmdSync, "-dir", dir, "-concurrency", "1", "-throttle", "0", "-adaptive=false")
 	if err != nil {
 		t.Fatalf("sweep: %v\n%s", err, stderr)
 	}
@@ -195,7 +198,7 @@ func TestFaultTruncatedGzipIsRefused(t *testing.T) {
 	whole := gzipTestBytes(t, urlsetTestXML(googleplayscraper.BaseURL+"/store/apps/details?id=com.d"))
 	store.set(f.shardPath(3), http.StatusOK, whole[:len(whole)/2])
 
-	_, stderr, err := runVerb(t, cmdSync, "-dir", dir, "-concurrency", "1", "-throttle", "0")
+	_, stderr, err := runVerb(t, cmdSync, "-dir", dir, "-concurrency", "1", "-throttle", "0", "-adaptive=false")
 	if err == nil || !strings.Contains(err.Error(), "after a retry pass") {
 		t.Fatalf("err = %v, want the refusal", err)
 	}
@@ -223,14 +226,14 @@ func TestFaultGenerationRollsMidSweep(t *testing.T) {
 		return http.StatusOK, body
 	})
 
-	_, _, err := runVerb(t, cmdSync, "-dir", dir, "-concurrency", "1", "-throttle", "0")
+	_, _, err := runVerb(t, cmdSync, "-dir", dir, "-concurrency", "1", "-throttle", "0", "-adaptive=false")
 	if err == nil || !strings.Contains(err.Error(), "rolled") {
 		t.Fatalf("err = %v, want the rolled-generation error", err)
 	}
 	if manifestExists(dir, fixtureGenA) {
 		t.Error("a manifest was written for a generation that rolled mid-sweep")
 	}
-	if _, _, err := runVerb(t, cmdSync, "-dir", dir, "-concurrency", "1", "-throttle", "0"); err != nil {
+	if _, _, err := runVerb(t, cmdSync, "-dir", dir, "-concurrency", "1", "-throttle", "0", "-adaptive=false"); err != nil {
 		t.Fatalf("sweep of the new generation: %v", err)
 	}
 	if !manifestExists(dir, fixtureGenB) {
@@ -281,7 +284,7 @@ func TestFaultPersistentRefusalDefaultVersusAdaptive(t *testing.T) {
 	refuseFrom1(store, f)
 	// Concurrency 3 so the three shards' backoffs overlap; the request count
 	// is the same either way.
-	_, _, err := runVerb(t, cmdSync, "-dir", dir, "-concurrency", "3", "-throttle", "0")
+	_, _, err := runVerb(t, cmdSync, "-dir", dir, "-concurrency", "3", "-throttle", "0", "-adaptive=false")
 	if err == nil || !strings.Contains(err.Error(), "after a retry pass") {
 		t.Fatalf("default: err = %v, want the refusal", err)
 	}

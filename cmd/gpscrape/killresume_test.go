@@ -6,6 +6,7 @@ import (
 	"bufio"
 	"bytes"
 	"compress/gzip"
+	"context"
 	"errors"
 	"fmt"
 	"math/rand/v2"
@@ -189,7 +190,9 @@ func killBinary(t *testing.T) string {
 			return
 		}
 		killBinPath = filepath.Join(dir, "gpscrape")
-		out, err := exec.Command("go", "build", "-tags", "killtest", "-o", killBinPath, ".").CombinedOutput()
+		// Built once for every test that needs it, so not tied to the
+		// first caller's context.
+		out, err := exec.CommandContext(context.Background(), "go", "build", "-tags", "killtest", "-o", killBinPath, ".").CombinedOutput()
 		if err != nil {
 			killBinErr = fmt.Errorf("build: %w\n%s", err, out)
 		}
@@ -217,7 +220,7 @@ type killRun struct {
 // runSweep runs one catalog sweep over dir, stopping it at kp if kp is not nil.
 func runSweep(t *testing.T, bin string, store *killStore, dir string, kp *killPoint) killRun {
 	t.Helper()
-	cmd := exec.Command(bin, "catalog", "sweep", "-dir", dir, "-concurrency", "4", "-yes")
+	cmd := exec.CommandContext(t.Context(), bin, "catalog", "sweep", "-dir", dir, "-concurrency", "4", "-yes")
 	cmd.Env = append(os.Environ(), "GPSCRAPE_TEST_ORIGIN="+store.srv.URL, "GPSCRAPE_ERRORS=text")
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
