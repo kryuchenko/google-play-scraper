@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## gpscrape-mcp 0.1.1 (tag `mcp/v0.1.1`) - 2026-11-07
+
 ### Changed
 
 - `gpscrape-mcp` returns the shared records of package `records`, the
