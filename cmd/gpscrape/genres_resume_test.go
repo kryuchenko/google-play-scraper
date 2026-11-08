@@ -423,6 +423,7 @@ func TestResumeTableMergeCarriesOnAfterLastID(t *testing.T) {
 	if err := m.finish(); err != nil {
 		t.Fatal(err)
 	}
+	prev.close() // as catalogGenres does: Windows cannot rename over an open file
 	if _, err := settleTable(merged, path, nil, nil, false); err != nil {
 		t.Fatal(err)
 	}

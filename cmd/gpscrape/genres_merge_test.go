@@ -390,6 +390,7 @@ func TestTableMergeKeepsALineAtTheReaderLimit(t *testing.T) {
 	if err := m.finish(); err != nil {
 		t.Fatal(err)
 	}
+	prev.close() // as catalogGenres does: Windows cannot rename over an open file
 	if _, err := settleTable(m.path, path, nil, nil, false); err != nil {
 		t.Fatalf("settleTable: %v", err)
 	}
