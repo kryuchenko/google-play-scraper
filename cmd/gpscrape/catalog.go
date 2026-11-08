@@ -212,7 +212,7 @@ func catalogGenres(args []string) error {
 	}
 	defer lock.release()
 
-	ids, closeIDs, coverage, err := idSource(*dir, *from)
+	ids, closeIDs, readErr, coverage, err := idSource(*dir, *from)
 	if err != nil {
 		return err
 	}
@@ -225,51 +225,61 @@ func catalogGenres(args []string) error {
 		return records.Invalid("-prune needs the whole snapshot: with -ids it would delete every row " +
 			"outside the list you passed, which is not the same as the app being gone")
 	}
+	// A sampled snapshot is the same kind of subset with a manifest saying so.
+	if *prune && coverage > 0 {
+		return records.Invalid("-prune needs the whole snapshot: the latest one covers %g%% of the catalog, "+
+			"and pruning against it would delete every row outside the sample", coverage)
+	}
 
-	// What each app's genre was last time, so a change can be named as one.
-	prev, prevPath := loadGenres(*dir)
+	// A caller's list comes in any order; the merge below needs the
+	// snapshot's. The snapshot is sorted already and streams untouched.
+	if *from != "" {
+		if ids, err = sortedIDs(ctx, ids); err != nil {
+			return err
+		}
+		// The list is read whole here, so a break in it is known before
+		// any request goes out.
+		if err := readErr(); err != nil {
+			return fmt.Errorf("reading the ids stopped partway: %w; the genre table was left untouched", err)
+		}
+	}
+
+	// What each app's genre was last time, so a change can be named as one,
+	// and the new table, both from one walk of the old table alongside the
+	// ids: see genres_merge.go. Nothing is held per app except the ids that
+	// came back absent.
+	//
+	// The new table starts from what is already known rather than from
+	// nothing. Building it only from what this run saw made two ordinary
+	// situations destructive: one transient 503 dropped an app from the
+	// table, and running with -ids on a subset shrank the table to that
+	// subset. Either way the app comes back as "first_seen" next time, which
+	// is a change that did not happen -- and at catalog scale a 0.1% error
+	// rate is thousands of them a day. So a failed lookup keeps its row, and
+	// a row no id matched is kept unless -prune says otherwise. It is the
+	// same reasoning the sweep applies to failed shards: quietly wrong deltas
+	// are worse than admitting the pass was incomplete.
+	prevPath := genresPath(*dir)
+	prev, err := openTable(prevPath)
+	if err != nil {
+		return err
+	}
+	defer prev.close()
+	merge, err := newTableMerge(prev, prevPath+".merge")
+	if err != nil {
+		return err
+	}
+	defer merge.abandon() // a no-op once settleTable has published
 
 	e := newEmitter(os.Stdout)
 	defer func() { _ = e.flush() }()
 
-	// Start from what is already known rather than from nothing.
-	//
-	// This map is written over the genre table wholesale at the end, so
-	// anything missing from it is deleted. Building it only from what this run
-	// saw made two ordinary situations destructive: one transient 503 dropped
-	// an app from the table, and running with -ids on a subset shrank the
-	// table to that subset. Either way the app comes back as "first_seen" next
-	// time, which is a change that did not happen -- and at catalog scale a
-	// 0.1% error rate is thousands of them a day.
-	//
-	// It is the same reasoning the sweep already applies to failed shards:
-	// quietly wrong deltas are worse than admitting the pass was incomplete.
-	// The table is loaded once and never copied.
-	//
-	// prev alone is 307MB at catalog scale, measured on the real 3.2M-row
-	// table, and that is the floor for this design: naming a change needs the
-	// previous genre, which needs a lookup. It could be made O(1) -- the
-	// snapshot and the table are both sorted by app id, so the two could be
-	// walked together instead of one being held -- but that restructures the
-	// command that runs every day, and is not a thing to do the week of a
-	// release. Recorded rather than attempted.
-	//
-	// A delta, not a copy of the table.
-	//
-	// This used to clone prev so that a failed lookup left the old value in
-	// place. Correct, and at catalog scale it meant two maps of 3.2M entries
-	// live at once -- measured at 766MB resident for the command that runs
-	// every day. The delta says the same thing in the space the changes
-	// actually take, which on an ordinary day is a few thousand entries.
-	updates := map[string]string{}
-	removed := map[string]struct{}{}
-	var absent []string
-	// Only built when -prune asks for it: at catalog scale this is another
-	// 3.5M entries, and the ordinary run has no use for them.
-	var visited map[string]struct{}
-	if *prune {
-		visited = make(map[string]struct{}, len(prev))
+	// Absent ids, in order, with what the table said about them.
+	type absentID struct {
+		id, was string
+		known   bool
 	}
+	var absent []absentID
 	var seen, changed, gone, failed int
 	var lastErr error
 	progress := progressTo(os.Stderr)
@@ -287,12 +297,11 @@ func catalogGenres(args []string) error {
 			return err
 		}
 		seen++
-		if visited != nil {
-			visited[d.AppID] = struct{}{}
+		was, known, err := merge.lookup(d.AppID)
+		if err != nil {
+			return err
 		}
-		rec := genreRecord{AppID: d.AppID, GenreID: d.GenreID, Genre: d.Genre}
-		was, known := prev[d.AppID]
-		rec.Was = was
+		rec := genreRecord{AppID: d.AppID, GenreID: d.GenreID, Genre: d.Genre, Was: was}
 
 		switch {
 		case d.Err != nil:
@@ -301,23 +310,37 @@ func catalogGenres(args []string) error {
 			rec.Change, rec.Error = "error", d.Err.Error()
 			failed++
 			lastErr = d.Err
+			if known {
+				err = merge.row(d.AppID, was, "")
+			}
 		case !d.Listed:
 			// Held, not buried. "Not listed in this storefront" is not
 			// "removed from the store": of 200 ids this pipeline had called
 			// dead, two were alive elsewhere -- one only in Russia, one in
 			// every market probed except the United States it was run from.
 			// An app available in one country is still an app.
-			absent = append(absent, d.AppID)
+			absent = append(absent, absentID{d.AppID, was, known})
+			mark := markAbsentFirst
+			if known {
+				mark = markAbsent
+			}
+			if err := merge.row(d.AppID, was, mark); err != nil {
+				return err
+			}
 			continue
 		case !known:
 			rec.Change = "first_seen"
-			updates[d.AppID] = d.GenreID
+			err = merge.row(d.AppID, d.GenreID, "")
 		case was != d.GenreID:
 			rec.Change = "changed"
 			changed++
-			updates[d.AppID] = d.GenreID
+			err = merge.row(d.AppID, d.GenreID, "")
 		default:
 			rec.Change = "same"
+			err = merge.row(d.AppID, d.GenreID, "")
+		}
+		if err != nil {
+			return err
 		}
 
 		if *all || rec.Change != "same" {
@@ -329,6 +352,14 @@ func catalogGenres(args []string) error {
 	if progress != nil {
 		_, _ = fmt.Fprintln(progress)
 	}
+	if err := readErr(); err != nil {
+		// The list ended early. Everything after the break would read as
+		// unmatched, and -prune would delete it.
+		return fmt.Errorf("reading the ids stopped partway: %w; the genre table was left untouched", err)
+	}
+	if err := merge.finish(); err != nil {
+		return err
+	}
 
 	// Second opinion on everything the first storefront could not see.
 	//
@@ -336,40 +367,39 @@ func catalogGenres(args []string) error {
 	// digest packs a thousand of them into one request: on the live catalog
 	// that is about 310 requests per extra storefront against the 3,400 the
 	// main pass costs.
-	for _, id := range absent {
-		if visited != nil {
-			visited[id] = struct{}{}
-		}
+	absentIDs := make([]string, len(absent))
+	for i, a := range absent {
+		absentIDs[i] = a.id
 	}
-	stillGone, err := confirmGone(ctx, c, absent, splitCountries(*confirm), progress)
+	stillGone, err := confirmGone(ctx, c, absentIDs, splitCountries(*confirm), progress)
 	if err != nil {
 		return err
 	}
-	for _, id := range absent {
-		rec := genreRecord{AppID: id, Was: prev[id]}
-		switch g, alive := stillGone.foundIn[id]; {
+	outcome := make([]settled, len(absent))
+	for i, a := range absent {
+		rec := genreRecord{AppID: a.id, Was: a.was}
+		switch g, alive := stillGone.foundIn[a.id]; {
 		case alive:
 			// Alive somewhere. Its genre comes from wherever it answered.
 			rec.GenreID, rec.Country = g.genre, g.country
-			switch was, known := prev[id]; {
-			case !known:
+			switch {
+			case !a.known:
 				rec.Change = "first_seen"
-			case was != g.genre:
+			case a.was != g.genre:
 				rec.Change, changed = "changed", changed+1
 			default:
 				rec.Change = "same"
 			}
-			if rec.Change != "same" || prev[id] != g.genre {
-				updates[id] = g.genre
-			}
-		case stillGone.unconfirmed[id] != nil:
+			outcome[i] = settledAlive
+		case stillGone.unconfirmed[a.id] != nil:
 			// Absent where the storefronts answered, unknown where they did
 			// not. The table keeps whatever it said, exactly as the main pass
 			// does for a failed lookup, and the id counts as a failure rather
 			// than a removal so the all-failed guard below can see it.
-			rec.Change, rec.Error = "error", stillGone.unconfirmed[id].Error()
+			rec.Change, rec.Error = "error", stillGone.unconfirmed[a.id].Error()
 			failed++
-			lastErr = stillGone.unconfirmed[id]
+			lastErr = stillGone.unconfirmed[a.id]
+			outcome[i] = settledUnconfirmed
 		default:
 			// Every storefront asked answered, and none of them has it. The
 			// storefronts are named, so "gone" carries its own scope: absent
@@ -377,7 +407,7 @@ func catalogGenres(args []string) error {
 			rec.Change = "gone"
 			rec.Country = strings.Join(append([]string{c.country}, stillGone.checked...), ",")
 			gone++
-			removed[id] = struct{}{}
+			outcome[i] = settledGone
 		}
 		if *all || rec.Change != "same" {
 			if err := e.emit(rec); err != nil {
@@ -386,33 +416,29 @@ func catalogGenres(args []string) error {
 		}
 	}
 
-	// The genre table is the useful by-product: a snapshot minus the ids that
-	// no longer resolve, which is what the catalog actually is. Nothing else
-	// publishes it.
 	// A run in which nothing resolved is not a run that found nothing. Left to
 	// save, it wrote an empty table over a good one and exited 0 -- reproduced
 	// while rate-limited, where all 1,740 lookups failed and the summary still
 	// read "1740 apps". This is the rule the sweep already applies to failed
 	// shards, which had not been carried across.
-	// Rows for ids that left the sitemap without ever being seen to go. The
-	// merge that stops a transient error deleting an app also means nothing
-	// ever removes these, so the table grows monotonically away from the
-	// catalog it describes.
-	var pruned int
-	if visited != nil && failed < seen {
-		for id := range prev {
-			if _, ok := visited[id]; !ok {
-				removed[id] = struct{}{}
-				pruned++
-			}
-		}
-	}
-
 	if failed == seen && seen > 0 {
 		return fmt.Errorf("all %d lookups failed, so the genre table was left untouched; "+
 			"the last error was: %v", seen, lastErr)
 	}
-	if err := saveGenresDelta(prevPath, prev, updates, removed); err != nil {
+
+	// The genre table is the useful by-product: a snapshot minus the ids that
+	// no longer resolve, which is what the catalog actually is. Nothing else
+	// publishes it.
+	//
+	// -prune drops rows for ids that left the sitemap without ever being seen
+	// to go. The merge that stops a transient error deleting an app also means
+	// nothing else ever removes these, so the table would grow monotonically
+	// away from the catalog it describes.
+	settleOf := func(i int) (settled, string) {
+		return outcome[i], stillGone.foundIn[absent[i].id].genre
+	}
+	pruned, err := settleTable(merge.path, prevPath, absentIDs, settleOf, *prune && failed < seen)
+	if err != nil {
 		return err
 	}
 	if coverage > 0 {
@@ -441,41 +467,51 @@ func catalogGenres(args []string) error {
 // list, the sampled percentage otherwise. Callers report that, because a
 // sample and the catalog are the same sorted list of ids from the outside and
 // only the manifest knows the difference.
-func idSource(dir, from string) (iter.Seq[string], func(), float64, error) {
+//
+// readErr reports what stopped the list early, once it has been read. It has
+// to be asked: a sequence cannot return an error, and a snapshot cut short by
+// a corrupt gzip stream or an overlong line otherwise reads as a shorter
+// catalog -- and with -prune the genre pass deleted every row past the break.
+func idSource(dir, from string) (ids iter.Seq[string], closeIDs func(), readErr func() error, coverage float64, err error) {
 	switch {
 	case from == "-":
-		return scannerSeq(os.Stdin), func() {}, 0, nil
+		seq, rerr := scanIDs(os.Stdin)
+		return seq, func() {}, rerr, 0, nil
 	case from != "":
 		f, err := os.Open(from)
 		if err != nil {
-			return nil, nil, 0, err
+			return nil, nil, nil, 0, err
 		}
-		return scannerSeq(f), func() { _ = f.Close() }, 0, nil
+		seq, rerr := scanIDs(f)
+		return seq, func() { _ = f.Close() }, rerr, 0, nil
 	}
 
 	m, ok := latestManifest(dir)
 	if !ok {
-		return nil, nil, 0, fmt.Errorf("no snapshot in %s; run `gpscrape catalog sweep -dir %s` first, "+
+		return nil, nil, nil, 0, fmt.Errorf("no snapshot in %s; run `gpscrape catalog sweep -dir %s` first, "+
 			"or pass -ids", dir, dir)
 	}
 	path := filepath.Join(dir, m.File)
 	f, err := os.Open(path)
 	if err != nil {
-		return nil, nil, 0, err
+		return nil, nil, nil, 0, err
 	}
 	zr, err := gzip.NewReader(f)
 	if err != nil {
 		_ = f.Close()
-		return nil, nil, 0, err
+		return nil, nil, nil, 0, err
 	}
-	return scannerSeq(zr), func() { _ = zr.Close(); _ = f.Close() }, m.SamplePct, nil
+	seq, rerr := scanIDs(zr)
+	return seq, func() { _ = zr.Close(); _ = f.Close() }, rerr, m.SamplePct, nil
 }
 
-// scannerSeq streams lines. The point of a sequence rather than a slice is that
-// a catalog snapshot is 3.4 million ids, and the digest pass holds one pack per
+// scanIDs streams lines, and returns a function reporting the error that
+// ended them, if any. The point of a sequence rather than a slice is that a
+// catalog snapshot is 3.4 million ids, and the digest pass holds one pack per
 // worker rather than all of them.
-func scannerSeq(r interface{ Read([]byte) (int, error) }) iter.Seq[string] {
-	return func(yield func(string) bool) {
+func scanIDs(r interface{ Read([]byte) (int, error) }) (iter.Seq[string], func() error) {
+	var scanErr error
+	seq := func(yield func(string) bool) {
 		sc := bufio.NewScanner(r)
 		sc.Buffer(make([]byte, 0, 64<<10), 1<<20)
 		for sc.Scan() {
@@ -487,7 +523,9 @@ func scannerSeq(r interface{ Read([]byte) (int, error) }) iter.Seq[string] {
 				return
 			}
 		}
+		scanErr = sc.Err()
 	}
+	return seq, func() error { return scanErr }
 }
 
 func genresPath(dir string) string { return filepath.Join(dir, "genres.tsv") }
@@ -495,12 +533,13 @@ func genresPath(dir string) string { return filepath.Join(dir, "genres.tsv") }
 // streamGenres walks the genre table a line at a time, calling fn for each
 // entry, and returns the path it read and how many rows it saw.
 //
-// loadGenres builds a map because the daily genre pass needs random lookups.
-// Reading the app list does not: it filters and prints. Doing that through the
-// map cost 422MB of resident memory on a real 3.2M-row table to produce 9MB of
-// ids -- and the table only grows, so the cost grows with it.
+// Reading the app list filters and prints, so it needs no map: doing it
+// through one cost 422MB of resident memory on a real 3.2M-row table to
+// produce 9MB of ids -- and the table only grows, so the cost grows with it.
+// The genre pass needs no map either; it walks the table alongside the
+// snapshot (genres_merge.go).
 //
-// Rows arrive in the order saveGenres wrote them, which is sorted by app id.
+// Rows arrive in the order the genre pass wrote them, which is sorted by app id.
 // Callers that need sorted output still sort, because a hand-edited file is
 // not a contract, but sorting what survives the filter is a different size of
 // problem from holding everything.
@@ -529,61 +568,10 @@ func streamGenres(dir string, fn func(appID, genreID string)) (string, int, erro
 	return path, rows, sc.Err()
 }
 
-func loadGenres(dir string) (map[string]string, string) {
-	path := genresPath(dir)
-	out := map[string]string{}
-	f, err := os.Open(path)
-	if err != nil {
-		return out, path
-	}
-	defer func() { _ = f.Close() }()
-	sc := bufio.NewScanner(f)
-	sc.Buffer(make([]byte, 0, 64<<10), 1<<20)
-	for sc.Scan() {
-		id, genre, ok := strings.Cut(sc.Text(), "\t")
-		if ok {
-			out[id] = genre
-		}
-	}
-	return out, path
-}
-
-// saveGenresDelta writes prev with updates applied and gone removed, without
-// building the result as a third map. The keys are collected and sorted, which
-// is what saveGenres does anyway; what is avoided is a second copy of every
-// value.
-func saveGenresDelta(path string, prev, updates map[string]string, gone map[string]struct{}) error {
-	ids := make([]string, 0, len(prev)+len(updates))
-	for id := range prev {
-		if _, dead := gone[id]; dead {
-			continue
-		}
-		ids = append(ids, id)
-	}
-	for id := range updates {
-		if _, already := prev[id]; already {
-			continue
-		}
-		if _, dead := gone[id]; dead {
-			continue
-		}
-		ids = append(ids, id)
-	}
-	sort.Strings(ids)
-
-	genreOf := func(id string) string {
-		if g, ok := updates[id]; ok {
-			return g
-		}
-		return prev[id]
-	}
-	return writeGenreLines(path, ids, genreOf)
-}
-
-// writeGenreLines is the durable half both writers share: a temporary file,
-// fsync, rename. Split out so the delta writer cannot quietly grow a weaker
-// version of it.
-func writeGenreLines(path string, ids []string, genreOf func(string) string) error {
+// writeTableAtomic writes a table through fill: a temporary file, fsync,
+// rename, then the directory synced, so a reader sees the old table or the
+// new one and never half of either.
+func writeTableAtomic(path string, fill func(*bufio.Writer) error) error {
 	tmp := path + ".tmp"
 	f, err := os.Create(tmp)
 	if err != nil {
@@ -599,10 +587,8 @@ func writeGenreLines(path string, ids []string, genreOf func(string) string) err
 		return err
 	}
 	w := bufio.NewWriterSize(f, 1<<20)
-	for _, id := range ids {
-		if _, err := fmt.Fprintf(w, "%s\t%s\n", id, genreOf(id)); err != nil {
-			return fail(err)
-		}
+	if err := fill(w); err != nil {
+		return fail(err)
 	}
 	if err := w.Flush(); err != nil {
 		return fail(err)
@@ -893,15 +879,6 @@ func catalogDiff(args []string) error {
 		return records.Invalid("catalog diff: give two snapshot files, or none to use the two newest in -dir")
 	}
 
-	oldIDs, err := readSnapshot(fromPath)
-	if err != nil {
-		return fmt.Errorf("read %s: %w", fromPath, err)
-	}
-	newIDs, err := readSnapshot(toPath)
-	if err != nil {
-		return fmt.Errorf("read %s: %w", toPath, err)
-	}
-
 	// A sampled snapshot looks exactly like a complete one -- a sorted list of
 	// ids -- so nothing about the files themselves stops this comparison. The
 	// manifests know the difference, and everything below is about asking them
@@ -962,7 +939,10 @@ func catalogDiff(args []string) error {
 			fromGen.ID(), toGen.ID(), fromSamp)
 	}
 
-	d := diff(fromGen, toGen, oldIDs, newIDs)
+	d, err := diffSnapshots(fromGen, toGen, fromPath, toPath)
+	if err != nil {
+		return err
+	}
 
 	// One record per changed id, which is what a daily refresh consumes. The
 	// summary stays the default because it is the cheap answer to "did
@@ -1344,7 +1324,7 @@ func catalogApps(args []string) error {
 
 	// Sorted, because this output is compared against yesterday's by whoever
 	// consumes it and a differently-ordered file reads as wholly changed. The
-	// rows arrive sorted already -- saveGenres writes them that way -- but a
+	// rows arrive sorted already -- the genre pass writes them that way -- but a
 	// file on disk is not a contract, and sorting what survived the filter is
 	// cheap next to what was skipped.
 	slices.SortFunc(hits, func(a, b entry) int { return strings.Compare(a.id, b.id) })

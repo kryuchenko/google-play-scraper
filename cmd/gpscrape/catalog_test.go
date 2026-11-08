@@ -1,10 +1,12 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
+	"iter"
 	"maps"
 	"math"
 	"net/http"
@@ -437,7 +439,7 @@ func TestASampledSnapshotIsNotTheGeneration(t *testing.T) {
 
 	// 4. the id source must report the coverage, so genres can say the counts
 	// describe a sample rather than the store.
-	ids, closeIDs, coverage, err := idSource(dir, "")
+	ids, closeIDs, _, coverage, err := idSource(dir, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -453,7 +455,7 @@ func TestASampledSnapshotIsNotTheGeneration(t *testing.T) {
 	if err := os.WriteFile(list, []byte("com.a\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	_, closeList, listCoverage, err := idSource(dir, list)
+	_, closeList, _, listCoverage, err := idSource(dir, list)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1083,6 +1085,32 @@ func TestGenresPruneNeedsTheWholeSnapshot(t *testing.T) {
 	}
 }
 
+// A sampled snapshot is a subset too: -prune against it would delete every
+// row outside the sample, so it is refused before any request.
+func TestGenresPruneRefusesASample(t *testing.T) {
+	dir := t.TempDir()
+	g := googleplayscraper.Generation{Date: "2026-08-23", Run: "200"}
+	snap := filepath.Join(dir, "snapshot-"+g.ID()+".txt.gz")
+	if _, err := writeSnapshot(snap, []string{"com.spotify.music"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeJSON(filepath.Join(dir, "manifest-"+g.ID()+".json"),
+		manifest{Generation: g, File: filepath.Base(snap), IDs: 1, SamplePct: 0.1}); err != nil {
+		t.Fatal(err)
+	}
+	if err := saveGenres(filepath.Join(dir, "genres.tsv"),
+		map[string]string{"com.spotify.music": "MUSIC_AND_AUDIO", "com.whatsapp": "COMMUNICATION"}); err != nil {
+		t.Fatal(err)
+	}
+	err := catalogGenres([]string{"-dir", dir, "-prune"})
+	if err == nil || !strings.Contains(err.Error(), "whole snapshot") {
+		t.Fatalf("-prune on a 0.1%% sample: %v, want a refusal", err)
+	}
+	if after, _ := loadGenres(dir); len(after) != 2 {
+		t.Errorf("table has %d rows, want the 2 it started with", len(after))
+	}
+}
+
 func TestSplitCountries(t *testing.T) {
 	got := splitCountries(" DE , in,br ,, de ")
 	if !slices.Equal(got, []string{"de", "in", "br"}) {
@@ -1520,8 +1548,27 @@ func TestWriteGenreLinesLeavesNoTmpBehind(t *testing.T) {
 	}
 }
 
-// saveGenres writes a whole genre map, for tests that set up a catalog
-// directory. The command itself writes deltas (saveGenresDelta).
+// loadGenres reads the whole genre table into a map, for tests that check
+// what a run left behind. The command itself never holds the table.
+func loadGenres(dir string) (map[string]string, string) {
+	path := genresPath(dir)
+	out := map[string]string{}
+	f, err := os.Open(path)
+	if err != nil {
+		return out, path
+	}
+	defer func() { _ = f.Close() }()
+	sc := bufio.NewScanner(f)
+	sc.Buffer(make([]byte, 0, 64<<10), 1<<20)
+	for sc.Scan() {
+		id, genre, ok := strings.Cut(sc.Text(), "\t")
+		if ok {
+			out[id] = genre
+		}
+	}
+	return out, path
+}
+
 func saveGenres(path string, genres map[string]string) error {
 	ids := make([]string, 0, len(genres))
 	for id := range genres {
@@ -1529,4 +1576,58 @@ func saveGenres(path string, genres map[string]string) error {
 	}
 	sort.Strings(ids)
 	return writeGenreLines(path, ids, func(id string) string { return genres[id] })
+}
+
+// writeGenreLines writes a genre table from a sorted id list, for tests that
+// set one up, through the same durable writer the genre pass publishes with.
+func writeGenreLines(path string, ids []string, genreOf func(string) string) error {
+	return writeTableAtomic(path, func(w *bufio.Writer) error {
+		for _, id := range ids {
+			if _, err := fmt.Fprintf(w, "%s\t%s\n", id, genreOf(id)); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
+// scannerSeq is scanIDs without its error, for tests that only read.
+func scannerSeq(r interface{ Read([]byte) (int, error) }) iter.Seq[string] {
+	seq, _ := scanIDs(r)
+	return seq
+}
+
+// A list cut short -- here by a line past the scanner's limit -- reports why,
+// so the genre pass stops before it publishes instead of reading a shorter
+// catalog that -prune would shrink the table to.
+func TestScanIDsReportsWhatStoppedIt(t *testing.T) {
+	seq, readErr := scanIDs(strings.NewReader("a\n" + strings.Repeat("x", 2<<20) + "\nb\n"))
+	if got := slices.Collect(seq); !slices.Equal(got, []string{"a"}) || readErr() == nil {
+		t.Errorf("got %v, err %v; want [a] and an error", got, readErr())
+	}
+	seq, readErr = scanIDs(strings.NewReader("a\nb\n"))
+	if got := slices.Collect(seq); !slices.Equal(got, []string{"a", "b"}) || readErr() != nil {
+		t.Errorf("clean list: %v, %v", got, readErr())
+	}
+}
+
+// End to end: an -ids list with an overlong line stops genres -prune before
+// it touches the table.
+func TestGenresStopsOnACutShortList(t *testing.T) {
+	dir := t.TempDir()
+	ids := filepath.Join(dir, "ids.txt")
+	if err := os.WriteFile(ids, []byte("com.spotify.music\n"+strings.Repeat("x", 2<<20)+"\ncom.whatsapp\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	before := map[string]string{"com.spotify.music": "MUSIC_AND_AUDIO", "com.whatsapp": "COMMUNICATION"}
+	if err := saveGenres(filepath.Join(dir, "genres.tsv"), before); err != nil {
+		t.Fatal(err)
+	}
+	err := catalogGenres([]string{"-dir", dir, "-ids", ids})
+	if err == nil || !strings.Contains(err.Error(), "stopped partway") {
+		t.Fatalf("err = %v, want the read error", err)
+	}
+	if after, _ := loadGenres(dir); !maps.Equal(after, before) {
+		t.Errorf("table changed: %v", after)
+	}
 }

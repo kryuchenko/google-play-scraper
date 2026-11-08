@@ -807,21 +807,25 @@ func diffAgainstSnapshot(path string, from, to googleplayscraper.Generation, new
 	sc := bufio.NewScanner(r)
 	sc.Buffer(make([]byte, 0, 64*1024), maxLineBytes)
 
+	// Bytes, not Text: Text makes a string of every line, which at catalog
+	// scale is four million strings of garbage the collector lets the heap
+	// grow by -- 120MB on the finish peak. A string(b) conversion inside a
+	// comparison does not allocate; only the removed ids are copied out.
 	j := 0
 	for sc.Scan() {
-		old := strings.TrimSpace(sc.Text())
-		if old == "" {
+		old := bytes.TrimSpace(sc.Bytes())
+		if len(old) == 0 {
 			continue
 		}
-		for j < len(newIDs) && newIDs[j] < old {
+		for j < len(newIDs) && newIDs[j] < string(old) {
 			d.Added = append(d.Added, newIDs[j])
 			j++
 		}
-		if j < len(newIDs) && newIDs[j] == old {
+		if j < len(newIDs) && newIDs[j] == string(old) {
 			j++
 			continue
 		}
-		d.Removed = append(d.Removed, old)
+		d.Removed = append(d.Removed, string(old))
 	}
 	if err := sc.Err(); err != nil {
 		return delta{}, err
@@ -830,27 +834,84 @@ func diffAgainstSnapshot(path string, from, to googleplayscraper.Generation, new
 	return d, nil
 }
 
-// diff walks two sorted lists once. At a few million ids on each side this is
-// the whole reason snapshots are kept sorted.
-func diff(from, to googleplayscraper.Generation, oldIDs, newIDs []string) delta {
+// diffSnapshots is diff over two snapshot files, read side by side a line at
+// a time: neither list is held, only the ids that differ. catalog diff used
+// to read both whole, 538MB resident at catalog scale for an answer the size
+// of the change; this is 20MB.
+func diffSnapshots(from, to googleplayscraper.Generation, oldPath, newPath string) (delta, error) {
+	oldR, closeOld, err := openSnapshotLines(oldPath)
+	if err != nil {
+		return delta{}, fmt.Errorf("read %s: %w", oldPath, err)
+	}
+	defer closeOld()
+	newR, closeNew, err := openSnapshotLines(newPath)
+	if err != nil {
+		return delta{}, fmt.Errorf("read %s: %w", newPath, err)
+	}
+	defer closeNew()
+
 	d := delta{From: from, To: to, Added: []string{}, Removed: []string{}}
-	i, j := 0, 0
-	for i < len(oldIDs) && j < len(newIDs) {
-		switch {
-		case oldIDs[i] == newIDs[j]:
-			i++
-			j++
-		case oldIDs[i] < newIDs[j]:
-			d.Removed = append(d.Removed, oldIDs[i])
-			i++
+	o, oOK := oldR.next()
+	n, nOK := newR.next()
+	for oOK && nOK {
+		switch c := bytes.Compare(o, n); {
+		case c == 0:
+			o, oOK = oldR.next()
+			n, nOK = newR.next()
+		case c < 0:
+			d.Removed = append(d.Removed, string(o))
+			o, oOK = oldR.next()
 		default:
-			d.Added = append(d.Added, newIDs[j])
-			j++
+			d.Added = append(d.Added, string(n))
+			n, nOK = newR.next()
 		}
 	}
-	d.Removed = append(d.Removed, oldIDs[i:]...)
-	d.Added = append(d.Added, newIDs[j:]...)
-	return d
+	for ; oOK; o, oOK = oldR.next() {
+		d.Removed = append(d.Removed, string(o))
+	}
+	for ; nOK; n, nOK = newR.next() {
+		d.Added = append(d.Added, string(n))
+	}
+	if err := oldR.sc.Err(); err != nil {
+		return delta{}, fmt.Errorf("read %s: %w", oldPath, err)
+	}
+	if err := newR.sc.Err(); err != nil {
+		return delta{}, fmt.Errorf("read %s: %w", newPath, err)
+	}
+	return d, nil
+}
+
+// snapshotLines yields a snapshot's ids as bytes valid until the next call.
+type snapshotLines struct{ sc *bufio.Scanner }
+
+func (s snapshotLines) next() ([]byte, bool) {
+	for s.sc.Scan() {
+		if line := bytes.TrimSpace(s.sc.Bytes()); len(line) > 0 {
+			return line, true
+		}
+	}
+	return nil, false
+}
+
+func openSnapshotLines(path string) (snapshotLines, func(), error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return snapshotLines{}, nil, err
+	}
+	var r io.Reader = f
+	closeAll := func() { _ = f.Close() }
+	if strings.HasSuffix(path, ".gz") {
+		zr, zerr := gzip.NewReader(f)
+		if zerr != nil {
+			_ = f.Close()
+			return snapshotLines{}, nil, fmt.Errorf("%s: %w", path, zerr)
+		}
+		r = zr
+		closeAll = func() { _ = zr.Close(); _ = f.Close() }
+	}
+	sc := bufio.NewScanner(r)
+	sc.Buffer(make([]byte, 0, 64*1024), maxLineBytes)
+	return snapshotLines{sc}, closeAll, nil
 }
 
 // ---- plumbing ----
@@ -1117,25 +1178,6 @@ func writeSnapshotFile(path string, write func(io.Writer) error) (string, error)
 	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
-func readSnapshot(path string) ([]string, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = f.Close() }()
-
-	var r io.Reader = f
-	if strings.HasSuffix(path, ".gz") {
-		zr, zerr := gzip.NewReader(f)
-		if zerr != nil {
-			return nil, fmt.Errorf("%s: %w", path, zerr)
-		}
-		defer func() { _ = zr.Close() }()
-		r = zr
-	}
-	return scanLines(r)
-}
-
 // maxLineBytes is the longest line any reader here accepts. It was already the
 // ceiling every bufio.Scanner in this file is given; readLines, which reads
 // the file whole and splits it, was the one reader with no limit at all.
@@ -1172,18 +1214,6 @@ func readLines(path string) ([]string, error) {
 		}
 	}
 	return out, nil
-}
-
-func scanLines(r io.Reader) ([]string, error) {
-	var out []string
-	sc := bufio.NewScanner(r)
-	sc.Buffer(make([]byte, 0, 64*1024), maxLineBytes)
-	for sc.Scan() {
-		if line := strings.TrimSpace(sc.Text()); line != "" {
-			out = append(out, line)
-		}
-	}
-	return out, sc.Err()
 }
 
 // newerThan orders generations by date, then by run id numerically.

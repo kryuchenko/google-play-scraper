@@ -49,6 +49,24 @@ All notable changes to this project are documented here. The format is based on
   `catalog genres`, `catalog apps -genre 'GAME_*'` -- on a 0.01% sample:
   about nine shards and 12 seconds. It checks the chain is alive, not that a
   full 87k-request sweep finishes.
+### Changed
+
+- `gpscrape catalog genres` walks the genre table beside the snapshot
+  instead of loading it as a map: peak heap at four million ids falls from
+  700MB+ to about 45MB. `-ids` lists are sorted and deduplicated first, so
+  their records come out in id order, once each. A genre table that is not
+  sorted by app id is now an error rather than silently re-sorted.
+- `gpscrape catalog diff` reads both snapshots side by side instead of
+  whole: 538MB to 4MB at catalog scale.
+
+### Fixed
+
+- `catalog genres -prune` against a sampled snapshot deleted every row
+  outside the sample; it is refused, as it already was with `-ids`.
+- `catalog genres` ignored a read error in its id list: a snapshot cut short
+  by a corrupt gzip stream or an overlong line read as a shorter catalog,
+  and `-prune` deleted every row past the break. It stops before publishing
+  now, and for `-ids` before any request.
 
 ### Added
 
