@@ -107,7 +107,7 @@ func runCLI(t *testing.T, handler http.HandlerFunc, interrupt bool, args ...stri
 	}))
 	defer srv.Close()
 
-	cmd := exec.Command(os.Args[0], args...)
+	cmd := exec.CommandContext(t.Context(), os.Args[0], args...)
 	cmd.Env = append(os.Environ(), asMainEnv+"=1", storeEnv+"="+srv.URL, "GPSCRAPE_ERRORS=json")
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
@@ -173,6 +173,9 @@ type cliScenario struct {
 
 var cliScenarios = []cliScenario{
 	{code: records.CodeInvalid, how: "reviews -score 9", args: []string{"reviews", "-score", "9", "com.qa.x"}},
+	{code: records.CodeInvalid, how: "app com.a \"  \", no request", args: []string{"app", "com.qa.a", "  "}},
+	{code: records.CodeInvalid, how: "permissions com.a \"\", no request", args: []string{"permissions", "com.qa.a", ""}},
+	{code: records.CodeInvalid, how: "pcapp \" \", no request", args: []string{"pcapp", " "}},
 	{code: records.CodeNotFound, how: "app, details page 404", args: []string{"app", "com.qa.x"}, store: status(404)},
 	{code: records.CodeNotListed, how: "permissions, an empty frame for the id", args: []string{"permissions", "com.qa.x"}, store: emptyPermissions},
 	{code: records.CodeRateLimited, how: "app, store answers 429", args: []string{"app", "com.qa.x"}, store: status(429)},

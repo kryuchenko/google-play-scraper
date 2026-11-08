@@ -35,7 +35,7 @@ import (
 func buildBinary(t *testing.T) string {
 	t.Helper()
 	bin := filepath.Join(t.TempDir(), "gpscrape")
-	out, err := exec.Command("go", "build", "-o", bin, ".").CombinedOutput()
+	out, err := exec.CommandContext(t.Context(), "go", "build", "-o", bin, ".").CombinedOutput()
 	if err != nil {
 		t.Fatalf("build gpscrape: %v\n%s", err, out)
 	}
@@ -64,7 +64,7 @@ func run(t *testing.T, bin string, args ...string) string {
 	logFile := filepath.Join(ev.dir, fmt.Sprintf("%02d-%s.log", ev.n, strings.Join(args[:n], "-")))
 	args = append(append(append([]string{}, args[:n]...),
 		"-throttle", "700ms", "-debug", "-log-file", logFile), args[n:]...)
-	cmd := exec.Command(bin, args...)
+	cmd := exec.CommandContext(t.Context(), bin, args...)
 	var stderr strings.Builder
 	cmd.Stderr = &stderr
 	start := time.Now()
@@ -414,14 +414,14 @@ func TestCanaryCLI(t *testing.T) {
 	})
 
 	t.Run("unknown_command_fails", func(t *testing.T) {
-		cmd := exec.Command(bin, "definitely-not-a-command")
+		cmd := exec.CommandContext(t.Context(), bin, "definitely-not-a-command")
 		if err := cmd.Run(); err == nil {
 			t.Error("an unknown command exited 0")
 		}
 	})
 
 	t.Run("missing_argument_fails", func(t *testing.T) {
-		cmd := exec.Command(bin, "app")
+		cmd := exec.CommandContext(t.Context(), bin, "app")
 		out, err := cmd.CombinedOutput()
 		if err == nil {
 			t.Error("app with no appID exited 0")
@@ -540,7 +540,7 @@ func TestCanaryCatalogGames(t *testing.T) {
 
 	// apps reads the table on disk and makes no request, so it takes no
 	// -throttle and runs without the helper that adds one.
-	out, err := exec.Command(bin, "catalog", "apps", "-dir", dir, "-genre", "GAME_*", "-allow-sample").Output()
+	out, err := exec.CommandContext(t.Context(), bin, "catalog", "apps", "-dir", dir, "-genre", "GAME_*", "-allow-sample").Output()
 	if err != nil {
 		t.Fatalf("catalog apps: %v", err)
 	}

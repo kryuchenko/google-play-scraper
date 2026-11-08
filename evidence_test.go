@@ -286,7 +286,11 @@ func TestEvidenceKeepsTheLastResponses(t *testing.T) {
 	e := NewEvidence()
 	hc := &http.Client{Transport: evidenceTransport{e, http.DefaultTransport}}
 	get := func() {
-		resp, err := hc.Get(srv.URL + "/page?q=1")
+		req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, srv.URL+"/page?q=1", nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp, err := hc.Do(req)
 		if err != nil {
 			t.Fatal(err)
 		}

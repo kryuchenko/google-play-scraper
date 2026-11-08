@@ -100,6 +100,7 @@ func failing(s Scraper, opts Options, tool string, args map[string]any) func(t *
 
 var mcpScenarios = []mcpScenario{
 	{records.CodeInvalid, "play_get_app with a name for an id", failing(&fake{}, Options{}, "play_get_app", map[string]any{"app_id": "not an id"})},
+	{records.CodeInvalid, "play_get_apps with a blank id among good ones, no request", blankInBatch},
 	{records.CodeNotFound, "play_get_app, the store says 404", failing(&fake{appErr: &gps.StatusError{Code: 404}}, Options{}, "play_get_app", appArgs)},
 	{records.CodeNotListed, "play_get_permissions, an empty frame for a listed app", failing(&fake{permErr: errors.New("no data returned for com.qa.x")}, Options{}, "play_get_permissions", appArgs)},
 	{records.CodeRateLimited, "play_get_app, the store blocks", failing(&fake{appErr: gps.ErrBlocked}, Options{}, "play_get_app", appArgs)},
@@ -108,6 +109,23 @@ var mcpScenarios = []mcpScenario{
 	{records.CodeCancelled, "a queued call the client cancels", cancelledCall},
 	{records.CodeStore, "play_get_app, an unclassified store failure", failing(&fake{appErr: errors.New("boom")}, Options{}, "play_get_app", appArgs)},
 	{records.CodeInternal, "play_get_app panics", failing(&fake{panicApp: true}, Options{}, "play_get_app", appArgs)},
+}
+
+// noBatch is a scraper whose batched lookup must not be reached.
+type noBatch struct {
+	*fake
+	t *testing.T
+}
+
+func (n noBatch) AppsMany(ctx context.Context, ids []string, o gps.AppOptions) []gps.AppResult {
+	n.t.Errorf("AppsMany(%q) was called; a blank id should be refused first", ids)
+	return n.fake.AppsMany(ctx, ids, o)
+}
+
+// blankInBatch sends a whitespace-only id between two good ones.
+func blankInBatch(t *testing.T) string {
+	return callErr(t, connect(t, noBatch{&fake{}, t}, Options{}), "play_get_apps",
+		map[string]any{"app_ids": []string{"com.qa.a", "  ", "com.qa.b"}})
 }
 
 // busyCall holds the one slot and calls again: the second call waits out the

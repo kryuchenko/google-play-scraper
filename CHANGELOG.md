@@ -147,6 +147,10 @@ All notable changes to this project are documented here. The format is based on
 - `gpscrape`: a panic exited 2, the status for bad arguments, with no error
   object. It is reported as `internal` and exits 1; the stack still goes to
   stderr.
+- `Search` and `Cluster` results after the featured card had no price
+  (`priceKnown` false) and no summary, though each grid row carries its offer
+  and description: 1 in 20 of a live search had either. Both are read now;
+  the summary is the description's first paragraph, as for `List`.
 - README lists every error code with its exit status; it named only some
   statuses and none of `not_listed`, `confirmation_required`, `cancelled` or
   `internal`.
