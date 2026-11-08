@@ -25,7 +25,10 @@ it yourself: ask the user. The install command is
 
 The CLI writes one JSON record per line. Write it to a file and read the file
 with `jq` or a script; do not print thousands of records into the
-conversation.
+conversation. Redirection (`>`) and pipes need shell permission in Claude
+Code; when you cannot write a file, keep only the fields you need and reduce
+in one pipe, e.g. `gpscrape reviews <id> -limit 3000 -fields score | jq -s
+'map(.score) | add / length'`.
 
 ```sh
 # 3000 Russian-language reviews, newest first, with the MCP tool's field names
