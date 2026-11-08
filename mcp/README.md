@@ -128,6 +128,23 @@ logging request paths, and rotate the token if the URL leaks. Requests to
 Google Play then come from the host's IP, and Google rate-limits data-centre
 addresses sooner than a home one.
 
+**claude.ai** (and Claude Desktop, which shares claude.ai's connectors) does
+not need the secret path: its custom connectors can send a fixed header.
+[claude.ai/customize/connectors](https://claude.ai/customize/connectors) → Add custom connector, enter
+`https://play-mcp.example.com/mcp`, choose "No sign in", and under **Request
+headers** add `Authorization` with the value `Bearer <GPSCRAPE_MCP_TOKEN>`
+(the field takes the value as is, so the `Bearer ` prefix is yours to type).
+Claude connects from Anthropic's cloud, not from your device, so the server
+must be reachable from the internet as for ChatGPT. claude.ai does not pass a
+server's instructions to the model
+([anthropics/claude-ai-mcp#93](https://github.com/anthropics/claude-ai-mcp/issues/93));
+the `play_get_reviews` description repeats what matters, and the tools work
+without them. ([Anthropic: custom connectors](https://support.claude.com/en/articles/11175166-get-started-with-custom-connectors-using-remote-mcp))
+
+For Claude Desktop on one machine there is a simpler way: install
+`gpscrape-mcp.mcpb` from the release page, and Desktop runs the server
+locally over stdio.
+
 Remote clients that can set a header point at the URL:
 
 ```toml
