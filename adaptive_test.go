@@ -616,3 +616,34 @@ func TestAdaptiveOneSlowResponseKeepsTheWindow(t *testing.T) {
 		t.Errorf("throttle %v; one slow response should not have ended the clean window", got)
 	}
 }
+
+// A response exactly LatencyRatio times the baseline is not slow: the rule is
+// "more than", and a clean window of them still speeds the client up.
+func TestAdaptiveLatencyAtTheRatioIsClean(t *testing.T) {
+	c := NewClient(WithAdaptiveThrottle(AdaptivePolicy{
+		Min: 10 * time.Millisecond, Max: time.Second, Window: 2, ProbeWindow: 2, LatencyRatio: 2,
+	}))
+	clean(c, 20) // a 50ms baseline: the median needs half its 32-slot window filled
+	before := c.CurrentThrottle()
+	for range 2 {
+		c.observe(context.Background(), http.StatusOK, 100*time.Millisecond)
+	}
+	if got := c.CurrentThrottle(); got >= before {
+		t.Errorf("two responses at exactly 2x the baseline left the interval at %v (was %v); they are clean", got, before)
+	}
+}
+
+// With no number from the caller -- no Start, no WithThrottle -- there is no
+// interval to probe past, so every step moves on Window, not ProbeWindow.
+func TestAdaptiveWithoutAStartMovesOnWindow(t *testing.T) {
+	c := NewClient(WithAdaptiveThrottle(AdaptivePolicy{
+		Min: 10 * time.Millisecond, Max: time.Second, Window: 2, ProbeWindow: 50,
+	}))
+	if got := c.CurrentThrottle(); got != time.Second {
+		t.Fatalf("began at %v, want Max", got)
+	}
+	clean(c, 2)
+	if got := c.CurrentThrottle(); got >= time.Second {
+		t.Errorf("a full Window of clean responses left the interval at %v; with no start it must not wait for ProbeWindow", got)
+	}
+}
