@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"iter"
 	"maps"
 	"math"
 	"net/http"
@@ -438,7 +439,7 @@ func TestASampledSnapshotIsNotTheGeneration(t *testing.T) {
 
 	// 4. the id source must report the coverage, so genres can say the counts
 	// describe a sample rather than the store.
-	ids, closeIDs, coverage, err := idSource(dir, "")
+	ids, closeIDs, _, coverage, err := idSource(dir, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -454,7 +455,7 @@ func TestASampledSnapshotIsNotTheGeneration(t *testing.T) {
 	if err := os.WriteFile(list, []byte("com.a\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	_, closeList, listCoverage, err := idSource(dir, list)
+	_, closeList, _, listCoverage, err := idSource(dir, list)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1588,4 +1589,45 @@ func writeGenreLines(path string, ids []string, genreOf func(string) string) err
 		}
 		return nil
 	})
+}
+
+// scannerSeq is scanIDs without its error, for tests that only read.
+func scannerSeq(r interface{ Read([]byte) (int, error) }) iter.Seq[string] {
+	seq, _ := scanIDs(r)
+	return seq
+}
+
+// A list cut short -- here by a line past the scanner's limit -- reports why,
+// so the genre pass stops before it publishes instead of reading a shorter
+// catalog that -prune would shrink the table to.
+func TestScanIDsReportsWhatStoppedIt(t *testing.T) {
+	seq, readErr := scanIDs(strings.NewReader("a\n" + strings.Repeat("x", 2<<20) + "\nb\n"))
+	if got := slices.Collect(seq); !slices.Equal(got, []string{"a"}) || readErr() == nil {
+		t.Errorf("got %v, err %v; want [a] and an error", got, readErr())
+	}
+	seq, readErr = scanIDs(strings.NewReader("a\nb\n"))
+	if got := slices.Collect(seq); !slices.Equal(got, []string{"a", "b"}) || readErr() != nil {
+		t.Errorf("clean list: %v, %v", got, readErr())
+	}
+}
+
+// End to end: an -ids list with an overlong line stops genres -prune before
+// it touches the table.
+func TestGenresStopsOnACutShortList(t *testing.T) {
+	dir := t.TempDir()
+	ids := filepath.Join(dir, "ids.txt")
+	if err := os.WriteFile(ids, []byte("com.spotify.music\n"+strings.Repeat("x", 2<<20)+"\ncom.whatsapp\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	before := map[string]string{"com.spotify.music": "MUSIC_AND_AUDIO", "com.whatsapp": "COMMUNICATION"}
+	if err := saveGenres(filepath.Join(dir, "genres.tsv"), before); err != nil {
+		t.Fatal(err)
+	}
+	err := catalogGenres([]string{"-dir", dir, "-ids", ids})
+	if err == nil || !strings.Contains(err.Error(), "stopped partway") {
+		t.Fatalf("err = %v, want the read error", err)
+	}
+	if after, _ := loadGenres(dir); !maps.Equal(after, before) {
+		t.Errorf("table changed: %v", after)
+	}
 }

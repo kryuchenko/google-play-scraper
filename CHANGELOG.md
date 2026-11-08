@@ -19,6 +19,10 @@ All notable changes to this project are documented here. The format is based on
 
 - `catalog genres -prune` against a sampled snapshot deleted every row
   outside the sample; it is refused, as it already was with `-ids`.
+- `catalog genres` ignored a read error in its id list: a snapshot cut short
+  by a corrupt gzip stream or an overlong line read as a shorter catalog,
+  and `-prune` deleted every row past the break. It stops before publishing
+  now, and for `-ids` before any request.
 
 ### Added
 

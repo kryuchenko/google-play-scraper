@@ -212,7 +212,7 @@ func catalogGenres(args []string) error {
 	}
 	defer lock.release()
 
-	ids, closeIDs, coverage, err := idSource(*dir, *from)
+	ids, closeIDs, readErr, coverage, err := idSource(*dir, *from)
 	if err != nil {
 		return err
 	}
@@ -236,6 +236,11 @@ func catalogGenres(args []string) error {
 	if *from != "" {
 		if ids, err = sortedIDs(ctx, ids); err != nil {
 			return err
+		}
+		// The list is read whole here, so a break in it is known before
+		// any request goes out.
+		if err := readErr(); err != nil {
+			return fmt.Errorf("reading the ids stopped partway: %w; the genre table was left untouched", err)
 		}
 	}
 
@@ -347,6 +352,11 @@ func catalogGenres(args []string) error {
 	if progress != nil {
 		_, _ = fmt.Fprintln(progress)
 	}
+	if err := readErr(); err != nil {
+		// The list ended early. Everything after the break would read as
+		// unmatched, and -prune would delete it.
+		return fmt.Errorf("reading the ids stopped partway: %w; the genre table was left untouched", err)
+	}
 	if err := merge.finish(); err != nil {
 		return err
 	}
@@ -457,41 +467,51 @@ func catalogGenres(args []string) error {
 // list, the sampled percentage otherwise. Callers report that, because a
 // sample and the catalog are the same sorted list of ids from the outside and
 // only the manifest knows the difference.
-func idSource(dir, from string) (iter.Seq[string], func(), float64, error) {
+//
+// readErr reports what stopped the list early, once it has been read. It has
+// to be asked: a sequence cannot return an error, and a snapshot cut short by
+// a corrupt gzip stream or an overlong line otherwise reads as a shorter
+// catalog -- and with -prune the genre pass deleted every row past the break.
+func idSource(dir, from string) (ids iter.Seq[string], closeIDs func(), readErr func() error, coverage float64, err error) {
 	switch {
 	case from == "-":
-		return scannerSeq(os.Stdin), func() {}, 0, nil
+		seq, rerr := scanIDs(os.Stdin)
+		return seq, func() {}, rerr, 0, nil
 	case from != "":
 		f, err := os.Open(from)
 		if err != nil {
-			return nil, nil, 0, err
+			return nil, nil, nil, 0, err
 		}
-		return scannerSeq(f), func() { _ = f.Close() }, 0, nil
+		seq, rerr := scanIDs(f)
+		return seq, func() { _ = f.Close() }, rerr, 0, nil
 	}
 
 	m, ok := latestManifest(dir)
 	if !ok {
-		return nil, nil, 0, fmt.Errorf("no snapshot in %s; run `gpscrape catalog sweep -dir %s` first, "+
+		return nil, nil, nil, 0, fmt.Errorf("no snapshot in %s; run `gpscrape catalog sweep -dir %s` first, "+
 			"or pass -ids", dir, dir)
 	}
 	path := filepath.Join(dir, m.File)
 	f, err := os.Open(path)
 	if err != nil {
-		return nil, nil, 0, err
+		return nil, nil, nil, 0, err
 	}
 	zr, err := gzip.NewReader(f)
 	if err != nil {
 		_ = f.Close()
-		return nil, nil, 0, err
+		return nil, nil, nil, 0, err
 	}
-	return scannerSeq(zr), func() { _ = zr.Close(); _ = f.Close() }, m.SamplePct, nil
+	seq, rerr := scanIDs(zr)
+	return seq, func() { _ = zr.Close(); _ = f.Close() }, rerr, m.SamplePct, nil
 }
 
-// scannerSeq streams lines. The point of a sequence rather than a slice is that
-// a catalog snapshot is 3.4 million ids, and the digest pass holds one pack per
+// scanIDs streams lines, and returns a function reporting the error that
+// ended them, if any. The point of a sequence rather than a slice is that a
+// catalog snapshot is 3.4 million ids, and the digest pass holds one pack per
 // worker rather than all of them.
-func scannerSeq(r interface{ Read([]byte) (int, error) }) iter.Seq[string] {
-	return func(yield func(string) bool) {
+func scanIDs(r interface{ Read([]byte) (int, error) }) (iter.Seq[string], func() error) {
+	var scanErr error
+	seq := func(yield func(string) bool) {
 		sc := bufio.NewScanner(r)
 		sc.Buffer(make([]byte, 0, 64<<10), 1<<20)
 		for sc.Scan() {
@@ -503,7 +523,9 @@ func scannerSeq(r interface{ Read([]byte) (int, error) }) iter.Seq[string] {
 				return
 			}
 		}
+		scanErr = sc.Err()
 	}
+	return seq, func() error { return scanErr }
 }
 
 func genresPath(dir string) string { return filepath.Join(dir, "genres.tsv") }
