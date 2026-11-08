@@ -40,7 +40,10 @@ SANDBOX = {
     }
 }
 INSTALL = re.compile(r"\b(go\s+(install|get)|brew\s+install|pip3?\s+(install|download)|python3?\s+-m\s+pip|npm\s+(i|install)\b|npx\s|(curl|wget)[^|]*\|\s*(ba)?sh)")
-CLI_DATA = re.compile(r"(^|[\s|;&(/])gpscrape\s+(reviews|app|search|list|similar|developer|permissions|datasafety|availability|catalog|suggest|categories|pcapp)\b")
+# A data call: a data subcommand, not its help. Counted as ok only when its
+# Bash result has no gpscrape error object -- a later command in the same
+# Bash call (wc, head) can otherwise hide the failure (review of run 2).
+CLI_DATA = re.compile(r"(^|[\s|;&(/])gpscrape\s+(reviews|app|search|list|similar|developer|permissions|datasafety|availability|catalog|suggest|categories|pcapp)\b(?![^;&|\n]*\s(-h|-help|--help)\b)")
 
 
 def cli(bin_dir, *args):
@@ -131,7 +134,9 @@ def run_one(arm, task, rep, bin_dir, out_dir, truths):
             if block.get("type") == "tool_use":
                 uses[block["id"]] = block
             elif block.get("type") == "tool_result":
-                results[block.get("tool_use_id")] = bool(block.get("is_error"))
+                c = block.get("content")
+                c = c if isinstance(c, str) else json.dumps(c)
+                results[block.get("tool_use_id")] = bool(block.get("is_error")) or '"code":"' in c or "OSStatus" in c
         if ev.get("type") == "result":
             final = ev
     mcp_calls = sum(1 for u in uses.values() if u["name"].startswith("mcp__gpscrape__"))
@@ -154,7 +159,8 @@ def run_one(arm, task, rep, bin_dir, out_dir, truths):
     shutil.rmtree(work, ignore_errors=True)
     return {
         "arm": arm, "task": task, "rep": rep, "answer": ans, "truth": truths,
-        "correct": grade(task, ans, truths),
+        # A capped or timed-out run is wrong whatever it printed (PLAN2).
+        "correct": grade(task, ans, truths) and final.get("subtype") == "success" and not timed_out,
         "mcp_calls": mcp_calls, "cli_data_ok": cli_data_ok, "cli_data_err": cli_data_err,
         "skill_read": skill_read, "installs": installs,
         "cost": final.get("total_cost_usd"), "turns": final.get("num_turns"), "wall_s": round(wall, 1),
@@ -196,7 +202,7 @@ def main():
         if t and "answer" in r and before[t]["value"] != after[t]["value"]:
             r["truth"] = [before[t]["value"], after[t]["value"]]
             r["drift"] = True
-            r["correct"] = grade(t, r["answer"], r["truth"])
+            r["correct"] = grade(t, r["answer"], r["truth"]) and r.get("subtype") == "success" and not r.get("timed_out")
     with open(os.path.join(a.out, "results.jsonl"), "w") as f:
         f.write(json.dumps({"truth_before": before, "truth_after": after}) + "\n")
         for r in res:
