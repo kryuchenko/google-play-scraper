@@ -103,6 +103,20 @@ All notable changes to this project are documented here. The format is based on
 - `WithThrottle` applied after `WithAdaptiveThrottle` now counts as the
   caller's interval: the controller probes past it on `ProbeWindow`, as it
   does with the options in the other order, instead of on `Window`.
+  `AdaptivePolicy.Start` wins over `WithThrottle` in either order, as
+  documented; before, a later `WithThrottle` replaced it.
+- The adaptive throttle no longer stays at `Max` for `CutMemory` after an
+  outage. Every refusal was remembered as a rate limit; now only the first
+  429 or soft block after an answer is, below `Max`, with the breaker
+  closed. Further refusals, refusals at `Max`, refused probes and 503s still
+  slow the client but leave no cut.
+- A refusal from a request sent before the breaker's pause no longer
+  doubles the interval again or leaves a cut; the breaker already ignored
+  it.
+- One slow response no longer ends the adaptive throttle's clean window;
+  only a streak does. With a latency tail past twice the median every few
+  dozen responses, the window of 100 needed to probe past the caller's
+  interval was almost never completed.
 - `catalog sweep` resumes correctly after a kill at any point:
   - a torn last line in the partial id file or the done log is cut back
     before appending, so `com.c` + `com.d` no longer becomes `com.com.d` in the
@@ -147,7 +161,8 @@ All notable changes to this project are documented here. The format is based on
   (`adaptive_model_test.go`): seeded random plans of 10,000 events (clean,
   sporadic refusals, slowdowns, outages, idle gaps, a hard rate ceiling) run
   under `synctest`, with the interval, cut floor and breaker transitions
-  checked after every event. Three seeds with `-short`, 64 without;
+  checked after every event, and a run that must recover from an outage.
+  Three seeds with `-short`, 64 without;
   `-adaptive.seed=N` or `ADAPTIVE_SEED=N` replays one.
 - Parsers have allocation budgets and `ReviewsSeq` a memory ceiling, checked
   in CI.

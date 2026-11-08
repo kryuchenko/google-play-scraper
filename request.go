@@ -52,10 +52,12 @@ type Client struct {
 	rttNext      int
 	// startThrottle is the interval the adaptive controller began at; steps
 	// faster than it are probes and move on ProbeWindow. cuts are the
-	// intervals the last refusals arrived at (see AdaptivePolicy.CutMemory).
+	// intervals the last refusals arrived at (see AdaptivePolicy.CutMemory);
+	// refusing is set from a refusal to the next answer (see isCut).
 	startThrottle time.Duration
 	cuts          [5]cut
 	cutNext       int
+	refusing      bool
 	cleanRun      int
 	slowRun       int
 	brk           breaker // guarded by throttleLock; see breaker.go
@@ -180,6 +182,12 @@ func NewClient(opts ...ClientOption) *Client {
 	// after every option has run: WithThrottle may follow WithAdaptiveThrottle
 	// and set an interval the policy would never have chosen.
 	if c.adaptive != nil {
+		// Start wins over WithThrottle whichever comes first, as its
+		// documentation says; WithAdaptiveThrottle alone cannot see a
+		// WithThrottle that follows it.
+		if c.adaptive.Start > 0 {
+			c.throttle, c.startThrottle = c.adaptive.Start, c.adaptive.Start
+		}
 		c.throttle = min(max(c.throttle, c.adaptive.Min), c.adaptive.Max)
 		if c.startThrottle > 0 {
 			c.startThrottle = c.throttle

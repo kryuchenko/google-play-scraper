@@ -243,11 +243,12 @@ type refModel struct {
 	p     AdaptivePolicy
 	start time.Duration // the caller's number, 0 if they gave none
 
-	rtts  [32]time.Duration
-	nrtt  int
-	clean int
-	slow  int
-	cuts  []cut // the last five refusals
+	rtts     [32]time.Duration
+	nrtt     int
+	clean    int
+	slow     int
+	cuts     []cut // the last five cuts
+	refusing bool  // a refusal since the last answer
 }
 
 func (m *refModel) baseline() time.Duration {
@@ -287,32 +288,47 @@ const (
 	stepSlowStreak // slow, streak complete: slows down
 	stepClean      // clean, window not complete
 	stepWindow     // clean, window complete: may speed up
+	stepIgnored    // a refusal admitted before the current pause: no effect
 )
 
 // classify applies one outcome to the model and says what the controller
-// is entitled to do with it. before is the interval it arrived at.
-func (m *refModel) classify(o outcome, before time.Duration, now time.Time) stepKind {
+// is entitled to do with it. before is the interval it arrived at, st the
+// breaker's state, stale whether the request was admitted before the
+// breaker's current pause.
+//
+// A cut is the first 429 after an answer, below Max, with the breaker
+// closed: the interval a working rate began to fail at. Later refusals in
+// the same episode, refusals at Max, probes and 503s say the server is
+// refusing, not where its limit is.
+func (m *refModel) classify(o outcome, before time.Duration, now time.Time, st BreakerState, stale bool) stepKind {
 	if o.err == nil && o.status == http.StatusOK && o.rtt > 0 {
 		m.rtts[m.nrtt%len(m.rtts)] = o.rtt
 		m.nrtt++
 	}
 	switch {
 	case o.status == http.StatusTooManyRequests || o.status == http.StatusServiceUnavailable:
-		m.clean, m.slow = 0, 0
-		m.cuts = append(m.cuts, cut{interval: before, at: now})
-		if len(m.cuts) > 5 {
-			m.cuts = m.cuts[1:]
+		if stale {
+			return stepIgnored
 		}
+		m.clean, m.slow = 0, 0
+		if o.status == http.StatusTooManyRequests && !m.refusing && before < m.p.Max && st == BreakerClosed {
+			m.cuts = append(m.cuts, cut{interval: before, at: now})
+			if len(m.cuts) > 5 {
+				m.cuts = m.cuts[1:]
+			}
+		}
+		m.refusing = true
 		return stepRefusal
 	case o.err != nil || o.status >= 500:
 		m.clean, m.slow = 0, 0
 		return stepSoft
 	}
+	m.refusing = false
 	if b := m.baseline(); b > 0 && o.rtt > time.Duration(float64(b)*m.p.LatencyRatio) {
-		m.clean = 0
+		// One slow response leaves the clean run alone; a streak ends it.
 		m.slow++
 		if m.slow >= m.p.SlowStreak {
-			m.slow = 0
+			m.clean, m.slow = 0, 0
 			return stepSlowStreak
 		}
 		return stepSlow
@@ -369,10 +385,12 @@ func (r *modelRun) fail(format string, args ...any) {
 type startOption uint8
 
 const (
-	startNone   startOption = iota // nothing: begins at Max
-	startField                     // AdaptivePolicy.Start
-	startBefore                    // WithThrottle before WithAdaptiveThrottle
-	startAfter                     // WithThrottle after WithAdaptiveThrottle
+	startNone        startOption = iota // nothing: begins at Max
+	startField                          // AdaptivePolicy.Start
+	startBefore                         // WithThrottle before WithAdaptiveThrottle
+	startAfter                          // WithThrottle after WithAdaptiveThrottle
+	startFieldBefore                    // Start, and a different WithThrottle before
+	startFieldAfter                     // Start, and a different WithThrottle after
 )
 
 func pick[T any](r *rand.Rand, xs ...T) T { return xs[r.IntN(len(xs))] }
@@ -393,7 +411,7 @@ func newModelRun(t *testing.T, seed uint64, plan []modelEvent, ceiling time.Dura
 		MaxCooldown: pick[time.Duration](r, 0, 20*time.Second),
 		MaxProbes:   pick(r, 0, 2, -1),
 	}
-	how := pick(r, startNone, startField, startBefore, startAfter)
+	how := pick(r, startNone, startField, startBefore, startAfter, startFieldBefore, startFieldAfter)
 	start := time.Duration(r.Int64N(int64(3*time.Second))) + 5*time.Millisecond
 	if ceiling > 0 {
 		// Settling above the ceiling needs (1+Headroom)*Speedup >= 1 and a
@@ -405,7 +423,8 @@ func newModelRun(t *testing.T, seed uint64, plan []modelEvent, ceiling time.Dura
 		p.ProbeWindow = 0
 		start = pick(r, ceiling/2, 2*ceiling, 4*ceiling)
 	}
-	if how == startField {
+	other := start/2 + time.Millisecond
+	if how == startField || how == startFieldBefore || how == startFieldAfter {
 		p.Start = start
 	}
 
@@ -419,6 +438,10 @@ func newModelRun(t *testing.T, seed uint64, plan []modelEvent, ceiling time.Dura
 		opts = []ClientOption{WithThrottle(start), WithAdaptiveThrottle(p), hooks}
 	case startAfter:
 		opts = []ClientOption{WithAdaptiveThrottle(p), WithThrottle(start), hooks}
+	case startFieldBefore:
+		opts = []ClientOption{WithThrottle(other), WithAdaptiveThrottle(p), hooks}
+	case startFieldAfter:
+		opts = []ClientOption{WithAdaptiveThrottle(p), WithThrottle(other), hooks}
 	default:
 		opts = []ClientOption{WithAdaptiveThrottle(p), hooks}
 	}
@@ -427,6 +450,18 @@ func newModelRun(t *testing.T, seed uint64, plan []modelEvent, ceiling time.Dura
 	run.m.p = *run.c.adaptive
 	if how != startNone {
 		run.m.start = run.c.CurrentThrottle()
+	}
+	// Start wins over WithThrottle in either order; WithThrottle alone is
+	// the start, clamped; with neither the client begins at Max.
+	want := run.m.p.Max
+	switch how {
+	case startField, startFieldBefore, startFieldAfter:
+		want = run.m.p.Start
+	case startBefore, startAfter:
+		want = min(max(start, run.m.p.Min), run.m.p.Max)
+	}
+	if got := run.c.CurrentThrottle(); got != want {
+		t.Fatalf("seed=%d: start option %d began at %v, want %v", seed, how, got, want)
 	}
 	run.desc = fmt.Sprintf("start=%d(%v) policy=%+v", how, run.m.start, run.m.p)
 	return run
@@ -501,7 +536,12 @@ func (r *modelRun) checkState() {
 // admitOne admits a request the way the pipeline does and checks that the
 // breaker let it through only when it should have. A nil ticket means the
 // client is stopped; the executor then waits the stop out.
-func (r *modelRun) admitOne() *ticket {
+//
+// It also returns how many breaker events had fired at admission: a ticket
+// is stale -- admitted before the current pause -- once any has fired since,
+// because every transition but a probe's close begins a new pause or probe,
+// and a probe is never in flight with another request here.
+func (r *modelRun) admitOne() (*ticket, int) {
 	r.t.Helper()
 	t, waited, err := r.c.admit(context.Background())
 	now := time.Now()
@@ -518,7 +558,7 @@ func (r *modelRun) admitOne() *ticket {
 		}
 		time.Sleep(until.Sub(now))
 		r.checkState()
-		return nil
+		return nil, 0
 	}
 	if now.Before(r.pauseUntil) {
 		r.fail("request admitted at %v, inside a pause until %v", now, r.pauseUntil)
@@ -537,7 +577,7 @@ func (r *modelRun) admitOne() *ticket {
 	r.samples = append(r.samples, thr)
 	r.sampleIdx = append(r.sampleIdx, r.i)
 	r.checkState()
-	return t
+	return t, len(r.fired)
 }
 
 // outcomeOf is what the pipeline would hand record for event e, sent gap
@@ -560,12 +600,14 @@ func outcomeOf(e modelEvent, gap time.Duration) outcome {
 }
 
 // resolve applies one outcome and checks the interval against the model.
-func (r *modelRun) resolve(t *ticket, o outcome) {
+func (r *modelRun) resolve(t *ticket, firedAt int, o outcome) {
 	r.t.Helper()
 	p := r.m.p
-	before, _, _, _ := r.snapshot()
+	before, _, st, _ := r.snapshot()
 	now := time.Now()
-	kind := r.m.classify(o, before, now)
+	stale := r.c.breakerOn() && len(r.fired) > firedAt
+	clean, slow := r.m.clean, r.m.slow
+	kind := r.m.classify(o, before, now, st, stale)
 	floor := r.m.floor(now)
 	if kind == stepRefusal {
 		r.refusedAt = append(r.refusedAt, r.i)
@@ -580,6 +622,16 @@ func (r *modelRun) resolve(t *ticket, o outcome) {
 	after, _, _, _ := r.snapshot()
 
 	switch kind {
+	case stepIgnored:
+		if after != before {
+			r.fail("a refusal sent before the pause moved the interval %v -> %v", before, after)
+		}
+		r.c.throttleLock.Lock()
+		cr, sr := r.c.cleanRun, r.c.slowRun
+		r.c.throttleLock.Unlock()
+		if cr != clean || sr != slow {
+			r.fail("a refusal sent before the pause reset the runs: clean %d -> %d, slow %d -> %d", clean, cr, slow, sr)
+		}
 	case stepRefusal, stepSoft, stepSlowStreak:
 		if after < before {
 			r.fail("step %d shortened the interval %v -> %v", kind, before, after)
@@ -617,7 +669,7 @@ func (r *modelRun) execute() {
 			r.checkState()
 			continue
 		}
-		t1 := r.admitOne()
+		t1, f1 := r.admitOne()
 		if t1 == nil {
 			continue
 		}
@@ -627,21 +679,21 @@ func (r *modelRun) execute() {
 
 		if e.pair && r.i+1 < len(r.plan) && r.plan[r.i+1].kind == evResponse && !t1.probe {
 			e2 := r.plan[r.i+1]
-			t2 := r.admitOne()
+			t2, f2 := r.admitOne()
 			if t2 == nil {
-				r.resolve(t1, outcomeOf(e, gap1))
+				r.resolve(t1, f1, outcomeOf(e, gap1))
 				continue
 			}
 			start2 := time.Now()
 			gap2 := start2.Sub(r.lastStart)
 			r.lastStart = start2
-			r.resolve(t1, outcomeOf(e, gap1))
+			r.resolve(t1, f1, outcomeOf(e, gap1))
 			r.i++
-			r.resolve(t2, outcomeOf(e2, gap2))
+			r.resolve(t2, f2, outcomeOf(e2, gap2))
 			continue
 		}
 		time.Sleep(e.rtt)
-		r.resolve(t1, outcomeOf(e, gap1))
+		r.resolve(t1, f1, outcomeOf(e, gap1))
 	}
 }
 
@@ -737,6 +789,59 @@ func TestAdaptiveModelHardCeiling(t *testing.T) {
 				}
 				t.Logf("ceiling %v: median %v in [%v, %v], %d refusals (%d late), %v virtual",
 					x, med, lo, hi, len(run.refusedAt), late, elapsed.Round(time.Second))
+			})
+		})
+	}
+}
+
+type phase struct {
+	regime regime
+	n      int
+}
+
+// genPhases is a plan of fixed phases, for runs whose shape matters more
+// than its variety. Same seed, same plan.
+func genPhases(seed uint64, phases ...phase) []modelEvent {
+	r := rand.New(rand.NewPCG(seed, 0x9a5e))
+	var out []modelEvent
+	for _, ph := range phases {
+		for range ph.n {
+			out = append(out, genOne(r, ph.regime, 0))
+		}
+	}
+	return out
+}
+
+// After an outage the client must come back down. Refusals in an outage
+// arrive at an interval the previous refusal doubled, at Max, or at a probe;
+// none of them says where a rate limit lies, and remembering them as cuts
+// held the client at Max for CutMemory once the server was answering again.
+// Within a few windows of clean responses the interval must be below Max.
+func TestAdaptiveModelRecoversAfterOutage(t *testing.T) {
+	const before, outage, after = 2000, 1500, 3000
+	for _, seed := range modelSeeds(t) {
+		t.Run(fmt.Sprint(seed), func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				plan := genPhases(seed, phase{regimeClean, before}, phase{regimeOutage, outage}, phase{regimeClean, after})
+				run := newModelRun(t, seed, plan, 0)
+				run.execute()
+
+				p := run.m.p
+				k := 3 * max(p.Window, p.ProbeWindow)
+				seen := 0
+				for n, idx := range run.sampleIdx {
+					if idx < before+outage {
+						continue
+					}
+					if run.samples[n] < p.Max {
+						return
+					}
+					if seen++; seen >= k {
+						break
+					}
+				}
+				run.i = before + outage
+				run.fail("interval still at Max %v after %d clean responses following the outage (cuts %v)", p.Max, seen, run.m.cuts)
 			})
 		})
 	}

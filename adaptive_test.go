@@ -439,11 +439,13 @@ func TestAdaptiveProbesSlowlyPastTheCallersInterval(t *testing.T) {
 
 // Found by the state-model test: a clean window that would have stepped past
 // the cut floor moved the interval to the floor even when the floor was
-// slower than the interval in use. After a refusal at Max the floor lies
-// above Max, and the first clean window took the client past its ceiling.
+// slower than the interval in use. A cut near Max puts the floor above Max,
+// and the first clean window took the client past its ceiling.
 func TestAdaptiveCleanWindowNeverSlowsDown(t *testing.T) {
 	c := NewClient(WithAdaptiveThrottle(AdaptivePolicy{Min: 20 * time.Millisecond, Max: time.Second, Window: 2}))
-	c.observe(context.Background(), http.StatusTooManyRequests, 50*time.Millisecond) // a cut at Max: floor 1.25s
+	c.throttleLock.Lock()
+	c.noteCut(900 * time.Millisecond) // floor 1.125s, above Max
+	c.throttleLock.Unlock()
 	clean(c, 2)
 	if got := c.CurrentThrottle(); got != time.Second {
 		t.Errorf("throttle %v after a clean window under a floor above Max; want it to stay at Max", got)
@@ -475,5 +477,116 @@ func TestAdaptiveProbesSlowlyWhicheverOrder(t *testing.T) {
 	clean(c, 3)
 	if got := c.CurrentThrottle(); got != 200*time.Millisecond {
 		t.Errorf("throttle %v after 3 clean responses; the first step past 200ms needs 4", got)
+	}
+}
+
+func floorOf(c *Client) time.Duration {
+	c.throttleLock.Lock()
+	defer c.throttleLock.Unlock()
+	return c.cutFloor()
+}
+
+// Only the first refusal of an episode is a cut. The ones after it arrive at
+// an interval the first one doubled, and at Max, and remembering them held
+// the client at Max for CutMemory after every outage.
+func TestAdaptiveOutageLeavesOneCut(t *testing.T) {
+	c := NewClient(WithAdaptiveThrottle(AdaptivePolicy{
+		Min: 20 * time.Millisecond, Max: 2 * time.Second, Start: 100 * time.Millisecond, Window: 2, ProbeWindow: 2,
+	}))
+	for range 10 {
+		c.observe(context.Background(), http.StatusTooManyRequests, 50*time.Millisecond)
+	}
+	if got := c.CurrentThrottle(); got != 2*time.Second {
+		t.Fatalf("throttle %v after an outage, want Max", got)
+	}
+	if f := floorOf(c); f != 125*time.Millisecond {
+		t.Errorf("floor %v after an outage that began at 100ms; want 125ms from its first refusal only", f)
+	}
+	clean(c, 100)
+	if got := c.CurrentThrottle(); got != 125*time.Millisecond {
+		t.Errorf("throttle %v after the outage ended; want it back on the 125ms floor", got)
+	}
+}
+
+// A refusal at Max is no ceiling to settle below, and a 503 is the server
+// unavailable to everyone rather than limiting this client: neither is a cut.
+func TestAdaptiveRefusalsThatAreNotCuts(t *testing.T) {
+	for name, tc := range map[string]struct {
+		start  time.Duration
+		status int
+	}{
+		"429 at Max": {2 * time.Second, http.StatusTooManyRequests},
+		"503":        {100 * time.Millisecond, http.StatusServiceUnavailable},
+	} {
+		c := NewClient(WithAdaptiveThrottle(AdaptivePolicy{Min: 20 * time.Millisecond, Max: 2 * time.Second, Start: tc.start}))
+		c.observe(context.Background(), tc.status, 50*time.Millisecond)
+		if f := floorOf(c); f != 0 {
+			t.Errorf("%s: floor %v, want no cut", name, f)
+		}
+	}
+}
+
+// A refusal from a request sent before the breaker's pause is ignored by the
+// interval as it is by the breaker: it neither slows the client again nor
+// leaves a cut.
+func TestAdaptiveIgnoresStaleRefusals(t *testing.T) {
+	c := NewClient(WithAdaptiveThrottle(AdaptivePolicy{
+		Min: 20 * time.Millisecond, Max: 5 * time.Second, Start: 100 * time.Millisecond, Cooldown: time.Hour,
+	}))
+	ctx := context.Background()
+	t1, t2 := &ticket{gen: c.brk.gen}, &ticket{gen: c.brk.gen}
+	refused := outcome{status: http.StatusTooManyRequests, rtt: 50 * time.Millisecond}
+	c.record(ctx, t1, refused)
+	if s, _ := c.Breaker(); s != BreakerOpen {
+		t.Fatalf("breaker %s after a refusal, want open", s)
+	}
+	thr, floor := c.CurrentThrottle(), floorOf(c)
+	c.record(ctx, t2, refused) // in flight when the first one landed
+	if got := c.CurrentThrottle(); got != thr {
+		t.Errorf("a stale refusal moved the interval %v -> %v", thr, got)
+	}
+	if f := floorOf(c); f != floor {
+		t.Errorf("a stale refusal moved the floor %v -> %v", floor, f)
+	}
+}
+
+// AdaptivePolicy.Start wins over WithThrottle whichever is applied first.
+func TestAdaptiveStartWinsWhicheverOrder(t *testing.T) {
+	p := AdaptivePolicy{Min: 10 * time.Millisecond, Max: 5 * time.Second, Start: time.Second, Window: 2, ProbeWindow: 4}
+	for name, opts := range map[string][]ClientOption{
+		"throttle first": {WithThrottle(200 * time.Millisecond), WithAdaptiveThrottle(p)},
+		"throttle last":  {WithAdaptiveThrottle(p), WithThrottle(200 * time.Millisecond)},
+	} {
+		c := NewClient(opts...)
+		if got := c.CurrentThrottle(); got != time.Second {
+			t.Errorf("%s: began at %v, want Start (1s)", name, got)
+		}
+		clean(c, 3) // below Start: ProbeWindow
+		if got := c.CurrentThrottle(); got != time.Second {
+			t.Errorf("%s: throttle %v after 3 clean responses; Start is the caller's interval", name, got)
+		}
+	}
+}
+
+// Found by the outage-recovery model test: one slow response ended the clean
+// window. With a latency tail that crosses twice the median every few dozen
+// responses, a ProbeWindow of 100 consecutive clean ones was almost never
+// seen, and the client sat at Max after an outage. It now neither counts
+// towards the window nor ends it.
+func TestAdaptiveOneSlowResponseKeepsTheWindow(t *testing.T) {
+	c := NewClient(WithAdaptiveThrottle(AdaptivePolicy{
+		Min: 20 * time.Millisecond, Max: 2 * time.Second, Start: time.Second, Window: 10, ProbeWindow: 10,
+	}))
+	clean(c, 32) // a baseline: three windows, and two into the fourth
+	at := c.CurrentThrottle()
+	clean(c, 5)
+	c.observe(context.Background(), http.StatusOK, 300*time.Millisecond)
+	clean(c, 2)
+	if got := c.CurrentThrottle(); got != at {
+		t.Fatalf("throttle %v before the window closed, want %v", got, at)
+	}
+	clean(c, 1) // ten clean in the window, one slow among them
+	if got := c.CurrentThrottle(); got >= at {
+		t.Errorf("throttle %v; one slow response should not have ended the clean window", got)
 	}
 }

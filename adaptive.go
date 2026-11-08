@@ -104,7 +104,9 @@ type AdaptivePolicy struct {
 	// CutMemory is how long a refusal is remembered as evidence of the
 	// ceiling. Default 30 minutes.
 	//
-	// The interval at each refusal is kept (the last five). The controller
+	// The interval at each refusal that marks a rate limit -- the first 429
+	// or soft block after an answer, below Max, with the breaker closed -- is
+	// kept (the last five). The controller
 	// will not speed up past the median of those cuts plus Headroom, so it
 	// settles below the rate that was refused instead of finding it again
 	// every few minutes -- the plateau CUBIC keeps around its last loss point
@@ -275,7 +277,11 @@ func (c *Client) record(ctx context.Context, t *ticket, o outcome) {
 	}
 	c.throttleLock.Lock()
 	before := c.throttle
-	reason := c.adjust(o)
+	// A ticket from an older breaker generation was sent before the pause
+	// began. The breaker ignores its refusal, and so does the interval: four
+	// requests in flight when a block lands are one refusal, not four.
+	stale := t != nil && c.breakerOn() && t.gen != c.brk.gen
+	reason := c.adjust(o, stale)
 	ev, moved := c.complete(t, o)
 	after := c.throttle
 	c.throttleLock.Unlock()
@@ -303,7 +309,8 @@ func (c *Client) logThrottle(ctx context.Context, before, after time.Duration, r
 // adjust applies one observation to the interval and names the signal behind
 // the decision. Callers hold throttleLock; whether the interval actually moved
 // is for them to compare, since a decrease at the ceiling changes nothing.
-func (c *Client) adjust(o outcome) string {
+// stale marks an attempt admitted before the breaker's current pause.
+func (c *Client) adjust(o outcome, stale bool) string {
 	p := c.adaptive
 	status, rtt, err := o.status, o.rtt, o.err
 
@@ -331,8 +338,14 @@ func (c *Client) adjust(o outcome) string {
 	// nothing about rate at all.
 	switch o.signal() {
 	case signalRefusal:
+		if stale {
+			return ""
+		}
 		c.cleanRun, c.slowRun = 0, 0
-		c.noteCut(c.throttle)
+		if c.isCut(o) {
+			c.noteCut(c.throttle)
+		}
+		c.refusing = true
 		c.slower(p.Slowdown, p.Max)
 		return "refused"
 
@@ -345,11 +358,16 @@ func (c *Client) adjust(o outcome) string {
 		return ""
 	}
 
+	c.refusing = false // an answer: the next refusal starts a new episode
+	// One slow response neither counts towards a clean window nor ends it:
+	// it says almost nothing, and against a CDN whose p95 is about twice its
+	// median, ending the window on each one meant ProbeWindow consecutive
+	// clean responses were almost never seen and the client never probed.
+	// A streak is evidence, and does end it.
 	if baseline > 0 && rtt > time.Duration(float64(baseline)*p.LatencyRatio) {
-		c.cleanRun = 0
 		c.slowRun++
 		if c.slowRun >= p.SlowStreak {
-			c.slowRun = 0
+			c.cleanRun, c.slowRun = 0, 0
 			c.slower(p.SoftSlowdown, p.Max)
 		}
 		return "latency"
@@ -380,6 +398,29 @@ func (c *Client) adjust(o outcome) string {
 	}
 	c.throttle = next
 	return "clean"
+}
+
+// isCut reports whether a refusal is evidence of a rate ceiling, worth
+// remembering as a cut. Callers hold throttleLock.
+//
+// The floor settles below the interval a working rate began to fail at, so a
+// cut has to be such an interval. Only the first refusal after an answer is:
+// the ones that follow arrive at an interval the previous refusal already
+// doubled, and say the server is still refusing -- an outage or a penalty
+// box -- not where its limit lies. Nothing is a cut at Max either: a refusal
+// at the slowest rate allowed is an outage, not a limit to settle below, and
+// its floor would lie above Max. Nor while the breaker is open or half-open:
+// a probe goes out after a pause, at no rate at all. Remembering those held
+// the client at Max for CutMemory after every outage.
+//
+// And only a 429 or a soft block is: both are the server limiting this
+// client. A 503 is the server unavailable to everyone, which still slows the
+// client and opens the breaker but says nothing about this client's rate.
+func (c *Client) isCut(o outcome) bool {
+	if c.refusing || c.throttle >= c.adaptive.Max || c.brk.state != BreakerClosed {
+		return false
+	}
+	return o.status == http.StatusTooManyRequests || o.verdict == VerdictBlocked
 }
 
 // noteCut remembers the interval a refusal arrived at. Callers hold
