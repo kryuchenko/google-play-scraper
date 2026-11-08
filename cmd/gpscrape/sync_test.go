@@ -1988,3 +1988,23 @@ func TestSweepReportsAnInterruptBeforeAFailedShard(t *testing.T) {
 		t.Errorf("err = %v, want the interrupt", err)
 	}
 }
+
+// A run killed after its manifest but before its cleanup leaves the resume
+// files of a finished generation. The next run finds the generation done and
+// removes them, instead of keeping ~100MB until the generation rolls.
+func TestSweepRemovesResumeFilesOfAFinishedGeneration(t *testing.T) {
+	_, f, dir := newSweepFixture(t)
+	if _, _, err := runVerb(t, cmdSync, "-dir", dir, "-concurrency", "2"); err != nil {
+		t.Fatal(err)
+	}
+	preFinished(t, dir, f, sampling{}, 0, 1) // what a kill before cleanup leaves
+	_, stderr, err := runVerb(t, cmdSync, "-dir", dir)
+	if err != nil || !strings.Contains(stderr, "already have") {
+		t.Fatalf("err %v, stderr %q", err, stderr)
+	}
+	for _, name := range []string{"state.json", "partial-" + f.gen.ID() + ".txt", "done-" + f.gen.ID() + ".log"} {
+		if _, err := os.Stat(filepath.Join(dir, name)); err == nil {
+			t.Errorf("%s survived although the generation is complete", name)
+		}
+	}
+}

@@ -15,6 +15,13 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- `TestSweepSurvivesRealKills` builds gpscrape with `-tags killtest` and kills
+  `catalog sweep` as a real process -- SIGKILL, SIGINT, SIGTERM; by request
+  count, in the retry pass, and between finish's snapshot, delta, manifest and
+  cleanup writes -- then reruns it and compares snapshot, manifest and delta
+  to an uninterrupted run, checking after every kill that no done-log shard is
+  missing ids and no id is torn. Six points run by default;
+  `GPSCRAPE_KILLTEST=1` runs 34 over 4,000 shards plus chains of kills.
 - Tests that hold the parsers to allocation budgets and `ReviewsSeq` to a
   memory ceiling (`alloc_budget_test.go`, run in CI without `-race`). A
   parser that starts allocating 10% more, or a streaming path that starts
@@ -63,6 +70,10 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- `catalog sweep`: a run killed after writing its manifest but before its
+  cleanup left the generation's resume files (about 100MB at catalog scale)
+  that no later run removed until the generation rolled; the next run, finding
+  the generation complete, removes them. Found by the kill-and-resume test.
 - `catalog sweep`: a shard's done line could reach the file before its ids
   when the done log's smaller buffer filled first, so a kill in between
   resumed past ids never written. The ids are flushed first whenever the

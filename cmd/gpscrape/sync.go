@@ -308,6 +308,11 @@ func cmdSync(args []string) error {
 
 	if upToDate && !*force {
 		fmt.Fprintf(os.Stderr, "already have %s; nothing to do (use -force to sweep anyway)\n", gen)
+		// A run killed after its manifest but before its cleanup left the
+		// resume files of a generation that is done -- about 100MB at catalog
+		// scale -- and every later run took this branch and kept them until
+		// the generation rolled.
+		removeFinishedResumeState(*dir, gen)
 		// The manifest of the snapshot that is current, so `catalog sweep` has
 		// exactly one machine-readable answer whether or not it had work to
 		// do. Exiting 0 with an empty stdout was indistinguishable from a run
@@ -778,10 +783,12 @@ func finish(
 	if err := os.Remove(filepath.Join(dir, "manifest-"+gen.ID()+".json")); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
+	reachedFinishStep("snapshot")
 	sum, err := writeSnapshot(snapPath, ids)
 	if err != nil {
 		return err
 	}
+	reachedFinishStep("delta")
 
 	m := manifest{
 		Generation:  gen,
@@ -840,9 +847,11 @@ func finish(
 	// What this does not cover: a delta that cannot be computed at all (the
 	// previous snapshot missing or corrupt) is warned about above and skipped,
 	// and the manifest is still written; `catalog diff` can be run by hand.
+	reachedFinishStep("manifest")
 	if err := writeJSON(filepath.Join(dir, "manifest-"+gen.ID()+".json"), m); err != nil {
 		return err
 	}
+	reachedFinishStep("cleanup")
 
 	// A finished sweep leaves nothing to resume from.
 	_ = os.Remove(partialPath)
@@ -920,6 +929,18 @@ func diffAgainstSnapshot(path string, from, to googleplayscraper.Generation, new
 	}
 	d.Added = append(d.Added, newIDs[j:]...)
 	return d, nil
+}
+
+// finishStep, when set, is called as finish reaches each of its writes:
+// "snapshot", "delta", "manifest" and "cleanup". It is nil in every build but
+// the killtest one (killtest_hook.go), where it lets a test stop the process
+// exactly between two writes and check what a kill there leaves on disk.
+var finishStep func(step string)
+
+func reachedFinishStep(step string) {
+	if finishStep != nil {
+		finishStep(step)
+	}
 }
 
 // writeDoneLine writes url to the done log, first flushing the ids whenever
@@ -1559,6 +1580,20 @@ func seedFromGeneration(g googleplayscraper.Generation) int64 {
 // beside it. Nothing had ever deleted them -- only the current generation's
 // files were cleaned -- so an interrupted sweep left about 99MB behind every
 // time the catalog was republished.
+// removeFinishedResumeState removes the resume files of gen, whose manifest
+// says it is complete. state.json goes only if it is gen's.
+func removeFinishedResumeState(dir string, gen googleplayscraper.Generation) {
+	_ = os.Remove(filepath.Join(dir, "partial-"+gen.ID()+".txt"))
+	_ = os.Remove(doneLogPath(dir, gen))
+	statePath := filepath.Join(dir, "state.json")
+	if b, err := os.ReadFile(statePath); err == nil {
+		var st syncState
+		if json.Unmarshal(b, &st) == nil && st.Generation.ID() == gen.ID() {
+			_ = os.Remove(statePath)
+		}
+	}
+}
+
 func removeStaleResumeState(dir string, keep googleplayscraper.Generation) int64 {
 	var freed int64
 	for _, spec := range []struct{ prefix, suffix string }{
