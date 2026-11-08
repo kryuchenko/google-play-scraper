@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	googleplayscraper "github.com/kryuchenko/google-play-scraper"
 )
@@ -345,5 +346,34 @@ func TestGenresAllFailedLeavesNoResumeState(t *testing.T) {
 		if _, err := os.Stat(leftover); err == nil {
 			t.Errorf("%s left behind by a run that resolved nothing", filepath.Base(leftover))
 		}
+	}
+}
+
+// Stopped at an arbitrary moment -- a deadline from 1ms to ~120ms lands
+// mid-pack, mid-checkpoint, between packs -- the resumed run still publishes
+// the uninterrupted table byte for byte. Packs in flight when the run stops
+// come back with the context's error on every id; counting those as answers
+// skipped them on resume and lost the rows of apps the table did not know.
+func TestGenresResumeAfterAStopAtAnyMoment(t *testing.T) {
+	smallCheckpoints(t)
+	want, _ := reference(t, "-prune")
+	for d := 1; d <= 121; d += 6 {
+		t.Run(fmt.Sprintf("%dms", d), func(t *testing.T) {
+			newResumeStore(t)
+			dir := t.TempDir()
+			writeResumeFixture(t, dir)
+			_, _, first := runResumeGenres(t, dir, "-prune", "-timeout", (time.Duration(d) * time.Millisecond).String())
+			_, stderr, err := runResumeGenres(t, dir, "-prune")
+			if err != nil {
+				t.Fatalf("resume: %v\n%s", err, stderr)
+			}
+			got, err := os.ReadFile(genresPath(dir))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if string(got) != string(want) {
+				t.Errorf("stopped with %v; resumed table %d bytes, want %d", first, len(got), len(want))
+			}
+		})
 	}
 }

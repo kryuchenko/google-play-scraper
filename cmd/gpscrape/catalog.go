@@ -383,6 +383,22 @@ func catalogGenres(args []string) error {
 				}
 				return err
 			}
+			// An id that failed because this run is being stopped is not a
+			// result: the packs in flight come back with the context's error
+			// on every id. Counted as a failed lookup it advanced lastDone, so
+			// a resume skipped those ids and an app the table did not know
+			// yet never got a row -- 15% of a table lost when the stop landed
+			// mid-pack. Stop here instead, with lastDone at the last real
+			// answer.
+			if d.Err != nil && ctx.Err() != nil {
+				if cerr := checkpoint(false); cerr != nil {
+					return fmt.Errorf("%w (and the progress could not be saved: %w)", ctx.Err(), cerr)
+				}
+				if resumable {
+					return fmt.Errorf("%w (progress kept: a rerun resumes after %s)", ctx.Err(), lastDone)
+				}
+				return ctx.Err()
+			}
 			if sinceCheckpoint >= genresCheckpointEvery {
 				if err := checkpoint(false); err != nil {
 					return err

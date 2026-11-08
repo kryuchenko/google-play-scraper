@@ -58,6 +58,10 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- `catalog genres` stopped mid-pack (Ctrl-C, `-timeout`) lost rows on
+  resume: the ids in flight came back with the stop's error and were counted
+  as answered, so the resume skipped them and apps new to the table never got
+  a row. A stop now saves progress up to the last real answer.
 - The adaptive throttle no longer slows down on steady latency. Its baseline
   was the minimum of recent responses; Google's sitemap CDN answers some from
   cache in ~22ms and the rest in ~48ms, so ordinary responses read as twice
