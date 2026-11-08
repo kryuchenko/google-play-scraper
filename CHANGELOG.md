@@ -15,6 +15,14 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- `gpscrape catalog genres` resumes an interrupted run over the snapshot. It
+  checkpoints every 10,000 ids (`genres.tsv.merge` plus
+  `genres.tsv.resume.json`), and a rerun on the same snapshot, table, `-lang`
+  and `-country` continues after the last checkpoint, or goes straight to
+  the confirm pass if the walk had finished; the absent ids are read back
+  from the merge file's marks. The published table is byte-for-byte the one
+  an uninterrupted run writes. `-ids` runs do not resume, and a run in which
+  every lookup failed leaves nothing to resume.
 - Tests that hold the parsers to allocation budgets and `ReviewsSeq` to a
   memory ceiling (`alloc_budget_test.go`, run in CI without `-race`). A
   parser that starts allocating 10% more, or a streaming path that starts

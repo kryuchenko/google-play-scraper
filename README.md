@@ -282,6 +282,16 @@ storefronts. A lookup that fails in that confirm pass is reported as an
 `error`, not a removal, and the row is kept. `-prune` drops rows for ids the
 snapshot no longer lists.
 
+An interrupted `genres` run over the snapshot resumes. It checkpoints every
+10,000 ids into `genres.tsv.merge` and `genres.tsv.resume.json`, and a rerun
+on the same snapshot, table, `-lang` and `-country` picks up after the last
+checkpoint -- or goes straight to the confirm pass if the walk had finished.
+Anything else starts clean, and so does every `-ids` run. Records printed
+before the interruption are not printed again, and the summary counts the
+whole pass. After a hard kill (not Ctrl-C), the records between the last
+checkpoint and the kill may be missing from stdout or appear twice; the table
+is unaffected.
+
 Without a snapshot, `catalog ids` streams ids straight from the sitemaps:
 
 ```bash

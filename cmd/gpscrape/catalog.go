@@ -5,6 +5,7 @@ import (
 	"compress/gzip"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"iter"
@@ -263,105 +264,203 @@ func catalogGenres(args []string) error {
 	if err := checkTableSorted(prevPath); err != nil {
 		return err
 	}
+
+	// A run over the snapshot can resume an interrupted one: see
+	// genres_resume.go. A run over -ids never does, and clears any state an
+	// earlier snapshot run left, since its merge file is about to be reused.
+	cur, err := genresRunIdentity(*dir, c.lang, c.country)
+	if err != nil {
+		return err
+	}
+	var res genresResume
+	resumed := false
+	if *from == "" {
+		res, resumed = loadGenresResume(*dir, cur)
+	}
+	if !resumed {
+		dropGenresResume(*dir)
+		res = cur
+	}
+
 	prev, err := openTable(prevPath)
 	if err != nil {
 		return err
 	}
 	defer prev.close()
-	merge, err := newTableMerge(prev, prevPath+".merge")
-	if err != nil {
+	var merge *tableMerge
+	var absent []absentID
+	if resumed {
+		if absent, err = absentFromMerge(prevPath+".merge", res.Offset); err != nil {
+			return fmt.Errorf("resume the genre pass: %w", err)
+		}
+		if res.MainDone {
+			merge = &tableMerge{prev: prev, path: prevPath + ".merge"}
+		} else if merge, err = resumeTableMerge(prev, prevPath+".merge", res.Offset, res.LastID); err != nil {
+			return fmt.Errorf("resume the genre pass: %w", err)
+		}
+		merge.keep = true
+		if res.MainDone {
+			fmt.Fprintf(os.Stderr, "resuming the genre pass: the walk is done, confirming %d absent ids\n", len(absent))
+		} else {
+			fmt.Fprintf(os.Stderr, "resuming the genre pass after %s (%d apps done)\n", res.LastID, res.Seen)
+		}
+		ids = skipThrough(ids, res.LastID)
+	} else if merge, err = newTableMerge(prev, prevPath+".merge"); err != nil {
 		return err
 	}
-	defer merge.abandon() // removes the first-pass file, whichever way this returns
+	defer merge.abandon() // removes the first-pass file unless a checkpoint keeps it
 
 	e := newEmitter(os.Stdout)
 	defer func() { _ = e.flush() }()
 
-	// Absent ids, in order, with what the table said about them.
-	type absentID struct {
-		id, was string
-		known   bool
-	}
-	var absent []absentID
-	var seen, changed, gone, failed int
+	seen, changed, failed := res.Seen, res.Changed, res.Failed
+	var gone int
 	var lastErr error
+	if res.LastErr != "" {
+		lastErr = errors.New(res.LastErr)
+	}
 	progress := progressTo(os.Stderr)
 
-	for d, err := range c.client().DigestsSeq(ctx, ids, googleplayscraper.DigestOptions{
-		Lang: c.lang, Country: c.country, Concurrency: c.concurrency,
-		Progress: func(p googleplayscraper.DigestProgress) {
-			if progress != nil && p.Requests%10 == 0 {
-				_, _ = fmt.Fprintf(progress, "\r%d apps, %d absent, %d requests",
-					p.Apps, p.Absent, p.Requests)
-			}
-		},
-	}) {
-		if err != nil {
-			return err
+	// checkpoint records where the walk is, so an interruption after it
+	// resumes here. Records printed so far are flushed with it: a resumed run
+	// prints only what comes after, so stdout across the two runs is each id
+	// once -- except after a hard kill, which can lose or repeat the records
+	// between the last checkpoint and the kill.
+	resumable := *from == ""
+	lastDone, sinceCheckpoint := res.LastID, 0
+	checkpoint := func(mainDone bool) error {
+		if !resumable {
+			return nil
 		}
-		seen++
-		was, known, err := merge.lookup(d.AppID)
-		if err != nil {
-			return err
-		}
-		rec := genreRecord{AppID: d.AppID, GenreID: d.GenreID, Genre: d.Genre, Was: was}
-
-		switch {
-		case d.Err != nil:
-			// Keep whatever the table already said. A request that failed is
-			// not evidence about the app.
-			rec.Change, rec.Error = "error", d.Err.Error()
-			failed++
-			lastErr = d.Err
-			if known {
-				err = merge.row(d.AppID, was, "")
-			}
-		case !d.Listed:
-			// Held, not buried. "Not listed in this storefront" is not
-			// "removed from the store": of 200 ids this pipeline had called
-			// dead, two were alive elsewhere -- one only in Russia, one in
-			// every market probed except the United States it was run from.
-			// An app available in one country is still an app.
-			absent = append(absent, absentID{d.AppID, was, known})
-			mark := markAbsentFirst
-			if known {
-				mark = markAbsent
-			}
-			if err := merge.row(d.AppID, was, mark); err != nil {
+		var off int64
+		if merge.f != nil {
+			var err error
+			if off, err = merge.checkpoint(); err != nil {
 				return err
 			}
-			continue
-		case !known:
-			rec.Change = "first_seen"
-			err = merge.row(d.AppID, d.GenreID, "")
-		case was != d.GenreID:
-			rec.Change = "changed"
-			changed++
-			err = merge.row(d.AppID, d.GenreID, "")
-		default:
-			rec.Change = "same"
-			err = merge.row(d.AppID, d.GenreID, "")
-		}
-		if err != nil {
-			return err
-		}
-
-		if *all || rec.Change != "same" {
-			if err := e.emit(rec); err != nil {
+		} else {
+			// Finished and closed: finish flushed and synced it.
+			st, err := os.Stat(merge.path)
+			if err != nil {
 				return err
 			}
+			off = st.Size()
 		}
+		if err := e.flush(); err != nil {
+			return err
+		}
+		res.LastID, res.MainDone, res.Offset = lastDone, mainDone, off
+		res.Seen, res.Changed, res.Failed = seen, changed, failed
+		if lastErr != nil {
+			res.LastErr = lastErr.Error()
+		}
+		if err := saveGenresResume(*dir, res); err != nil {
+			return err
+		}
+		merge.keep, sinceCheckpoint = true, 0
+		return nil
 	}
-	if progress != nil {
-		_, _ = fmt.Fprintln(progress)
-	}
-	if err := readErr(); err != nil {
-		// The list ended early. Everything after the break would read as
-		// unmatched, and -prune would delete it.
-		return fmt.Errorf("reading the ids stopped partway: %w; the genre table was left untouched", err)
-	}
-	if err := merge.finish(); err != nil {
-		return err
+
+	if !res.MainDone {
+		for d, err := range c.client().DigestsSeq(ctx, ids, googleplayscraper.DigestOptions{
+			Lang: c.lang, Country: c.country, Concurrency: c.concurrency,
+			Progress: func(p googleplayscraper.DigestProgress) {
+				if progress != nil && p.Requests%10 == 0 {
+					_, _ = fmt.Fprintf(progress, "\r%d apps, %d absent, %d requests",
+						p.Apps, p.Absent, p.Requests)
+				}
+			},
+		}) {
+			if err != nil {
+				// Interrupted, or the store stopped answering: keep what is
+				// done for the next run.
+				if cerr := checkpoint(false); cerr != nil {
+					return fmt.Errorf("%w (and the progress could not be saved: %w)", err, cerr)
+				}
+				if resumable {
+					return fmt.Errorf("%w (progress kept: a rerun resumes after %s)", err, lastDone)
+				}
+				return err
+			}
+			if sinceCheckpoint >= genresCheckpointEvery {
+				if err := checkpoint(false); err != nil {
+					return err
+				}
+			}
+			seen++
+			was, known, err := merge.lookup(d.AppID)
+			if err != nil {
+				return err
+			}
+			rec := genreRecord{AppID: d.AppID, GenreID: d.GenreID, Genre: d.Genre, Was: was}
+
+			switch {
+			case d.Err != nil:
+				// Keep whatever the table already said. A request that failed is
+				// not evidence about the app.
+				rec.Change, rec.Error = "error", d.Err.Error()
+				failed++
+				lastErr = d.Err
+				if known {
+					err = merge.row(d.AppID, was, "")
+				}
+			case !d.Listed:
+				// Held, not buried. "Not listed in this storefront" is not
+				// "removed from the store": of 200 ids this pipeline had called
+				// dead, two were alive elsewhere -- one only in Russia, one in
+				// every market probed except the United States it was run from.
+				// An app available in one country is still an app.
+				absent = append(absent, absentID{d.AppID, was, known})
+				mark := markAbsentFirst
+				if known {
+					mark = markAbsent
+				}
+				err = merge.row(d.AppID, was, mark)
+			case !known:
+				rec.Change = "first_seen"
+				err = merge.row(d.AppID, d.GenreID, "")
+			case was != d.GenreID:
+				rec.Change = "changed"
+				changed++
+				err = merge.row(d.AppID, d.GenreID, "")
+			default:
+				rec.Change = "same"
+				err = merge.row(d.AppID, d.GenreID, "")
+			}
+			if err != nil {
+				return err
+			}
+			lastDone = d.AppID
+			sinceCheckpoint++
+			if !d.Listed && d.Err == nil {
+				continue // reported after the confirmation pass
+			}
+
+			if *all || rec.Change != "same" {
+				if err := e.emit(rec); err != nil {
+					return err
+				}
+			}
+		}
+		if progress != nil {
+			_, _ = fmt.Fprintln(progress)
+		}
+		if err := readErr(); err != nil {
+			// The list ended early. Everything after the break would read as
+			// unmatched, and -prune would delete it.
+			merge.keep = false
+			dropGenresResume(*dir)
+			return fmt.Errorf("reading the ids stopped partway: %w; the genre table was left untouched", err)
+		}
+		if err := merge.finish(); err != nil {
+			return err
+		}
+		merge.f = nil
+		// The walk is done; what is left is the confirmation pass, which a
+		// resume can run on its own from the absent marks.
+		if err := checkpoint(true); err != nil {
+			return err
+		}
 	}
 
 	// Second opinion on everything the first storefront could not see.
@@ -425,6 +524,9 @@ func catalogGenres(args []string) error {
 	// read "1740 apps". This is the rule the sweep already applies to failed
 	// shards, which had not been carried across.
 	if failed == seen && seen > 0 {
+		// Nothing to resume either: a rerun should ask again.
+		merge.keep = false
+		dropGenresResume(*dir)
 		return fmt.Errorf("all %d lookups failed, so the genre table was left untouched; "+
 			"the last error was: %v", seen, lastErr)
 	}
@@ -448,6 +550,9 @@ func catalogGenres(args []string) error {
 	if err != nil {
 		return err
 	}
+	// Published: the walk is finished and nothing is left to resume.
+	merge.keep = false
+	_ = os.Remove(genresResumePath(*dir))
 	if coverage > 0 {
 		// The table now merges rather than overwrites, so reading a sample is
 		// harmless -- but the counts above describe the sample, not the store,
