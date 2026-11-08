@@ -60,20 +60,6 @@ func parseAppPage(body []byte, appID, pageURL string) (*App, error) {
 	return extractAppData(blocks, appID, pageURL)
 }
 
-// appDataNode navigates a parsed Google Play app page to the core app-info node
-// (ds:5 → [1][2]). It is the single point every availability-aware caller shares,
-// so the lightweight Availability probe and the full App parser agree on where
-// the app data lives. ok is false when the page has no ds:5 block or the [1][2]
-// node is absent (e.g. a non-app page or a malformed response).
-func appDataNode(body []byte) (appData any, ok bool) {
-	ds5, found := dataBlock(body, "ds:5")
-	if !found {
-		return nil, false
-	}
-	appData = getPath(ds5, 1, 2)
-	return appData, appData != nil
-}
-
 // classifyAvailability interprets the multiplexed availability node -- Ws7gDc
 // field 19, at [18][0] of a dense app record -- into a region-level Status:
 //

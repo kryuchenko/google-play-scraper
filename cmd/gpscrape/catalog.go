@@ -580,15 +580,6 @@ func saveGenresDelta(path string, prev, updates map[string]string, gone map[stri
 	return writeGenreLines(path, ids, genreOf)
 }
 
-func saveGenres(path string, genres map[string]string) error {
-	ids := make([]string, 0, len(genres))
-	for id := range genres {
-		ids = append(ids, id)
-	}
-	sort.Strings(ids)
-	return writeGenreLines(path, ids, func(id string) string { return genres[id] })
-}
-
 // writeGenreLines is the durable half both writers share: a temporary file,
 // fsync, rename. Split out so the delta writer cannot quietly grow a weaker
 // version of it.

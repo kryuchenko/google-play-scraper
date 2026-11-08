@@ -30,6 +30,10 @@ All notable changes to this project are documented here. The format is based on
   not fail lose their always-nil error, unused parameters go
   (`parseSearchPage`'s `num`, `parseDigest`'s `fields`), and two functions
   only tests called (`observe`, `batchCall`) move into the tests.
+- CI runs deadcode over the binaries and fails on an unexported function
+  none of them reaches. The seven it found -- test oracles, a fixture
+  builder, the buffered gunzip a benchmark compares against, and
+  `saveGenres`, replaced by `saveGenresDelta` -- move into test files.
 
 ### Added
 

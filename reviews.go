@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"iter"
-	"net/url"
 	"strconv"
 	"time"
 )
@@ -311,16 +310,6 @@ func reviewsRPC(appID string, opts ReviewOptions) rpcCall {
 	}
 }
 
-// buildReviewsBody renders the form body one reviews call puts on the wire.
-//
-// It composes the same two functions the request path composes -- reviewsRPC
-// and buildFReq -- so it cannot describe a request the client does not make.
-// It exists because the payload above is a format, and the tests that pin the
-// format should be able to read it without standing up a server to catch it.
-func buildReviewsBody(appID string, opts ReviewOptions) string {
-	return "f.req=" + url.QueryEscape(buildFReq([]rpcCall{reviewsRPC(appID, opts)}))
-}
-
 // parseReviewsResponse decodes a page into ReviewsResult.
 //
 // It decodes the payload into any-trees and then walks them, which the
@@ -357,18 +346,6 @@ func buildReviewsBody(appID string, opts ReviewOptions) string {
 // the same, which is more than a release already verified end to end should
 // absorb. The win is also memory rather than wall clock: a month of one app's
 // reviews spends 93ms parsing against 4s of network.
-
-func parseReviewsResponse(body []byte, appID string) (*ReviewsResult, error) {
-	frames, err := decodeBatchFrames(body)
-	if err != nil {
-		return nil, err
-	}
-	payload, ok := soleFrame(frames)
-	if !ok {
-		payload = frames["0"]
-	}
-	return parseReviewsPayload(payload, appID)
-}
 
 // ErrNoReviewsPage reports a reviews request Google answered with no page: a
 // NextToken it no longer honours, or a page size above its ceiling. An app id

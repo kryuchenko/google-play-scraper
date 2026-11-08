@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
@@ -417,20 +416,6 @@ func (c *Client) CatalogShardSeq(ctx context.Context, opts CatalogOptions) iter.
 	}
 }
 
-// gunzipIfNeeded decompresses data when it carries the gzip magic header,
-// otherwise returns it unchanged. Sitemap shards are served as .xml.gz files
-// (the gzip is the resource, not an HTTP transfer encoding, so the transport
-// does not transparently decode it), but indexes are plain XML — detecting the
-// magic bytes handles both without assuming.
-// gunzipHintMax caps the pre-allocation taken from a gzip trailer.
-//
-// A shard decompresses to about 8MB. The cap exists because the trailer is
-// attacker-controlled: it is four bytes at the end of the stream that anyone
-// serving the response chooses, so an unbounded hint is an unbounded
-// allocation from an unauthenticated source. Beyond the cap the buffer simply
-// grows as it always did.
-const gunzipHintMax = 64 << 20
-
 // maxInflatedBytes caps what one gzip stream may decompress to. A shard
 // inflates to about 8MB; a stream that keeps going past 256MB is not a
 // sitemap, and gzip compresses runs of one byte about a thousandfold, so a
@@ -465,49 +450,6 @@ func (l *inflateLimit) Read(p []byte) (int, error) {
 		return n, ErrInflatedTooLarge
 	}
 	return n, err
-}
-
-func gunzipIfNeeded(data []byte) ([]byte, error) {
-	if len(data) < 2 || data[0] != 0x1f || data[1] != 0x8b {
-		return data, nil
-	}
-	zr, err := gzip.NewReader(bytes.NewReader(data))
-	if err != nil {
-		return nil, err
-	}
-	// A corrupt stream surfaces from the read below, not from Close, so the
-	// close error carries nothing a caller could act on.
-	defer func() { _ = zr.Close() }()
-
-	// Allocate once from the size the format already states.
-	//
-	// io.ReadAll grows from nothing, doubling and copying: decompressing an
-	// 8MB shard that way allocates 16.7MB and takes 6.4ms, against 8.07MB and
-	// 4.4ms when the buffer is the right size to begin with. A catalog sweep
-	// does this 83,445 times.
-	//
-	// RFC 1952 puts ISIZE -- the uncompressed length modulo 2^32 -- in the
-	// last four bytes. Modulo, so it is a hint and not a promise: a stream
-	// over 4GB reports the remainder, and the buffer grows from there as
-	// normal. For a sitemap shard it is exact.
-	buf := bytes.NewBuffer(make([]byte, 0, gunzipHint(data)))
-	if _, err := buf.ReadFrom(limitInflate(zr)); err != nil {
-		return nil, err
-	}
-	return buf.Bytes(), nil
-}
-
-// gunzipHint reads the uncompressed size a gzip stream declares, clamped to
-// something it is safe to allocate on that word alone.
-func gunzipHint(data []byte) int {
-	if len(data) < 4 {
-		return 0
-	}
-	size := binary.LittleEndian.Uint32(data[len(data)-4:])
-	if size > gunzipHintMax {
-		return gunzipHintMax
-	}
-	return int(size)
 }
 
 // appPackageFromLoc returns the package id of an app-listing sitemap loc, or ""
@@ -697,8 +639,8 @@ func shardPackages(body []byte) []string {
 // A sitemap loc is a URL. Anything longer than the carry bound is not one, and
 // without the bound a stream containing a single unterminated <loc> would
 // buffer the whole document that streaming exists to avoid -- which is the
-// same unbounded-allocation-from-an-untrusted-source problem gunzipHintMax
-// exists for.
+// same unbounded-allocation-from-an-untrusted-source problem as taking a
+// gzip trailer's size at its word.
 const (
 	shardScanChunk    = 32 << 10
 	shardScanCarryMax = 64 << 10

@@ -60,6 +60,20 @@ jobs:
       # hit play.google.com and flake on Google's jitter / rate limits) and
       # runs the offline, fixture-backed suite. Live drift detection lives in
       # the scheduled canary workflow instead.
+      # unused cannot see code that only tests call; deadcode can: it walks
+      # from the binaries (gpscrape, the examples, fixturegen) without the
+      # tests. Exported names are printed, not failed: a library's API has no
+      # caller inside this repository. Code only tests need lives in
+      # testonly_test.go.
+      - name: Dead code
+        if: matrix.go-version == 'stable'
+        run: |
+          all=$(go run golang.org/x/tools/cmd/deadcode@v0.52.0 ./...)
+          pat='unreachable func: ([A-Za-z0-9_]+\.)?[a-z_]'
+          printf '%s\n' "$all" | grep -vE "$pat" | sed 's/^/exported, no binary calls it: /' || true
+          dead=$(printf '%s\n' "$all" | grep -E "$pat" || true)
+          if [ -n "$dead" ]; then printf '%s\n' "$dead"; exit 1; fi
+
       - name: Run tests with coverage
         run: go test -short -v -race -coverprofile=coverage.out -covermode=atomic ./...
 
