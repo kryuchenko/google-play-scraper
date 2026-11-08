@@ -114,16 +114,12 @@ func dropGenresResume(dir string) {
 // offset -- which drops anything written after the checkpoint, a torn line
 // included -- with the table cursor moved past lastID, ready to append.
 func resumeTableMerge(prev *tableCursor, path string, offset int64, lastID string) (*tableMerge, error) {
-	f, err := os.OpenFile(path, os.O_RDWR, 0)
+	if err := os.Truncate(path, offset); err != nil {
+		return nil, err
+	}
+	// Appending after the cut is writing at offset.
+	f, err := openWrite(path, os.O_WRONLY|os.O_APPEND, 0)
 	if err != nil {
-		return nil, err
-	}
-	if err := f.Truncate(offset); err != nil {
-		_ = f.Close()
-		return nil, err
-	}
-	if _, err := f.Seek(offset, io.SeekStart); err != nil {
-		_ = f.Close()
 		return nil, err
 	}
 	// The rows before lastID, and lastID's own, are in the file already.
@@ -148,6 +144,9 @@ func (m *tableMerge) checkpoint() (int64, error) {
 		return 0, err
 	}
 	if err := m.f.Sync(); err != nil {
+		return 0, err
+	}
+	if err := m.stillOurs(); err != nil {
 		return 0, err
 	}
 	st, err := m.f.Stat()

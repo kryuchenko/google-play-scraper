@@ -471,13 +471,13 @@ func sweep(
 		}
 	}
 
-	partial, err := os.OpenFile(partialPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	partial, err := openWrite(partialPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
 	if err != nil {
 		return fmt.Errorf("open %s: %w", partialPath, err)
 	}
 	w := bufio.NewWriterSize(partial, 1<<20)
 
-	doneLog, err := os.OpenFile(donePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	doneLog, err := openWrite(donePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
 	if err != nil {
 		// partial is already open, and returning past it leaks the handle.
 		_ = partial.Close()
@@ -520,6 +520,37 @@ func sweep(
 			return fmt.Errorf("sync %s: %w", donePath, err)
 		}
 		return saveState(statePath, state)
+	}
+
+	// endPass makes the pass's progress durable and closes both files, and
+	// on any failure still closes them: returning past an open handle leaked
+	// it, and on Windows kept the directory from being cleaned up.
+	//
+	// The id file is read back by name at the end, so a name that no longer
+	// reaches what this run wrote -- removed, or replaced by another file --
+	// would publish the other file's lines as the snapshot, or resume past
+	// shards whose ids are gone. The state file goes with it, so the rerun
+	// starts the generation clean instead of trusting the done log.
+	endPass := func() error {
+		err := checkpoint()
+		if err == nil {
+			if err = stillOurs(partial, partialPath); err != nil {
+				_ = os.Remove(statePath)
+			}
+		}
+		if err != nil {
+			_ = partial.Close()
+			_ = doneLog.Close()
+			return err
+		}
+		if err := partial.Close(); err != nil {
+			_ = doneLog.Close()
+			return fmt.Errorf("close %s: %w", partialPath, err)
+		}
+		if err := doneLog.Close(); err != nil {
+			return fmt.Errorf("close %s: %w", donePath, err)
+		}
+		return nil
 	}
 
 	started := time.Now()
@@ -637,14 +668,8 @@ func sweep(
 			"(progress is kept in %s)", writeErr, donePath)
 	}
 
-	if cerr := checkpoint(); cerr != nil {
-		return cerr
-	}
-	if err := partial.Close(); err != nil {
-		return fmt.Errorf("close %s: %w", partialPath, err)
-	}
-	if err := doneLog.Close(); err != nil {
-		return fmt.Errorf("close %s: %w", donePath, err)
+	if err := endPass(); err != nil {
+		return err
 	}
 
 	// Shards that failed get one more pass before the sweep is called done.
@@ -660,12 +685,12 @@ func sweep(
 		state.Failed, failedSeen = nil, map[string]struct{}{}
 		fmt.Fprintf(os.Stderr, "retrying %d failed shards\n", len(retryURLs))
 
-		partial, err = os.OpenFile(partialPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+		partial, err = openWrite(partialPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
 		if err != nil {
 			return fmt.Errorf("reopen %s: %w", partialPath, err)
 		}
 		w = bufio.NewWriterSize(partial, 1<<20)
-		doneLog, err = os.OpenFile(donePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+		doneLog, err = openWrite(donePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
 		if err != nil {
 			_ = partial.Close()
 			return fmt.Errorf("reopen %s: %w", donePath, err)
@@ -709,14 +734,8 @@ func sweep(
 			return fmt.Errorf("%w; the sweep stopped rather than fetching the rest "+
 				"(progress is kept in %s)", writeErr, donePath)
 		}
-		if cerr := checkpoint(); cerr != nil {
-			return cerr
-		}
-		if err := partial.Close(); err != nil {
-			return fmt.Errorf("close %s: %w", partialPath, err)
-		}
-		if err := doneLog.Close(); err != nil {
-			return fmt.Errorf("close %s: %w", donePath, err)
+		if err := endPass(); err != nil {
+			return err
 		}
 		if retryErr != nil {
 			return fmt.Errorf("%w (progress kept in %s)", retryErr, donePath)
@@ -1197,24 +1216,35 @@ func saveState(path string, s syncState) error {
 // and what it would discard here is an hours-long sweep.
 func writeJSON(path string, v any) error {
 	tmp := path + ".tmp"
-	f, err := os.Create(tmp)
+	f, err := openWrite(tmp, createFlags, 0o666)
 	if err != nil {
 		return fmt.Errorf("create %s: %w", tmp, err)
+	}
+	// Each failure removes the temporary file, as the snapshot and table
+	// writers already did: a half-written manifest.json.tmp was left beside
+	// the good one until the next run truncated it.
+	fail := func(what string, err error) error {
+		_ = f.Close()
+		_ = os.Remove(tmp)
+		return fmt.Errorf("%s %s: %w", what, tmp, err)
 	}
 	enc := json.NewEncoder(f)
 	enc.SetIndent("", "  ")
 	if err := enc.Encode(v); err != nil {
-		_ = f.Close()
-		return fmt.Errorf("write %s: %w", tmp, err)
+		return fail("write", err)
 	}
 	if err := f.Sync(); err != nil {
-		_ = f.Close()
-		return fmt.Errorf("sync %s: %w", tmp, err)
+		return fail("sync", err)
+	}
+	if err := stillOurs(f, tmp); err != nil {
+		return fail("publish", err)
 	}
 	if err := f.Close(); err != nil {
+		_ = os.Remove(tmp)
 		return fmt.Errorf("close %s: %w", tmp, err)
 	}
-	if err := os.Rename(tmp, path); err != nil {
+	if err := renameFile(tmp, path); err != nil {
+		_ = os.Remove(tmp)
 		return fmt.Errorf("rename %s: %w", tmp, err)
 	}
 	return syncDir(filepath.Dir(path))
@@ -1338,7 +1368,7 @@ func writeSnapshotSerial(path string, ids []string) (string, error) {
 // to stay inside the callback for that to hold.
 func writeSnapshotFile(path string, write func(io.Writer) error) (string, error) {
 	tmp := path + ".tmp"
-	f, err := os.Create(tmp)
+	f, err := openWrite(tmp, createFlags, 0o666)
 	if err != nil {
 		return "", fmt.Errorf("create %s: %w", tmp, err)
 	}
@@ -1354,11 +1384,14 @@ func writeSnapshotFile(path string, write func(io.Writer) error) (string, error)
 	if err := f.Sync(); err != nil {
 		return fail("sync", err)
 	}
+	if err := stillOurs(f, tmp); err != nil {
+		return fail("publish", err)
+	}
 	if err := f.Close(); err != nil {
 		_ = os.Remove(tmp)
 		return "", fmt.Errorf("close %s: %w", tmp, err)
 	}
-	if err := os.Rename(tmp, path); err != nil {
+	if err := renameFile(tmp, path); err != nil {
 		_ = os.Remove(tmp)
 		return "", fmt.Errorf("rename %s: %w", tmp, err)
 	}

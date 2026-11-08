@@ -132,7 +132,7 @@ func (t *tableCursor) close() {
 // the rows the second pass settles.
 type tableMerge struct {
 	prev    *tableCursor
-	f       *os.File
+	f       writeFile
 	w       *bufio.Writer
 	path    string
 	last    string
@@ -142,7 +142,7 @@ type tableMerge struct {
 }
 
 func newTableMerge(prev *tableCursor, path string) (*tableMerge, error) {
-	f, err := os.Create(path)
+	f, err := openWrite(path, createFlags, 0o666)
 	if err != nil {
 		return nil, err
 	}
@@ -202,7 +202,21 @@ func (m *tableMerge) finish() error {
 	if err := m.f.Sync(); err != nil {
 		return err
 	}
+	if err := m.stillOurs(); err != nil {
+		return err
+	}
 	return m.f.Close()
+}
+
+// stillOurs checks that the merge file's name still reaches what this run
+// wrote: the second pass and a resume both read it back by name. A file put
+// there by something else is not kept for a resume either.
+func (m *tableMerge) stillOurs() error {
+	if err := stillOurs(m.f, m.path); err != nil {
+		m.keep = false
+		return err
+	}
+	return nil
 }
 
 // abandon closes the file and removes it, unless keep says a checkpoint

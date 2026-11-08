@@ -128,7 +128,7 @@ func (l *dirLock) create() error {
 		return err
 	}
 
-	f, err := os.OpenFile(l.path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o644)
+	f, err := openWrite(l.path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o644)
 	if err != nil {
 		return err
 	}

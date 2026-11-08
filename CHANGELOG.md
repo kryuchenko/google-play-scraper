@@ -127,8 +127,23 @@ All notable changes to this project are documented here. The format is based on
   returning at most 50.
 - `gpscrape-mcp`: `play_get_apps` no longer panics on a batch entry whose
   error wraps an already-explained error; the entry keeps its code.
+- `catalog sweep` and `catalog genres` refuse to publish a file whose name was
+  taken by another file while they wrote it. The partial id file replaced
+  mid-sweep became the snapshot; a replaced `.tmp` was renamed over the
+  snapshot, manifest, delta or genre table; and a replaced
+  `genres.tsv.merge` failed every rerun with `unknown mark`. The run now
+  fails naming the file, and the rerun starts that work over.
+- A failed write of `state.json`, a manifest, a delta or
+  `genres.tsv.resume.json` no longer leaves its `.tmp` behind, and a sweep
+  whose last checkpoint fails closes its id file and done log.
 
 ### Internal
+
+- A write-fault matrix tests every file `catalog sweep` and `catalog genres`
+  write against no space, a short write, a failing fsync or close, a refused
+  rename, a read-only directory and the file being replaced mid-run: each
+  run fails with `store_error` naming the file, leaves the published files
+  alone and the lock free, and the rerun matches a clean run byte for byte.
 
 - A kill-and-resume test (`-tags killtest`) kills `catalog sweep` as a real
   process (SIGKILL, SIGINT, SIGTERM, at many points) and compares the rerun's
