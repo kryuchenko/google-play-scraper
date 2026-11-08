@@ -3,7 +3,7 @@ module github.com/kryuchenko/google-play-scraper/lightfeed
 go 1.27
 
 require (
-	github.com/chromedp/chromedp v0.22.0
+	github.com/chromedp/chromedp v0.22.1
 	github.com/kryuchenko/google-play-scraper v1.6.0
 )
 
