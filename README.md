@@ -167,6 +167,11 @@ gave, and the system requirements. An app without one is a record too, with
 `onPC: false` and nothing else, because Google answers it with a redirect to
 the phone listing and that redirect is the answer.
 
+`onPC` is the public PC listing. A game the Windows storefront promotes before
+it is released to the public -- Dispatch, in November 2026 -- reads
+`onPC: false`, and `availability` shows it region-locked everywhere: the store
+has a page for it but nothing anyone can install yet.
+
 `-country` does not tell you where the PC client runs. The PC store serves its
 listing to storefronts the client does not support, Russia and Iran among
 them, so the official region list is a static snapshot instead:
