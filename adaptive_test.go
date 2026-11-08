@@ -328,3 +328,38 @@ func TestAdaptiveBoundsHoldAtConstruction(t *testing.T) {
 func (c *Client) observe(ctx context.Context, status int, rtt time.Duration) {
 	c.record(ctx, nil, outcome{status: status, rtt: rtt})
 }
+
+// The CLI's policy (Min = -throttle, Max 2s). Two latency modes that are both normal -- cache hits around 22ms, the rest
+// around 48ms, the occasional 81ms -- must not read as congestion. Against a
+// minimum baseline they did: the interval climbed to the ceiling on a live
+// run where every response was a 200.
+func TestAdaptiveIgnoresABimodalButSteadyLatency(t *testing.T) {
+	c := NewClient(WithThrottle(200*time.Millisecond), WithAdaptiveThrottle(AdaptivePolicy{Min: 200 * time.Millisecond, Max: 2 * time.Second}))
+	// One cache hit in twelve, as on the live run: enough to set a minimum
+	// baseline at 22ms, too rare to break a streak of ordinary responses.
+	pattern := []time.Duration{22, 48, 51, 47, 55, 49, 81, 46, 52, 50, 48, 60}
+	for i := range 2000 {
+		c.observe(context.Background(), http.StatusOK, pattern[i%len(pattern)]*time.Millisecond)
+	}
+	if got := c.CurrentThrottle(); got > 200*time.Millisecond {
+		t.Errorf("throttle climbed to %v on steady latency; it should not slow down", got)
+	}
+}
+
+// A real slowdown -- every response four times the usual -- still slows the
+// client.
+func TestAdaptiveStillSlowsOnARealSlowdown(t *testing.T) {
+	c := NewClient(WithThrottle(200*time.Millisecond), WithAdaptiveThrottle(AdaptivePolicy{Min: 200 * time.Millisecond, Max: 2 * time.Second}))
+	for range 64 {
+		c.observe(context.Background(), http.StatusOK, 50*time.Millisecond)
+	}
+	before := c.CurrentThrottle()
+	for range 10 {
+		c.observe(context.Background(), http.StatusOK, 200*time.Millisecond)
+	}
+	// Ten slow responses are two streaks of five against a median that is
+	// still the usual 50ms.
+	if got := c.CurrentThrottle(); got <= before {
+		t.Errorf("throttle %v after a sustained 4x slowdown, was %v", got, before)
+	}
+}

@@ -52,6 +52,11 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- The adaptive throttle no longer slows down on steady latency. Its baseline
+  was the minimum of recent responses; Google's sitemap CDN answers some from
+  cache in ~22ms and the rest in ~48ms, so ordinary responses read as twice
+  the baseline and a live sweep climbed from 200ms to the 2s ceiling with
+  every response a 200. The baseline is now the median.
 - `catalog sweep` resumes correctly after a kill at any point:
   - a torn last line in the partial id file or the done log is cut back
     before appending, so `com.c` + `com.d` no longer becomes `com.com.d` in the

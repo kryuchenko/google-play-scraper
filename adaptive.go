@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"slices"
 	"time"
 )
 
@@ -123,10 +124,10 @@ type AdaptivePolicy struct {
 	// LatencyRatio is how much slower than the recent baseline a response may
 	// be before it counts as trouble. Default 2.
 	//
-	// The baseline is the minimum over a sliding window, not the best ever
-	// seen. An all-time minimum is a trap: one unusually quick response sets a
-	// floor the network cannot hold, and from then on ordinary jitter reads as
-	// congestion. Measured against Google's sitemap CDN, p50 wanders between
+	// The baseline is the median of the last 32 successful responses. A
+	// minimum, all-time or over the window, is a trap: one unusually quick
+	// response -- a cache hit -- sets a floor the network cannot hold, and
+	// from then on ordinary jitter reads as congestion. Measured against Google's sitemap CDN, p50 wanders between
 	// 57ms and 85ms with p95 near 100ms while nothing at all is wrong, so a
 	// ratio of 1.5 against an all-time best fires more or less constantly --
 	// which is exactly what an early version of this did.
@@ -264,7 +265,7 @@ func (c *Client) adjust(o outcome) string {
 	p := c.adaptive
 	status, rtt, err := o.status, o.rtt, o.err
 
-	// The baseline is the minimum over a sliding window of recent successes,
+	// The baseline is the median over a sliding window of recent successes,
 	// which is what a delay-based controller actually needs: it tracks the
 	// network as it is now rather than as it was at its luckiest.
 	if err == nil && status == http.StatusOK && rtt > 0 {
@@ -334,26 +335,29 @@ func (c *Client) slower(factor float64, max time.Duration) {
 	c.throttle = next
 }
 
-// baselineRTT is the minimum over the sliding window, ignoring slots that have
+// baselineRTT is the median over the sliding window, ignoring slots that have
 // not been filled yet. It returns zero until the window has enough samples to
 // mean anything -- reacting to latency before knowing what normal looks like
 // is how a controller talks itself into backing off from nothing.
+//
+// The median, not the minimum. Google's sitemap CDN answers some requests from
+// a cache in about 22ms and the rest in about 48ms; the minimum caught the
+// cached ones, so the ordinary half read as "twice the baseline", streaks of
+// five came easily, and a live run on 2026-11-08 ratcheted from 200ms to the
+// 2s ceiling with every response a 200 and the median latency unchanged.
+// Against the median, LatencyRatio means what it says: slower than usual.
 func (c *Client) baselineRTT() time.Duration {
-	var best time.Duration
-	var n int
+	var filled []time.Duration
 	for _, d := range c.rttWindow {
-		if d == 0 {
-			continue
-		}
-		n++
-		if best == 0 || d < best {
-			best = d
+		if d != 0 {
+			filled = append(filled, d)
 		}
 	}
-	if n < len(c.rttWindow)/2 {
+	if len(filled) < len(c.rttWindow)/2 {
 		return 0
 	}
-	return best
+	slices.Sort(filled)
+	return filled[len(filled)/2]
 }
 
 // CurrentThrottle reports the interval the client is presently using between
