@@ -83,7 +83,7 @@ func freePort(host string) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	defer l.Close()
+	defer func() { _ = l.Close() }() // only reserved the port; nothing to report
 	return l.Addr().(*net.TCPAddr).Port, nil
 }
 

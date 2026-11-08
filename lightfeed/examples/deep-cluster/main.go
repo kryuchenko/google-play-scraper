@@ -62,7 +62,12 @@ func main() {
 		fmt.Fprintln(os.Stderr, "configure paginator:", err)
 		os.Exit(1)
 	}
-	defer paginator.Close()
+	defer func() {
+		// Close stops the lightpanda it started; a failure leaves a process behind.
+		if err := paginator.Close(); err != nil {
+			fmt.Fprintln(os.Stderr, "close paginator:", err)
+		}
+	}()
 
 	ctx, cancel := context.WithTimeout(context.Background(), *timeout+10*time.Second)
 	defer cancel()
