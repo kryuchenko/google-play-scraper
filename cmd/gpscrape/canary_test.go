@@ -93,11 +93,11 @@ func TestCanaryCLI(t *testing.T) {
 
 	t.Run("app", func(t *testing.T) {
 		rec := ndjson(t, run(t, bin, "app", stableApp))[0]
-		nonEmptyString(t, rec, "appId")
+		nonEmptyString(t, rec, "app_id")
 		nonEmptyString(t, rec, "title")
 		nonEmptyString(t, rec, "developer")
-		if rec["appId"] != stableApp {
-			t.Errorf("appId = %v, want %s", rec["appId"], stableApp)
+		if rec["app_id"] != stableApp {
+			t.Errorf("app_id = %v, want %s", rec["app_id"], stableApp)
 		}
 	})
 
@@ -110,8 +110,8 @@ func TestCanaryCLI(t *testing.T) {
 			t.Fatalf("got %d records for %d apps", len(recs), len(ids))
 		}
 		for i, rec := range recs {
-			if rec["appId"] != ids[i] {
-				t.Errorf("record %d is for %v, want %s", i, rec["appId"], ids[i])
+			if rec["app_id"] != ids[i] {
+				t.Errorf("record %d is for %v, want %s", i, rec["app_id"], ids[i])
 			}
 			nonEmptyString(t, rec, "title")
 		}
@@ -137,7 +137,7 @@ func TestCanaryCLI(t *testing.T) {
 		if len(recs) > 5 {
 			t.Errorf("-num 5 emitted %d records", len(recs))
 		}
-		nonEmptyString(t, recs[0], "appId")
+		nonEmptyString(t, recs[0], "app_id")
 		nonEmptyString(t, recs[0], "title")
 	})
 
@@ -150,11 +150,11 @@ func TestCanaryCLI(t *testing.T) {
 	})
 
 	t.Run("similar", func(t *testing.T) {
-		nonEmptyString(t, ndjson(t, run(t, bin, "similar", stableApp))[0], "appId")
+		nonEmptyString(t, ndjson(t, run(t, bin, "similar", stableApp))[0], "app_id")
 	})
 
 	t.Run("developer", func(t *testing.T) {
-		nonEmptyString(t, ndjson(t, run(t, bin, "developer", "Google LLC"))[0], "appId")
+		nonEmptyString(t, ndjson(t, run(t, bin, "developer", "Google LLC"))[0], "app_id")
 	})
 
 	// One app or several, the shape is the same: a record per app. That
@@ -163,14 +163,16 @@ func TestCanaryCLI(t *testing.T) {
 	// a second id.
 	t.Run("permissions", func(t *testing.T) {
 		rec := ndjson(t, run(t, bin, "permissions", stableApp))[0]
-		nonEmptyString(t, rec, "appId")
-		perms, ok := rec["permissions"].([]any)
-		if !ok || len(perms) == 0 {
+		nonEmptyString(t, rec, "app_id")
+		groups, ok := rec["permissions"].(map[string]any)
+		if !ok || len(groups) == 0 {
 			t.Fatalf("permissions missing or empty: %v", rec["permissions"])
 		}
-		first, _ := perms[0].(map[string]any)
-		nonEmptyString(t, first, "permission")
-		nonEmptyString(t, first, "type")
+		for group, perms := range groups {
+			if list, ok := perms.([]any); !ok || len(list) == 0 || group == "" {
+				t.Errorf("group %q: %v", group, perms)
+			}
+		}
 	})
 
 	t.Run("permissions_several", func(t *testing.T) {
@@ -180,11 +182,11 @@ func TestCanaryCLI(t *testing.T) {
 			t.Fatalf("got %d records for %d apps", len(recs), len(ids))
 		}
 		for i, rec := range recs {
-			if rec["appId"] != ids[i] {
-				t.Errorf("record %d is for %v, want %s", i, rec["appId"], ids[i])
+			if rec["app_id"] != ids[i] {
+				t.Errorf("record %d is for %v, want %s", i, rec["app_id"], ids[i])
 			}
-			if _, ok := rec["permissions"].([]any); !ok {
-				t.Errorf("%v: permissions missing", rec["appId"])
+			if _, ok := rec["permissions"].(map[string]any); !ok {
+				t.Errorf("%v: permissions missing", rec["app_id"])
 			}
 		}
 	})
@@ -207,21 +209,30 @@ func TestCanaryCLI(t *testing.T) {
 		}
 	})
 
-	// availability emits one record per app carrying a country->status map,
-	// not one record per country.
+	// availability emits one record per app, not one record per country.
 	t.Run("availability", func(t *testing.T) {
 		recs := ndjson(t, run(t, bin, "availability", "-countries", "us,de,jp", stableApp))
 		if len(recs) != 1 {
 			t.Fatalf("got %d records, want one per app", len(recs))
 		}
-		nonEmptyString(t, recs[0], "appId")
-		statuses, ok := recs[0]["statuses"].(map[string]any)
-		if !ok {
-			t.Fatalf("statuses missing or not a map: %v", recs[0]["statuses"])
+		nonEmptyString(t, recs[0], "app_id")
+		// The shared record sorts the countries into lists instead of a
+		// country->status map.
+		seen := map[string]bool{}
+		for _, key := range []string{"available", "region_locked", "not_listed"} {
+			list, ok := recs[0][key].([]any)
+			if !ok {
+				t.Fatalf("%s missing or not a list: %v", key, recs[0][key])
+			}
+			for _, c := range list {
+				seen[c.(string)] = true
+			}
 		}
 		for _, country := range []string{"us", "de", "jp"} {
-			if _, ok := statuses[country]; !ok {
-				t.Errorf("no status for %q in %v", country, statuses)
+			if !seen[country] {
+				if errs, _ := recs[0]["errors"].(map[string]any); errs[country] == nil {
+					t.Errorf("no status and no error for %q in %v", country, recs[0])
+				}
 			}
 		}
 		if n, ok := recs[0]["checked"].(float64); !ok || int(n) != 3 {
@@ -250,8 +261,8 @@ func TestCanaryCLI(t *testing.T) {
 		dir := filepath.Join(t.TempDir(), "not-created-yet")
 		rec := ndjson(t, run(t, bin, "catalog", "check", "-dir", dir))[0]
 		nonEmptyString(t, rec, "generation")
-		if _, ok := rec["upToDate"].(bool); !ok {
-			t.Errorf("upToDate missing or not a bool: %v", rec["upToDate"])
+		if _, ok := rec["up_to_date"].(bool); !ok {
+			t.Errorf("up_to_date missing or not a bool: %v", rec["up_to_date"])
 		}
 		// Asking a question must not create the snapshot directory.
 		if _, err := os.Stat(dir); err == nil {
@@ -270,8 +281,8 @@ func TestCanaryCLI(t *testing.T) {
 		// The run id has been a Unix timestamp; if it stops being one the age
 		// is simply absent rather than wrong.
 		if _, ok := rec["built"].(string); ok {
-			if h, ok := rec["ageHours"].(float64); !ok || h < 0 {
-				t.Errorf("ageHours = %v", rec["ageHours"])
+			if h, ok := rec["age_hours"].(float64); !ok || h < 0 {
+				t.Errorf("age_hours = %v", rec["age_hours"])
 			}
 		}
 	})
@@ -283,7 +294,7 @@ func TestCanaryCLI(t *testing.T) {
 			t.Fatal("no newly seen apps on a first run against an empty log")
 		}
 		for _, rec := range ndjson(t, out) {
-			nonEmptyString(t, rec, "appId")
+			nonEmptyString(t, rec, "app_id")
 			if rec["seen"] != "first" {
 				t.Errorf("a first run reported %v", rec["seen"])
 			}
@@ -308,9 +319,9 @@ func TestCanaryCLI(t *testing.T) {
 		}
 		byID := map[string]map[string]any{}
 		for _, r := range recs {
-			byID[r["appId"].(string)] = r
+			byID[r["app_id"].(string)] = r
 		}
-		if g := byID["com.king.candycrushsaga"]["genreId"]; g == nil || !strings.HasPrefix(g.(string), "GAME") {
+		if g := byID["com.king.candycrushsaga"]["genre_id"]; g == nil || !strings.HasPrefix(g.(string), "GAME") {
 			t.Errorf("candy crush genre = %v", g)
 		}
 		if c := byID["com.qa.definitely.not.real.zz"]["change"]; c != "gone" {
