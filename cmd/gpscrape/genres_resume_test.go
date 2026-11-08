@@ -69,7 +69,15 @@ type resumeStore struct {
 func (s *resumeStore) install(t *testing.T, store *fakeStore) {
 	store.setFunc(pathBatch, func(r *http.Request) (int, []byte) {
 		gl := r.URL.Query().Get("gl")
-		ids := requestedIDs(t, r)
+		// A run stopped mid-request leaves a cut body; that is the client
+		// leaving, not a fixture failure, so the request just goes unanswered.
+		if r.Context().Err() != nil {
+			return http.StatusServiceUnavailable, nil
+		}
+		ids := requestedIDsNoT(r)
+		if len(ids) == 0 {
+			return http.StatusServiceUnavailable, nil
+		}
 		s.mu.Lock()
 		s.n[gl]++
 		n, block := s.n[gl], s.block

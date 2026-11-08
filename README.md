@@ -33,19 +33,20 @@ $ gpscrape app com.spotify.music | jq '{title, developer, score, installs}'
 {
   "title": "Spotify: Music and Podcasts",
   "developer": "Spotify AB",
-  "score": 4.344856,
+  "score": 4.35,
   "installs": "1,000,000,000+"
 }
 ```
 
-Each app is one JSON record with every field the store page shows. Paging
+Each app is one JSON record in snake_case, scores rounded to two places;
+`-raw` writes the library's own record instead, every field it parses. Paging
 commands write records as they arrive; Ctrl-C stops a run and keeps what it
 has written, and a second Ctrl-C exits at once:
 
 ```console
-$ gpscrape reviews com.spotify.music -limit 2 | jq -c '{score, text}'
-{"score":3,"text":"I will give these apps three star because I like it a little bit"}
-{"score":5,"text":"so far so good, better than Amazon music."}
+$ gpscrape reviews com.spotify.music -limit 2 | jq -c '{score, untrusted_text}'
+{"score":3,"untrusted_text":"I will give these apps three star because I like it a little bit"}
+{"score":5,"untrusted_text":"so far so good, better than Amazon music."}
 ```
 
 `gpscrape -h` lists the commands, `gpscrape <command> -h` the flags each one
@@ -140,19 +141,24 @@ gpscrape app com.spotify.music | jq .score
 gpscrape app com.spotify.music com.whatsapp com.duolingo   # all three in one request
 gpscrape permissions com.spotify.music com.whatsapp        # likewise
 gpscrape datasafety com.spotify.music
-gpscrape availability com.spotify.music -countries us,de,cn
+gpscrape availability com.spotify.music -countries us,de,jp
 ```
 
 Several ids ride in one `batchexecute` request, so a list of apps costs one
-throttle interval, not one per app. An id that fails is still a line of output
-in its position, `{"app_id":"…","code":"not_found","error":"…"}`, so stdout
-holds exactly one record per id and a pipeline never needs stderr to line
-them up.
+throttle interval, not one per app. In a batch, an id that fails is still a
+line of output in its position, `{"app_id":"…","code":"not_found","error":"…"}`
+(`-fields` keeps `code` and `error` on it), so stdout holds exactly one record
+per id and a pipeline never needs stderr to line them up. A single id that
+fails writes nothing to stdout; the error and the exit code say why. Ids are
+checked before any request: a name where a package id belongs is
+`invalid_argument`.
 
-`availability` reports a status per country under `statuses`: `available`,
-`not_in_region`, `not_found` or `error`, with the reason for an `error` under
-`errors`. `globallyRemoved` is true only when every country answered and none
-lists the app.
+`availability` lists the countries under `available`, `region_locked` and
+`not_listed`, counts the conclusive answers in `checked`, and gives the reason
+for any failed probe under `errors`. `-countries` takes Play Store country
+codes only (there is no store in `cn`, for example). A run in which every
+country failed exits with their error code, not 0. With `-raw` the record is
+the library's: a status per country under `statuses`, and `globallyRemoved`.
 
 ### Google Play Games on PC
 
@@ -180,11 +186,10 @@ copy of [Google's help page](https://support.google.com/googleplay/answer/113580
 ### Reviews, including all of them
 
 ```bash
-gpscrape reviews com.spotify.music -limit 500 | jq -r .text
+gpscrape reviews com.spotify.music -limit 500 | jq -r .untrusted_text
 gpscrape reviews com.spotify.music -sort rating -score 1 -limit 100
 gpscrape reviews com.spotify.music -langs en,ru,de -limit 500   # three corpora
 gpscrape reviews com.spotify.music -langs all -limit 500        # every measured corpus
-gpscrape reviews com.spotify.music -limit 500 | jq -r .untrusted_text
 ```
 
 Language partitions reviews rather than filtering them: each `hl` code serves
@@ -208,7 +213,8 @@ gpscrape developer "Spotify AB"
 `search`, `list`, `similar` and `developer` fetch each result's details in
 batches of 32 by default, because the result rows lack the developer id, the
 price (search, similar, developer) and the tagline (charts). `-full=false`
-skips that and marks unpriced rows `"priceKnown": false`.
+skips that; rows without a price then carry no `free` or `price` field rather
+than a guess (with `-raw`, `"priceKnown": false`).
 
 Each of these returns one page, about 200 apps at most; Google rejects the
 continuation token for stateless clients. For more apps, combine sources
@@ -224,8 +230,8 @@ requests to Google:
 | `check` | has Google republished the catalog? | 2 |
 | `new` | apps the store lists as recently published | 17 |
 | `size` | how many apps there are, give or take 1% | ~900 |
-| `genres` | genre changes and removals, from a snapshot | ~3.4k, plus ~310 per `-confirm-gone` storefront |
-| `sweep` | the complete id list, and the exact count | 83k |
+| `genres` | genre changes and removals, from a snapshot | ~3.3k, plus ~310 per `-confirm-gone` storefront |
+| `sweep` | the complete id list, and the exact count | ~88k |
 | `apps` | the id list by genre, from what is on disk | none |
 | `diff` | compare two snapshots already on disk | none |
 | `ids` | stream ids without keeping any state | as many as you ask for |
@@ -238,11 +244,13 @@ $ gpscrape catalog size | jq -c '{apps, half_width, shards_read, shards_total, m
 ```
 
 That is 3,549,110 apps give or take 35,366 at 95% confidence, from 866 of
-83,445 shards, in about ninety seconds. The record also carries the dispersion
-check behind the interval; the exact count costs a full sweep.
+83,445 shards, in about ninety seconds, on 2026-08-23. The store grows: on
+2026-11-07 it had 87,679 shards and, by a 0.7% sample, about four million
+apps. The record also carries the dispersion check behind the interval; the
+exact count costs a full sweep.
 
-A full sweep is ~83k requests, about four and a half hours at the default
-throttle. Keep a snapshot directory and let the tool decide when a sweep is
+A full sweep is one request per shard, about 88,000 on 2026-11-07, some five
+hours at the default throttle. Keep a snapshot directory and let the tool decide when a sweep is
 due: Google republishes the sitemaps every few days, and shard names carry the
 generation that produced them.
 
@@ -283,7 +291,7 @@ The genre table turns a snapshot into an app list by category. Build it once,
 then read it offline:
 
 ```bash
-gpscrape catalog genres -dir ./catalog                        # ~3.4k requests, plus ~310 per -confirm-gone storefront
+gpscrape catalog genres -dir ./catalog                        # ~3.3k requests, plus ~310 per -confirm-gone storefront
 gpscrape catalog apps -dir ./catalog -genre 'GAME_*' -ids-only > games.txt
 gpscrape catalog apps -dir ./catalog -genre GAME_PUZZLE
 ```
@@ -308,6 +316,10 @@ Without a snapshot, `catalog ids` streams ids straight from the sitemaps:
 ```bash
 gpscrape catalog ids -shards 0-99 -ids-only > ids.txt
 ```
+
+Shards are read in parallel and ids come out as each shard arrives, so the
+order differs between runs; sort the output if you compare it, or sweep for a
+sorted snapshot.
 
 ### Debugging a run
 

@@ -46,7 +46,7 @@ func (c *common) diagnostics() error {
 		// The first record names the build and the settings, which is what a
 		// reader of the log needs before any of the rest means anything.
 		c.logger.Debug("gpscrape",
-			"version", version, "command", c.fs.Name(),
+			"version", buildVersion(), "command", c.fs.Name(),
 			"throttle", c.throttle, "adaptive", c.adaptive,
 			"concurrency", c.concurrency, "timeout", c.timeout)
 	}

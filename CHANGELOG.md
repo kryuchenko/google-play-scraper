@@ -38,6 +38,8 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **Breaking, records:** `AppSummary.Free` is a `*bool`, nil when the price
+  is unknown, so the JSON field `free` can be absent (see Fixed).
 - **Breaking, `gpscrape catalog`:** every catalog record is snake_case like the
   rest of the CLI's output (`app_id`, `genre_id`, `age_hours`, `up_to_date`,
   `sample_pct`, `completed_at`, `half_width`, `shards_read` and the rest).
@@ -62,6 +64,31 @@ All notable changes to this project are documented here. The format is based on
   resume: the ids in flight came back with the stop's error and were counted
   as answered, so the resume skipped them and apps new to the table never got
   a row. A stop now saves progress up to the last real answer.
+- `Search` with a negative `Num` panicked; a negative `Num` or `Count` now
+  means the default in `Search`, `Developer` and `Reviews`. The CLI refuses
+  any negative count flag (`-num`, `-limit`, `-concurrency` and the rest) as
+  `invalid_argument`; `reviews -limit -1` used to download every review.
+- Search, list, similar and developer records claimed `"free": true` for
+  paid apps when the row carried no price (`-full=false`); `free` and `price`
+  are now absent when the price is unknown.
+- `gpscrape` checks arguments before any request: a name where a package id
+  belongs, or an empty search or suggest term, is `invalid_argument` (store
+  links are taken for their `id=`); unknown `-fields` names are refused up
+  front.
+- A batch in which every id failed the same way exits with that code (every
+  id not found: `not_found`, exit 3) instead of a retryable `store_error`.
+  Missing local state (no snapshot, no genre table, one snapshot for `diff`)
+  is `not_found`.
+- `-fields` keeps `code` and `error` on a failed batch entry, and `pcapp`'s
+  error entries carry `code`.
+- `availability -countries` accepts Play Store country codes only (`zz` was
+  reported available), refuses an empty list, and a run in which every
+  country failed exits with their error code instead of 0.
+- `reviews` of an unknown app exits `not_found` instead of 0 with nothing
+  printed.
+- The `-debug` banner reports the build version, the sweep confirmation
+  states the generation's shard count, and `gpscrape-mcp`'s HTTP refusal
+  names `-token-file`.
 - The adaptive throttle no longer slows down on steady latency. Its baseline
   was the minimum of recent responses; Google's sitemap CDN answers some from
   cache in ~22ms and the rest in ~48ms, so ordinary responses read as twice

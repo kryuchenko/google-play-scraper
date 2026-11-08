@@ -116,9 +116,13 @@ type AppSummary struct {
 	Developer   string  `json:"developer"`
 	DeveloperID string  `json:"developer_id,omitempty"`
 	Score       float64 `json:"score"`
-	Free        bool    `json:"free"`
-	Price       float64 `json:"price,omitempty"`
-	Currency    string  `json:"currency,omitempty"`
+	// Free is absent when the row carries no price -- the search grid,
+	// similar apps and developer pages read without full details. A false
+	// "free": true there was the library's default, not the store's answer,
+	// and paid apps read as free.
+	Free     *bool   `json:"free,omitempty"`
+	Price    float64 `json:"price,omitempty"`
+	Currency string  `json:"currency,omitempty"`
 }
 
 // FromSearchResult projects one list row.
@@ -129,12 +133,13 @@ func FromSearchResult(r gps.SearchResult) AppSummary {
 		Developer:   r.Developer,
 		DeveloperID: r.DeveloperID,
 		Score:       round2(r.Score),
-		Free:        r.Free,
-		Price:       r.Price,
-		Currency:    r.Currency,
 	}
-	if r.Free {
-		s.Price, s.Currency = 0, ""
+	if r.PriceKnown {
+		free := r.Free
+		s.Free = &free
+		if !free {
+			s.Price, s.Currency = r.Price, r.Currency
+		}
 	}
 	return s
 }

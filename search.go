@@ -35,7 +35,8 @@ type SearchOptions struct {
 	Term    string
 	Lang    string
 	Country string
-	// Num caps the number of results returned. Default 20. Values above 50
+	// Num caps the number of results returned. Default 20, for zero or a
+	// negative value. Values above 50
 	// are clamped to 50 (searchMaxNum): that is as many as Google returns for
 	// one query. Above 20, results come from one lGYRle RPC rather than the
 	// search page, except with a Price filter, which only the page applies.
@@ -93,7 +94,8 @@ func (c *Client) Search(ctx context.Context, opts SearchOptions) ([]SearchResult
 	if opts.Country == "" {
 		opts.Country = "us"
 	}
-	if opts.Num == 0 {
+	if opts.Num <= 0 {
+		// A negative Num used to reach the slice at the end and panic.
 		opts.Num = 20
 	}
 	if opts.Num > searchMaxNum {
