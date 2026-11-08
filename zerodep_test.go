@@ -55,7 +55,7 @@ const rootModulePath = "github.com/kryuchenko/google-play-scraper"
 
 func goList(t *testing.T, args ...string) string {
 	t.Helper()
-	cmd := exec.Command("go", append([]string{"list"}, args...)...)
+	cmd := exec.CommandContext(t.Context(), "go", append([]string{"list"}, args...)...)
 	// Force module mode: a contributor's local go.work (see CONTRIBUTING) puts
 	// every workspace module's requirements into `go list -m all`, which would
 	// fail this test for reasons that have nothing to do with the root module's

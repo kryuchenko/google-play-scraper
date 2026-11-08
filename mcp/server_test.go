@@ -610,7 +610,7 @@ func TestHTTP(t *testing.T) {
 
 	// No token, wrong token: refused before MCP sees the request.
 	for _, auth := range []string{"", "Bearer nope", "s3cret"} {
-		req, _ := http.NewRequest("POST", ts.URL+"/mcp", strings.NewReader(`{}`))
+		req, _ := http.NewRequestWithContext(t.Context(), "POST", ts.URL+"/mcp", strings.NewReader(`{}`))
 		req.Header.Set("Content-Type", "application/json")
 		if auth != "" {
 			req.Header.Set("Authorization", auth)
@@ -625,7 +625,11 @@ func TestHTTP(t *testing.T) {
 		}
 	}
 
-	resp, err := http.Get(ts.URL + "/healthz")
+	getReq, gerr := http.NewRequestWithContext(t.Context(), http.MethodGet, ts.URL+"/healthz", nil)
+	if gerr != nil {
+		t.Fatal(gerr)
+	}
+	resp, err := http.DefaultClient.Do(getReq)
 	if err != nil || resp.StatusCode != 200 {
 		t.Fatalf("healthz: %v %v", err, resp)
 	}
@@ -648,7 +652,7 @@ func TestHTTP(t *testing.T) {
 
 func post(t *testing.T, url string, hdr map[string]string) int {
 	t.Helper()
-	req, _ := http.NewRequest("POST", url, strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"tools/list"}`))
+	req, _ := http.NewRequestWithContext(t.Context(), "POST", url, strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"tools/list"}`))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json, text/event-stream")
 	for k, v := range hdr {

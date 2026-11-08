@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"flag"
 	"fmt"
@@ -222,7 +223,10 @@ func cmdMCP(args []string) error {
 		// `gpscrape mcp` expects.
 		return syscall.Exec(path, append([]string{path}, args...), os.Environ())
 	}
-	cmd := exec.Command(path, args...)
+	// Background on purpose: the server runs until it exits on its own, as it
+	// would had this process been replaced, and the client's signals reach it
+	// through the console it shares.
+	cmd := exec.CommandContext(context.Background(), path, args...)
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
 	if err := cmd.Run(); err != nil {
 		var ee *exec.ExitError

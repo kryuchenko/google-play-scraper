@@ -353,7 +353,7 @@ func TestPCAppCancelAfterExitIsAnError(t *testing.T) {
 
 func mustRequest(t *testing.T, raw string) *http.Request {
 	t.Helper()
-	req, err := http.NewRequest(http.MethodGet, raw, nil)
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, raw, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

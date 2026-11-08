@@ -124,7 +124,7 @@ func TestEndpointChecksAcceptFixtures(t *testing.T) {
 func redirectTo(final string, status int, body string, calls *atomic.Int32) *http.Client {
 	return &http.Client{Transport: &MockTransport{RoundTripFunc: func(req *http.Request) (*http.Response, error) {
 		calls.Add(1)
-		end, _ := http.NewRequest(http.MethodGet, final, nil)
+		end, _ := http.NewRequestWithContext(req.Context(), http.MethodGet, final, nil)
 		return &http.Response{
 			StatusCode: status,
 			Body:       io.NopCloser(strings.NewReader(body)),

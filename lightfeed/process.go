@@ -30,13 +30,14 @@ type managedProc struct {
 // binding it.
 func startManagedProc(ctx context.Context, binPath string) (*managedProc, error) {
 	host := "127.0.0.1"
-	port, err := freePort(host)
+	port, err := freePort(ctx, host)
 	if err != nil {
 		return nil, fmt.Errorf("lightfeed: reserve port: %w", err)
 	}
 
-	// Detach from the request context: the browser outlives a single call.
-	cmd := exec.Command(binPath, "serve", "--host", host, "--port", fmt.Sprintf("%d", port))
+	// Detach from the request context's cancellation: the browser outlives a
+	// single call, and stop() is what ends it.
+	cmd := exec.CommandContext(context.WithoutCancel(ctx), binPath, "serve", "--host", host, "--port", fmt.Sprintf("%d", port))
 	if err := cmd.Start(); err != nil {
 		return nil, fmt.Errorf("lightfeed: start lightpanda: %w", err)
 	}
@@ -78,8 +79,9 @@ func (p *managedProc) stop() error {
 
 // freePort asks the OS for an unused TCP port on host by binding port 0 and
 // reading back the assigned port, then releasing it for lightpanda to claim.
-func freePort(host string) (int, error) {
-	l, err := net.Listen("tcp", net.JoinHostPort(host, "0"))
+func freePort(ctx context.Context, host string) (int, error) {
+	var lc net.ListenConfig
+	l, err := lc.Listen(ctx, "tcp", net.JoinHostPort(host, "0"))
 	if err != nil {
 		return 0, err
 	}
@@ -91,11 +93,12 @@ func freePort(host string) (int, error) {
 // or ctx is cancelled.
 func waitForPort(ctx context.Context, addr string, timeout time.Duration) error {
 	deadline := time.Now().Add(timeout)
+	dialer := net.Dialer{Timeout: 500 * time.Millisecond}
 	for {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		conn, err := net.DialTimeout("tcp", addr, 500*time.Millisecond)
+		conn, err := dialer.DialContext(ctx, "tcp", addr)
 		if err == nil {
 			_ = conn.Close()
 			return nil

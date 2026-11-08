@@ -112,7 +112,7 @@ func TestTraceInstrumentation(t *testing.T) {
 // TestRootIsZeroDependency enforces, so this shells out instead.
 func parseTrace(t *testing.T, path string) string {
 	t.Helper()
-	cmd := exec.Command("go", "tool", "trace", "-d=parsed", path)
+	cmd := exec.CommandContext(t.Context(), "go", "tool", "trace", "-d=parsed", path)
 	cmd.Env = append(os.Environ(), "GOWORK=off")
 	out, err := cmd.CombinedOutput()
 	if err != nil {
@@ -341,7 +341,7 @@ func taskChain(tasks map[uint64]traceTask, id uint64) []string {
 // traceToolAvailable reports whether `go tool trace` can be run at all, so a
 // toolchain without it skips rather than fails.
 func traceToolAvailable() bool {
-	cmd := exec.Command("go", "tool", "trace", "-h")
+	cmd := exec.CommandContext(context.Background(), "go", "tool", "trace", "-h")
 	cmd.Env = append(os.Environ(), "GOWORK=off")
 	// -h exits non-zero by design; only the "cannot run it" case matters here.
 	if err := cmd.Run(); err != nil {

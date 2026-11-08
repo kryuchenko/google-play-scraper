@@ -31,6 +31,26 @@ func TestNewValidation(t *testing.T) {
 	}
 }
 
+// WithThrottle sets the pause after each scroll; a non-positive value is
+// ignored and the default stays.
+func TestWithThrottle(t *testing.T) {
+	for _, c := range []struct {
+		in, want time.Duration
+	}{
+		{3 * time.Second, 3 * time.Second},
+		{0, defaultThrottle},
+		{-time.Second, defaultThrottle},
+	} {
+		p, err := New(WithCDPEndpoint("ws://127.0.0.1:9222"), WithThrottle(c.in))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if p.cfg.throttle != c.want {
+			t.Errorf("WithThrottle(%v): throttle = %v, want %v", c.in, p.cfg.throttle, c.want)
+		}
+	}
+}
+
 // TestImplementsFeedPaginator is a compile-time assertion that *Paginator
 // satisfies the root package's interface — the whole point of the module.
 func TestImplementsFeedPaginator(t *testing.T) {

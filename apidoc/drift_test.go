@@ -225,7 +225,7 @@ func TestSpecIsFresh(t *testing.T) {
 	}
 
 	tmp := t.TempDir()
-	cmd := exec.Command("go", "run",
+	cmd := exec.CommandContext(t.Context(), "go", "run",
 		"github.com/swaggo/swag/v2/cmd/swag@v2.0.0-rc5",
 		"init", "-g", "doc.go", "-o", tmp,
 		"--parseDependency", "--parseInternal", "--v3.1")
