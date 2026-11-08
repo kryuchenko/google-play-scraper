@@ -225,11 +225,18 @@ func catalogGenres(args []string) error {
 		return records.Invalid("-prune needs the whole snapshot: with -ids it would delete every row " +
 			"outside the list you passed, which is not the same as the app being gone")
 	}
+	// A sampled snapshot is the same kind of subset with a manifest saying so.
+	if *prune && coverage > 0 {
+		return records.Invalid("-prune needs the whole snapshot: the latest one covers %g%% of the catalog, "+
+			"and pruning against it would delete every row outside the sample", coverage)
+	}
 
 	// A caller's list comes in any order; the merge below needs the
 	// snapshot's. The snapshot is sorted already and streams untouched.
 	if *from != "" {
-		ids = sortedIDs(ids)
+		if ids, err = sortedIDs(ctx, ids); err != nil {
+			return err
+		}
 	}
 
 	// What each app's genre was last time, so a change can be named as one,

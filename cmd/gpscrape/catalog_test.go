@@ -1084,6 +1084,32 @@ func TestGenresPruneNeedsTheWholeSnapshot(t *testing.T) {
 	}
 }
 
+// A sampled snapshot is a subset too: -prune against it would delete every
+// row outside the sample, so it is refused before any request.
+func TestGenresPruneRefusesASample(t *testing.T) {
+	dir := t.TempDir()
+	g := googleplayscraper.Generation{Date: "2026-08-23", Run: "200"}
+	snap := filepath.Join(dir, "snapshot-"+g.ID()+".txt.gz")
+	if _, err := writeSnapshot(snap, []string{"com.spotify.music"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeJSON(filepath.Join(dir, "manifest-"+g.ID()+".json"),
+		manifest{Generation: g, File: filepath.Base(snap), IDs: 1, SamplePct: 0.1}); err != nil {
+		t.Fatal(err)
+	}
+	if err := saveGenres(filepath.Join(dir, "genres.tsv"),
+		map[string]string{"com.spotify.music": "MUSIC_AND_AUDIO", "com.whatsapp": "COMMUNICATION"}); err != nil {
+		t.Fatal(err)
+	}
+	err := catalogGenres([]string{"-dir", dir, "-prune"})
+	if err == nil || !strings.Contains(err.Error(), "whole snapshot") {
+		t.Fatalf("-prune on a 0.1%% sample: %v, want a refusal", err)
+	}
+	if after, _ := loadGenres(dir); len(after) != 2 {
+		t.Errorf("table has %d rows, want the 2 it started with", len(after))
+	}
+}
+
 func TestSplitCountries(t *testing.T) {
 	got := splitCountries(" DE , in,br ,, de ")
 	if !slices.Equal(got, []string{"de", "in", "br"}) {

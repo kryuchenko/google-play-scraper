@@ -1,11 +1,14 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
+	"time"
 )
 
 func writeTable(t *testing.T, path string, rows ...string) {
@@ -125,9 +128,103 @@ func TestTableMergeRefusesUnsortedIDs(t *testing.T) {
 // A caller's -ids list comes in any order and may repeat; it is sorted and
 // deduplicated before the merge.
 func TestSortedIDs(t *testing.T) {
-	got := slices.Collect(sortedIDs(slices.Values([]string{"c", "a", "b", "a", "c"})))
-	if !slices.Equal(got, []string{"a", "b", "c"}) {
-		t.Errorf("sortedIDs = %v", got)
+	seq, err := sortedIDs(context.Background(), slices.Values([]string{"c", "a", "b", "a", "c"}))
+	if got := slices.Collect(seq); err != nil || !slices.Equal(got, []string{"a", "b", "c"}) {
+		t.Errorf("sortedIDs = %v, %v", got, err)
+	}
+
+	// A list that never ends -- a stdin left open -- still stops on cancel.
+	ctx, cancel := context.WithCancel(context.Background())
+	block := make(chan struct{})
+	defer close(block)
+	never := func(yield func(string) bool) {
+		if yield("a") {
+			<-block
+		}
+	}
+	time.AfterFunc(20*time.Millisecond, cancel)
+	if _, err := sortedIDs(ctx, never); !errors.Is(err, context.Canceled) {
+		t.Errorf("sortedIDs on a list that never ends: %v, want context.Canceled", err)
+	}
+}
+
+// The table is walked, not looked up, so a row out of order -- a hand-edited
+// table, a duplicate -- is an error, not a quietly wrong answer.
+func TestTableCursorRefusesUnsortedTable(t *testing.T) {
+	for name, rows := range map[string][]string{
+		"unsorted":  {"b\tY", "a\tX"},
+		"duplicate": {"a\tX", "a\tY"},
+	} {
+		path := filepath.Join(t.TempDir(), "genres.tsv")
+		writeTable(t, path, rows...)
+		prev, err := openTable(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		m, err := newTableMerge(prev, path+".merge")
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, _, lerr := m.lookup("a")
+		if lerr == nil {
+			lerr = m.finish()
+		}
+		if lerr == nil || !strings.Contains(lerr.Error(), "not sorted") {
+			t.Errorf("%s table: %v, want a not-sorted error", name, lerr)
+		}
+		m.abandon()
+		prev.close()
+	}
+}
+
+// A genre with a tab in it -- not one Google uses, but the table is a text
+// file -- is kept whole, and never read as a merge mark.
+func TestTableMergeKeepsTabsInGenre(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "genres.tsv")
+	writeTable(t, path, "a\tX\tP", "b\tY\tA")
+	prev, err := openTable(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, err := newTableMerge(prev, path+".merge")
+	if err != nil {
+		t.Fatal(err)
+	}
+	was, known, err := m.lookup("b") // a stays unmatched
+	if err != nil || !known || was != "Y\tA" {
+		t.Fatalf("lookup(b) = %q %v %v", was, known, err)
+	}
+	if err := m.row("b", was, ""); err != nil { // a failed lookup keeps its row
+		t.Fatal(err)
+	}
+	if err := m.finish(); err != nil {
+		t.Fatal(err)
+	}
+	prev.close()
+	if _, err := settleTable(m.path, path, nil, nil, false); err != nil {
+		t.Fatal(err)
+	}
+	if got := readTable(t, path); !slices.Equal(got, []string{"a\tX\tP", "b\tY\tA"}) {
+		t.Errorf("table = %q", got)
+	}
+}
+
+// A settlement that does not account for every absent id fails before the
+// rename: the good table stays.
+func TestSettleTableChecksBeforePublishing(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "genres.tsv")
+	writeTable(t, path, "a\tX")
+	merged := filepath.Join(dir, "merge")
+	if err := os.WriteFile(merged, []byte("-\ta\tX\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, err := settleTable(merged, path, []string{"b"}, func(int) (settled, string) { return settledGone, "" }, false)
+	if err == nil {
+		t.Fatal("an absent id the first pass never wrote was accepted")
+	}
+	if got := readTable(t, path); !slices.Equal(got, []string{"a\tX"}) {
+		t.Errorf("table replaced after a failed settlement: %q", got)
 	}
 }
 

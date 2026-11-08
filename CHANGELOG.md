@@ -5,6 +5,21 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Changed
+
+- `gpscrape catalog genres` walks the genre table beside the snapshot
+  instead of loading it as a map: peak heap at four million ids falls from
+  700MB+ to about 45MB. `-ids` lists are sorted and deduplicated first, so
+  their records come out in id order, once each. A genre table that is not
+  sorted by app id is now an error rather than silently re-sorted.
+- `gpscrape catalog diff` reads both snapshots side by side instead of
+  whole: 538MB to 4MB at catalog scale.
+
+### Fixed
+
+- `catalog genres -prune` against a sampled snapshot deleted every row
+  outside the sample; it is refused, as it already was with `-ids`.
+
 ### Added
 
 - `gpscrape`: an error caused by Claude Code's sandbox on macOS -- where Go

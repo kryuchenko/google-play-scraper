@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"errors"
 	"fmt"
 	"iter"
@@ -27,18 +28,31 @@ import (
 // and publishes the table with the same temporary-file, fsync and rename the
 // writers always used.
 
+// The first-pass file puts the mark first -- "<mark>\t<id>\t<genre>" -- so a
+// genre is everything after the second tab exactly as the table had it, tabs
+// included, and can never be mistaken for a mark.
 const (
+	markNone        = "-" // settled: copy as is
 	markAbsent      = "A" // absent from the first storefront; the table knew it
 	markAbsentFirst = "a" // absent, and the table did not know it
 	markUnmatched   = "P" // a table row no snapshot id matched
 )
 
-// tableCursor reads the genre table a row at a time, in order.
+// mergeLineMax is the longest first-pass line: a table line, which the table
+// reader caps at maxLineBytes, plus the mark and its tab.
+const mergeLineMax = maxLineBytes + 8
+
+// tableCursor reads the genre table a row at a time, in order. The table is
+// written sorted and duplicate-free, and the merge depends on it, so a row
+// out of order is an error rather than a wrong answer: the old map-based pass
+// tolerated a hand-edited table, the walk cannot.
 type tableCursor struct {
 	f         *os.File
 	sc        *bufio.Scanner
+	path      string
 	id, genre string
 	ok        bool
+	bad       error
 }
 
 // openTable opens the table at path; a missing table reads as empty.
@@ -51,27 +65,38 @@ func openTable(path string) (*tableCursor, error) {
 		return nil, err
 	}
 	sc := bufio.NewScanner(f)
-	sc.Buffer(make([]byte, 0, 64<<10), 1<<20)
-	t := &tableCursor{f: f, sc: sc}
+	sc.Buffer(make([]byte, 0, 64<<10), maxLineBytes)
+	t := &tableCursor{f: f, sc: sc, path: path}
 	t.next()
 	return t, nil
 }
 
 func (t *tableCursor) next() {
 	t.ok = false
-	if t.sc == nil {
+	if t.sc == nil || t.bad != nil {
 		return
 	}
+	prev, had := t.id, t.id != ""
 	for t.sc.Scan() {
 		id, genre, ok := strings.Cut(t.sc.Text(), "\t")
-		if ok {
-			t.id, t.genre, t.ok = id, genre, true
+		if !ok {
+			continue
+		}
+		if had && id <= prev {
+			t.bad = fmt.Errorf("%s is not sorted by app id (%q after %q), so it cannot be walked beside "+
+				"the snapshot; sort it with `LC_ALL=C sort -u -t$'\\t' -k1,1` or delete it to start over",
+				t.path, id, prev)
 			return
 		}
+		t.id, t.genre, t.ok = id, genre, true
+		return
 	}
 }
 
 func (t *tableCursor) err() error {
+	if t.bad != nil {
+		return t.bad
+	}
 	if t.sc == nil {
 		return nil
 	}
@@ -104,12 +129,10 @@ func newTableMerge(prev *tableCursor, path string) (*tableMerge, error) {
 }
 
 func (m *tableMerge) row(id, genre, mark string) error {
-	var err error
 	if mark == "" {
-		_, err = fmt.Fprintf(m.w, "%s\t%s\n", id, genre)
-	} else {
-		_, err = fmt.Fprintf(m.w, "%s\t%s\t%s\n", id, genre, mark)
+		mark = markNone
 	}
+	_, err := fmt.Fprintf(m.w, "%s\t%s\t%s\n", mark, id, genre)
 	return err
 }
 
@@ -177,26 +200,21 @@ func settleTable(merged, path string, absentIDs []string, settle func(i int) (se
 	}
 	defer func() { _ = f.Close() }()
 	sc := bufio.NewScanner(f)
-	sc.Buffer(make([]byte, 0, 64<<10), 1<<20)
+	sc.Buffer(make([]byte, 0, 64<<10), mergeLineMax)
 
 	pruned, next := 0, 0
 	write := func(w *bufio.Writer) error {
 		for sc.Scan() {
-			line := sc.Text()
-			id, rest, _ := strings.Cut(line, "\t")
-			genre, mark, marked := strings.Cut(rest, "\t")
-			switch {
-			case !marked:
-				if _, err := fmt.Fprintf(w, "%s\n", line); err != nil {
-					return err
-				}
-				continue
-			case mark == markUnmatched:
+			mark, rest, _ := strings.Cut(sc.Text(), "\t")
+			id, genre, _ := strings.Cut(rest, "\t")
+			switch mark {
+			case markNone:
+			case markUnmatched:
 				if prune {
 					pruned++
 					continue
 				}
-			case mark == markAbsent || mark == markAbsentFirst:
+			case markAbsent, markAbsentFirst:
 				if next >= len(absentIDs) || absentIDs[next] != id {
 					return fmt.Errorf("genre table merge: absent id %q out of step", id)
 				}
@@ -210,26 +228,41 @@ func settleTable(merged, path string, absentIDs []string, settle func(i int) (se
 				default:
 					continue // gone, or unconfirmed and never in the table
 				}
+			default:
+				return fmt.Errorf("genre table merge: unknown mark %q on %q", mark, id)
 			}
 			if _, err := fmt.Fprintf(w, "%s\t%s\n", id, genre); err != nil {
 				return err
 			}
 		}
-		return sc.Err()
+		if err := sc.Err(); err != nil {
+			return err
+		}
+		// Checked before the rename, not after: a table that lost an absent
+		// id must not replace a good one.
+		if next != len(absentIDs) {
+			return fmt.Errorf("genre table merge: %d absent ids, %d settled", len(absentIDs), next)
+		}
+		return nil
 	}
 	if err := writeTableAtomic(path, write); err != nil {
 		return 0, err
-	}
-	if next != len(absentIDs) {
-		return 0, fmt.Errorf("genre table merge: %d absent ids, %d settled", len(absentIDs), next)
 	}
 	return pruned, nil
 }
 
 // sortedIDs makes a caller-supplied list fit the merge: sorted, duplicates
 // dropped. It holds the list, which is a subset by construction; the
-// snapshot itself is already sorted and streams through untouched.
-func sortedIDs(ids iter.Seq[string]) iter.Seq[string] {
-	all := slices.Sorted(ids)
-	return slices.Values(slices.Compact(all))
+// snapshot itself is already sorted and streams through untouched. Reading
+// runs beside ctx, so a list piped from a stdin that never closes still
+// stops on Ctrl-C or -timeout.
+func sortedIDs(ctx context.Context, ids iter.Seq[string]) (iter.Seq[string], error) {
+	done := make(chan []string, 1)
+	go func() { done <- slices.Sorted(ids) }()
+	select {
+	case all := <-done:
+		return slices.Values(slices.Compact(all)), nil
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
 }
