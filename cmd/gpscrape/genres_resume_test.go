@@ -66,6 +66,14 @@ type resumeStore struct {
 	block func(gl string, n int) bool
 }
 
+// setBlock replaces block under the lock: a request left over from a run
+// the client gave up on can still be in the handler reading it.
+func (s *resumeStore) setBlock(block func(gl string, n int) bool) {
+	s.mu.Lock()
+	s.block = block
+	s.mu.Unlock()
+}
+
 func (s *resumeStore) install(t *testing.T, store *fakeStore) {
 	store.setFunc(pathBatch, func(r *http.Request) (int, []byte) {
 		gl := r.URL.Query().Get("gl")
@@ -186,7 +194,7 @@ func TestGenresResumeMatchesAnUninterruptedRun(t *testing.T) {
 			dir := t.TempDir()
 			writeResumeFixture(t, dir)
 
-			rs.block = c.block
+			rs.setBlock(c.block)
 			out1, _, err := runResumeGenres(t, dir, "-prune", "-timeout", "500ms")
 			if err == nil {
 				t.Fatal("the interrupted run succeeded")
@@ -196,7 +204,7 @@ func TestGenresResumeMatchesAnUninterruptedRun(t *testing.T) {
 			}
 			usBefore := rs.requests("us")
 
-			rs.block = nil
+			rs.setBlock(nil)
 			out2, stderr, err := runResumeGenres(t, dir, "-prune")
 			if err != nil {
 				t.Fatalf("resumed run: %v\n%s", err, stderr)
@@ -238,7 +246,7 @@ func TestGenresResumeCutsBackPastTheCheckpoint(t *testing.T) {
 	rs := newResumeStore(t)
 	dir := t.TempDir()
 	writeResumeFixture(t, dir)
-	rs.block = func(gl string, n int) bool { return gl == "us" && n == 3 }
+	rs.setBlock(func(gl string, n int) bool { return gl == "us" && n == 3 })
 	if _, _, err := runResumeGenres(t, dir, "-timeout", "500ms"); err == nil {
 		t.Fatal("the interrupted run succeeded")
 	}
@@ -249,7 +257,7 @@ func TestGenresResumeCutsBackPastTheCheckpoint(t *testing.T) {
 	_, _ = f.WriteString("-\tcom.app03498\tBOGUS\nA\tcom.app034")
 	_ = f.Close()
 
-	rs.block = nil
+	rs.setBlock(nil)
 	if _, stderr, err := runResumeGenres(t, dir); err != nil {
 		t.Fatalf("resumed run: %v\n%s", err, stderr)
 	}
@@ -288,12 +296,12 @@ func TestGenresResumeStartsCleanOnAnotherRun(t *testing.T) {
 			rs := newResumeStore(t)
 			dir := t.TempDir()
 			writeResumeFixture(t, dir)
-			rs.block = func(gl string, n int) bool { return gl == "us" && n == 2 }
+			rs.setBlock(func(gl string, n int) bool { return gl == "us" && n == 2 })
 			if _, _, err := runResumeGenres(t, dir, "-timeout", "500ms"); err == nil {
 				t.Fatal("the interrupted run succeeded")
 			}
 			c.change(t, dir)
-			rs.block = nil
+			rs.setBlock(nil)
 			_, stderr, err := runResumeGenres(t, dir, c.extra...)
 			if c.name == "another country" {
 				// gb answers nothing in this fixture; what matters is that the
@@ -317,7 +325,7 @@ func TestGenresIDsRunClearsResumeState(t *testing.T) {
 	rs := newResumeStore(t)
 	dir := t.TempDir()
 	writeResumeFixture(t, dir)
-	rs.block = func(gl string, n int) bool { return gl == "us" && n == 2 }
+	rs.setBlock(func(gl string, n int) bool { return gl == "us" && n == 2 })
 	if _, _, err := runResumeGenres(t, dir, "-timeout", "500ms"); err == nil {
 		t.Fatal("the interrupted run succeeded")
 	}
@@ -325,7 +333,7 @@ func TestGenresIDsRunClearsResumeState(t *testing.T) {
 	if err := os.WriteFile(ids, []byte(resumeID(1)+"\n"+resumeID(3)+"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	rs.block = nil
+	rs.setBlock(nil)
 	_, stderr, err := runResumeGenres(t, dir, "-ids", ids)
 	if err != nil {
 		t.Fatalf("-ids run: %v\n%s", err, stderr)
