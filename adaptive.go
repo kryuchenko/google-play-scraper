@@ -370,7 +370,10 @@ func (c *Client) adjust(o outcome) string {
 		next = p.Min
 	}
 	if floor := c.cutFloor(); next < floor {
-		next = max(floor, c.throttle) // settle below the ceiling, never jump past it
+		// Settle at the floor, never past it. And never above the interval
+		// already in use: a clean window does not slow the client down, and
+		// a floor from cuts made at Max lies above Max.
+		next = min(floor, c.throttle)
 		if next == c.throttle {
 			return ""
 		}

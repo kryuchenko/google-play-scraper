@@ -436,3 +436,44 @@ func TestAdaptiveProbesSlowlyPastTheCallersInterval(t *testing.T) {
 		t.Errorf("throttle %v after 4 clean responses; want a step below 200ms", got)
 	}
 }
+
+// Found by the state-model test: a clean window that would have stepped past
+// the cut floor moved the interval to the floor even when the floor was
+// slower than the interval in use. After a refusal at Max the floor lies
+// above Max, and the first clean window took the client past its ceiling.
+func TestAdaptiveCleanWindowNeverSlowsDown(t *testing.T) {
+	c := NewClient(WithAdaptiveThrottle(AdaptivePolicy{Min: 20 * time.Millisecond, Max: time.Second, Window: 2}))
+	c.observe(context.Background(), http.StatusTooManyRequests, 50*time.Millisecond) // a cut at Max: floor 1.25s
+	clean(c, 2)
+	if got := c.CurrentThrottle(); got != time.Second {
+		t.Errorf("throttle %v after a clean window under a floor above Max; want it to stay at Max", got)
+	}
+}
+
+// Found by the state-model test: a step that would cross the floor stopped
+// one step short of it instead of settling on it.
+func TestAdaptiveSettlesOnTheFloor(t *testing.T) {
+	c := NewClient(WithAdaptiveThrottle(AdaptivePolicy{
+		Min: 20 * time.Millisecond, Max: 2 * time.Second, Start: time.Second, Window: 1, ProbeWindow: 1,
+	}))
+	c.throttleLock.Lock()
+	c.noteCut(400 * time.Millisecond) // floor 500ms
+	c.throttle = 520 * time.Millisecond
+	c.throttleLock.Unlock()
+	clean(c, 1) // 520ms * 0.9 = 468ms would cross it
+	if got := c.CurrentThrottle(); got != 500*time.Millisecond {
+		t.Errorf("throttle %v; want it on the 500ms floor", got)
+	}
+}
+
+// Found by the state-model test: with WithThrottle after WithAdaptiveThrottle
+// the controller forgot the caller's number and probed past it on Window.
+func TestAdaptiveProbesSlowlyWhicheverOrder(t *testing.T) {
+	c := NewClient(WithAdaptiveThrottle(AdaptivePolicy{
+		Min: 20 * time.Millisecond, Max: 2 * time.Second, Window: 2, ProbeWindow: 4,
+	}), WithThrottle(200*time.Millisecond))
+	clean(c, 3)
+	if got := c.CurrentThrottle(); got != 200*time.Millisecond {
+		t.Errorf("throttle %v after 3 clean responses; the first step past 200ms needs 4", got)
+	}
+}

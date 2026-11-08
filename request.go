@@ -92,6 +92,11 @@ func WithUserAgent(ua string) ClientOption {
 func WithThrottle(d time.Duration) ClientOption {
 	return func(c *Client) {
 		c.throttle = d
+		if c.adaptive != nil {
+			// After WithAdaptiveThrottle: this is the caller's number too, and
+			// the controller probes past it on ProbeWindow (see NewClient).
+			c.startThrottle = d
+		}
 	}
 }
 
@@ -176,6 +181,9 @@ func NewClient(opts ...ClientOption) *Client {
 	// and set an interval the policy would never have chosen.
 	if c.adaptive != nil {
 		c.throttle = min(max(c.throttle, c.adaptive.Min), c.adaptive.Max)
+		if c.startThrottle > 0 {
+			c.startThrottle = c.throttle
+		}
 	}
 
 	// Apply the timeout last so it wins regardless of option ordering and

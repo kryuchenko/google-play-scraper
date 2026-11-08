@@ -94,6 +94,15 @@ All notable changes to this project are documented here. The format is based on
   cache in ~22ms and the rest in ~48ms, so ordinary responses read as twice
   the baseline and a live sweep climbed from 200ms to the 2s ceiling with
   every response a 200. The baseline is now the median.
+- Adaptive throttle, settling below a remembered refusal: a clean window
+  stopped one step short of the floor instead of settling on it, and when
+  the floor was slower than the current interval it moved up to it. After
+  refusals at `Max` the floor lies above `Max`, so the first clean window
+  after an outage took the interval past `Max`. A clean window now never
+  slows the client down.
+- `WithThrottle` applied after `WithAdaptiveThrottle` now counts as the
+  caller's interval: the controller probes past it on `ProbeWindow`, as it
+  does with the options in the other order, instead of on `Window`.
 - `catalog sweep` resumes correctly after a kill at any point:
   - a torn last line in the partial id file or the done log is cut back
     before appending, so `com.c` + `com.d` no longer becomes `com.com.d` in the
@@ -134,6 +143,12 @@ All notable changes to this project are documented here. The format is based on
   process (SIGKILL, SIGINT, SIGTERM, at many points) and compares the rerun's
   snapshot, manifest and delta with an uninterrupted run; `GPSCRAPE_KILLTEST=1`
   runs the long set.
+- State-model tests for the adaptive throttle and the breaker
+  (`adaptive_model_test.go`): seeded random plans of 10,000 events (clean,
+  sporadic refusals, slowdowns, outages, idle gaps, a hard rate ceiling) run
+  under `synctest`, with the interval, cut floor and breaker transitions
+  checked after every event. Three seeds with `-short`, 64 without;
+  `-adaptive.seed=N` or `ADAPTIVE_SEED=N` replays one.
 - Parsers have allocation budgets and `ReviewsSeq` a memory ceiling, checked
   in CI.
 - CI: govulncheck on all four modules on every pull request and weekly; CodeQL
