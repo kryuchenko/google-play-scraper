@@ -440,6 +440,10 @@ func catalogGenres(args []string) error {
 	settleOf := func(i int) (settled, string) {
 		return outcome[i], stillGone.foundIn[absent[i].id].genre
 	}
+	// The old table is closed before the new one is renamed over it: Windows
+	// refuses to rename onto a file a process holds open. The walk finished
+	// reading it at merge.finish.
+	prev.close()
 	pruned, err := settleTable(merge.path, prevPath, absentIDs, settleOf, *prune && failed < seen)
 	if err != nil {
 		return err

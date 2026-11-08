@@ -473,6 +473,14 @@ func sweep(
 	// smaller: with long URLs and few ids it fills first. So when this line
 	// is about to flush the done log, the ids go out first.
 	markDone := func(url string) error { return writeDoneLine(w, dw, url) }
+	// doneFailed reports a markDone failure against the file that failed.
+	doneFailed := func(err error) {
+		if errors.As(err, new(errFlushIDs)) {
+			failWrite("write "+partialPath, err)
+			return
+		}
+		failWrite("write "+donePath, err)
+	}
 
 	// checkpoint makes progress durable in the only order that cannot lose
 	// work: the ids first, then the record saying the shard is finished. A
@@ -580,7 +588,7 @@ func sweep(
 		}
 		state.IDs += len(pkgs)
 		if werr := markDone(url); werr != nil {
-			failWrite("write "+donePath, werr)
+			doneFailed(werr)
 			return
 		}
 		noteSucceeded(url)
@@ -670,7 +678,7 @@ func sweep(
 			}
 			state.IDs += len(pkgs)
 			if werr := markDone(url); werr != nil {
-				failWrite("write "+donePath, werr)
+				doneFailed(werr)
 				return
 			}
 			done++
@@ -698,6 +706,14 @@ func sweep(
 	}
 
 	remaining := len(pending) - done
+
+	// An interrupted run says so first. The retry pass was skipped, so a
+	// failed shard does not mean what the refusal below says -- "after a
+	// retry pass" -- and reporting it in place of the interrupt turned
+	// Ctrl-C into exit 1 instead of 130.
+	if sweepErr != nil && !rolled {
+		return fmt.Errorf("%w (progress kept: %d shards left)", sweepErr, remaining)
+	}
 
 	if len(state.Failed) > 0 && !rolled {
 		// Refusing to write a manifest is deliberate. A snapshot that is
@@ -912,12 +928,19 @@ func diffAgainstSnapshot(path string, from, to googleplayscraper.Generation, new
 func writeDoneLine(ids, done *bufio.Writer, url string) error {
 	if len(url)+1 > done.Available() {
 		if err := ids.Flush(); err != nil {
-			return err
+			return errFlushIDs{err}
 		}
 	}
 	_, err := fmt.Fprintln(done, url)
 	return err
 }
+
+// errFlushIDs marks a failure of the id file inside writeDoneLine, so the
+// message names the file that failed rather than the done log.
+type errFlushIDs struct{ err error }
+
+func (e errFlushIDs) Error() string { return e.err.Error() }
+func (e errFlushIDs) Unwrap() error { return e.err }
 
 // truncateTornLine cuts path back to just after its last newline, so the
 // next append starts on a line of its own. A missing or empty file, or one

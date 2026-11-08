@@ -120,9 +120,11 @@ func (t *tableCursor) err() error {
 	return t.sc.Err()
 }
 
+// close is safe to call more than once.
 func (t *tableCursor) close() {
 	if t.f != nil {
 		_ = t.f.Close()
+		t.f = nil
 	}
 }
 

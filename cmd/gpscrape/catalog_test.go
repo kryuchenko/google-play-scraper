@@ -498,58 +498,65 @@ func TestCatalogVerbsRefusePositionalArguments(t *testing.T) {
 	}
 }
 
-// The genre table is written over wholesale, so anything the run did not see
-// is deleted. Building it from scratch each time made two ordinary situations
-// destructive: a transient error dropped an app, and -ids on a subset shrank
-// the table to that subset. Both come back as "first_seen" next time -- a
-// change that did not happen.
+// A run that sees only part of the table must not delete the rest. Building
+// the table from what the run saw made two ordinary situations destructive: a
+// transient error dropped an app, and -ids on a subset shrank the table to
+// that subset; both came back as "first_seen" next time, a change that did
+// not happen. This drives the table walk the way catalogGenres does: com.a
+// changes genre, com.b's lookup fails, com.c is never asked about, com.d is
+// absent and settled gone.
 func TestGenresTableKeepsWhatThisRunDidNotSee(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, "genres.tsv")
-
-	before := map[string]string{
-		"com.a": "GAME_PUZZLE",
-		"com.b": "GAME_ACTION",
-		"com.c": "PRODUCTIVITY",
-	}
-	if err := saveGenres(path, before); err != nil {
+	path := genresPath(dir)
+	if err := writeGenreLines(path, []string{"com.a", "com.b", "com.c", "com.d"}, func(id string) string {
+		return map[string]string{"com.a": "GAME_PUZZLE", "com.b": "GAME_ACTION", "com.c": "PRODUCTIVITY", "com.d": "SOCIAL"}[id]
+	}); err != nil {
 		t.Fatal(err)
 	}
+	prev, err := openTable(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, err := newTableMerge(prev, path+".merge")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer m.abandon()
 
-	// What one run over a subset produces: it saw only com.a, and only that
-	// entry may move.
-	prev, _ := loadGenres(dir)
-	cur := maps.Clone(prev)
-	cur["com.a"] = "GAME_ARCADE" // changed
-	// com.b: a transient error this run -- left alone
-	// com.c: never asked about -- left alone
-	if err := saveGenres(path, cur); err != nil {
+	// com.a: listed, new genre.
+	if was, known, err := m.lookup("com.a"); err != nil || !known || was != "GAME_PUZZLE" {
+		t.Fatalf("lookup(com.a) = %q %v %v", was, known, err)
+	}
+	if err := m.row("com.a", "GAME_ARCADE", ""); err != nil {
+		t.Fatal(err)
+	}
+	// com.b: the lookup failed; catalogGenres keeps the row it knew.
+	was, known, err := m.lookup("com.b")
+	if err != nil || !known {
+		t.Fatalf("lookup(com.b) = %q %v %v", was, known, err)
+	}
+	if err := m.row("com.b", was, ""); err != nil {
+		t.Fatal(err)
+	}
+	// com.c: not asked about. com.d: absent from the first storefront.
+	if was, known, err = m.lookup("com.d"); err != nil || !known {
+		t.Fatalf("lookup(com.d) = %q %v %v", was, known, err)
+	}
+	if err := m.row("com.d", was, markAbsent); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.finish(); err != nil {
+		t.Fatal(err)
+	}
+	prev.close()
+	if _, err := settleTable(m.path, path, []string{"com.d"}, func(int) (settled, string) { return settledGone, "" }, false); err != nil {
 		t.Fatal(err)
 	}
 
 	after, _ := loadGenres(dir)
-	if len(after) != 3 {
-		t.Fatalf("table went from 3 entries to %d; apps this run did not see were deleted", len(after))
-	}
-	if after["com.a"] != "GAME_ARCADE" {
-		t.Errorf("com.a = %q, want the new genre", after["com.a"])
-	}
-	if after["com.b"] != "GAME_ACTION" {
-		t.Errorf("com.b = %q; an app that errored lost its genre", after["com.b"])
-	}
-	if after["com.c"] != "PRODUCTIVITY" {
-		t.Errorf("com.c = %q; an app outside the id list lost its genre", after["com.c"])
-	}
-
-	// An app that no longer resolves must still be removed -- the merge must
-	// not make "gone" unreportable.
-	delete(cur, "com.b")
-	if err := saveGenres(path, cur); err != nil {
-		t.Fatal(err)
-	}
-	gone, _ := loadGenres(dir)
-	if _, still := gone["com.b"]; still {
-		t.Error("an app deleted from the table survived the write")
+	want := map[string]string{"com.a": "GAME_ARCADE", "com.b": "GAME_ACTION", "com.c": "PRODUCTIVITY"}
+	if !maps.Equal(after, want) {
+		t.Errorf("table = %v, want %v: the app this run did not see, and the one whose lookup failed, keep their rows; the gone one goes", after, want)
 	}
 }
 

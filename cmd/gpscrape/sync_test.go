@@ -1966,3 +1966,25 @@ func TestWriteDoneLineFlushesTheIDsFirst(t *testing.T) {
 		}
 	}
 }
+
+// An interrupted sweep reports the interrupt, even with a failed shard on
+// the books: the retry pass never ran, so "could not be fetched after a
+// retry pass" would be false, and the exit code would hide the interrupt.
+func TestSweepReportsAnInterruptBeforeAFailedShard(t *testing.T) {
+	store, f, dir := newSweepFixture(t)
+	store.set(f.shardPath(0), 500, nil)
+	store.setFunc(f.shardPath(1), func(r *http.Request) (int, []byte) {
+		<-r.Context().Done() // hang until the deadline cancels the run
+		return 500, nil
+	})
+	_, _, err := runVerb(t, cmdSync, "-dir", dir, "-concurrency", "1", "-timeout", "300ms")
+	if err == nil {
+		t.Fatal("the sweep succeeded")
+	}
+	if strings.Contains(err.Error(), "after a retry pass") {
+		t.Errorf("err = %v: an interrupted run reported a retry pass it never ran", err)
+	}
+	if !errors.Is(err, context.DeadlineExceeded) && !errors.Is(err, context.Canceled) {
+		t.Errorf("err = %v, want the interrupt", err)
+	}
+}

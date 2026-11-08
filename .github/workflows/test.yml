@@ -261,6 +261,25 @@ jobs:
   # Its own job so that contents: write is scoped to the one step that pushes
   # and to nothing that runs a third-party tool. The trigger is the one the
   # badge always had: a push to main, measured on the stable leg.
+  # gpscrape runs on Windows too -- the PC catalog (pcapp) is what most of
+  # its Windows users want -- and Windows differs where this code is most
+  # careful: renaming onto a file that is still open fails there, file
+  # locks are their own implementation (lock_windows.go), and paths use
+  # backslashes. A table published by renaming over the open original
+  # passed every Linux run and failed on every Windows one.
+  test-windows:
+    runs-on: windows-latest
+    env:
+      GOWORK: 'off'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Setup Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version: stable
+      - name: Test (short)
+        run: go test -short -count=1 ./...
+
   badge:
     needs: test
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'

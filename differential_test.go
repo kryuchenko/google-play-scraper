@@ -361,12 +361,19 @@ func TestLocScanDivergenceIsNarrow(t *testing.T) {
 // happy path and each changes the answer.
 
 func TestShardStreamMatchesTheBufferOnRecordedShards(t *testing.T) {
-	for _, name := range []string{"sitemap_shard.xml", "sitemap_index.xml"} {
+	for _, name := range []string{"sitemap_shard.xml"} {
+		// Trimmed from a live shard and index of generation 2026-11-07
+		// (first entries kept, alternate-language links cut to two each).
+		// A missing fixture fails: skipping it silently made this test pass
+		// without a single assertion.
 		body, err := os.ReadFile(filepath.Join("testdata", name))
 		if err != nil {
-			continue // fixture set differs between checkouts; the fuzz covers the rest
+			t.Fatal(err)
 		}
 		want := shardPackages(body)
+		if name == "sitemap_shard.xml" && len(want) == 0 {
+			t.Fatal("the shard fixture yields no apps; the comparison would prove nothing")
+		}
 		got, err := shardPackagesFrom(bytes.NewReader(body))
 		if err != nil {
 			t.Errorf("%s: %v", name, err)
@@ -643,5 +650,27 @@ func TestShardEndEdgeCases(t *testing.T) {
 		if shardClosed([]byte(c.body)) != c.closed {
 			t.Errorf("%s: shardClosed disagrees", name)
 		}
+	}
+}
+
+// The index fixture, trimmed to its first 50 entries, reads through the
+// index parser -- not the shard one, which rightly calls a <sitemapindex>
+// a document that never closed its <urlset>.
+func TestIndexShardsOnARecordedIndex(t *testing.T) {
+	body, err := os.ReadFile(filepath.Join("testdata", "sitemap_index.xml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	urls := indexShards(body)
+	if len(urls) != 50 {
+		t.Fatalf("%d shard urls, want 50", len(urls))
+	}
+	for _, u := range urls {
+		if !strings.HasPrefix(u, "https://play.google.com/sitemaps/play_sitemaps_") || !strings.HasSuffix(u, ".xml.gz") {
+			t.Errorf("not a shard url: %q", u)
+		}
+	}
+	if _, err := shardPackagesFrom(bytes.NewReader(body)); !errors.Is(err, ErrShardTruncated) {
+		t.Errorf("an index read as a shard: %v, want ErrShardTruncated", err)
 	}
 }
