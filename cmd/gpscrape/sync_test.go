@@ -1928,3 +1928,41 @@ func TestFinishDropsTheOldManifestBeforeReplacingTheSnapshot(t *testing.T) {
 		t.Error("the old manifest survived a failed rewrite of its snapshot")
 	}
 }
+
+// orderLog records the order in which two buffered files reach "disk".
+type orderLog struct {
+	name string
+	log  *[]string
+}
+
+func (o orderLog) Write(p []byte) (int, error) {
+	*o.log = append(*o.log, o.name)
+	return len(p), nil
+}
+
+// When a done line would flush the done log, the ids buffered before it are
+// flushed first, so no done line is ever on disk ahead of its shard's ids --
+// whatever the two buffers' sizes and the lines' lengths.
+func TestWriteDoneLineFlushesTheIDsFirst(t *testing.T) {
+	var order []string
+	ids := bufio.NewWriterSize(orderLog{"ids", &order}, 4096)
+	done := bufio.NewWriterSize(orderLog{"done", &order}, 64)
+	for i := range 20 {
+		_, _ = fmt.Fprintln(ids, "com.example.app", i)
+		url := googleplayscraper.BaseURL + "/sitemaps/shard-" + strings.Repeat("x", 20) + fmt.Sprint(i)
+		if err := writeDoneLine(ids, done, url); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if len(order) == 0 {
+		t.Fatal("the done log never flushed; the test does not exercise the ordering")
+	}
+	if order[0] != "ids" {
+		t.Fatalf("flush order %v: the done log reached disk before the ids", order)
+	}
+	for i := 1; i < len(order); i++ {
+		if order[i] == "done" && order[i-1] != "ids" {
+			t.Fatalf("flush order %v: a done flush at %d was not preceded by the ids", order, i)
+		}
+	}
+}

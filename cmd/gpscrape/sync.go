@@ -472,15 +472,7 @@ func sweep(
 	// buffer also flushes itself when full, and the done log's is the
 	// smaller: with long URLs and few ids it fills first. So when this line
 	// is about to flush the done log, the ids go out first.
-	markDone := func(url string) error {
-		if len(url)+1 > dw.Available() {
-			if err := w.Flush(); err != nil {
-				return err
-			}
-		}
-		_, err := fmt.Fprintln(dw, url)
-		return err
-	}
+	markDone := func(url string) error { return writeDoneLine(w, dw, url) }
 
 	// checkpoint makes progress durable in the only order that cannot lose
 	// work: the ids first, then the record saying the shard is finished. A
@@ -912,6 +904,19 @@ func diffAgainstSnapshot(path string, from, to googleplayscraper.Generation, new
 	}
 	d.Added = append(d.Added, newIDs[j:]...)
 	return d, nil
+}
+
+// writeDoneLine writes url to the done log, first flushing the ids whenever
+// the line is about to flush the done log's buffer: a shard's done line must
+// never reach the file before its ids. See markDone.
+func writeDoneLine(ids, done *bufio.Writer, url string) error {
+	if len(url)+1 > done.Available() {
+		if err := ids.Flush(); err != nil {
+			return err
+		}
+	}
+	_, err := fmt.Fprintln(done, url)
+	return err
 }
 
 // truncateTornLine cuts path back to just after its last newline, so the
