@@ -13,8 +13,6 @@ All notable changes to this project are documented here. The format is based on
   it, and is no longer marked retryable. Found in the routing evaluation,
   where agents answered "unknown" instead of fixing the setting.
 
-## gpscrape-mcp 0.1.1 (tag `mcp/v0.1.1`) - 2026-11-07
-
 ### Changed
 
 - **Breaking, `gpscrape catalog`:** every catalog record is snake_case like
@@ -29,6 +27,8 @@ All notable changes to this project are documented here. The format is based on
 - The live CLI canary still checked v1.5's camelCase fields (`appId`, a list
   of permissions, a country->status map) and would have failed against
   v1.6.0's shared records. It checks the records now.
+
+## gpscrape-mcp 0.1.1 (tag `mcp/v0.1.1`) - 2026-11-07
 
 ### Changed
 
