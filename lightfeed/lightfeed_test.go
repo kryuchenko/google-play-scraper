@@ -88,7 +88,7 @@ func TestLiveDeepPagination(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
-	defer p.Close()
+	defer func() { _ = p.Close() }()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 130*time.Second)
 	defer cancel()
