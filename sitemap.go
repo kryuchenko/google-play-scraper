@@ -203,6 +203,9 @@ func (c *Client) sitemapShardPackages(ctx context.Context, shardURL string) ([]s
 		return pkgs, nil
 	}
 
+	if !shardClosed(body) {
+		return nil, fmt.Errorf("shard %s: %w", shardURL, ErrShardTruncated)
+	}
 	return shardPackages(body), nil
 }
 
@@ -691,6 +694,7 @@ const (
 func shardPackagesFrom(r io.Reader) ([]string, error) {
 	seen := make(map[string]struct{})
 	var pkgs []string
+	var end shardEnd
 
 	buf := make([]byte, 0, shardScanChunk+shardScanCarryMax)
 	chunk := make([]byte, shardScanChunk)
@@ -698,6 +702,7 @@ func shardPackagesFrom(r io.Reader) ([]string, error) {
 	for {
 		n, err := r.Read(chunk)
 		if n > 0 {
+			end.see(chunk[:n])
 			buf = append(buf, chunk[:n]...)
 			tail := scanLocs(buf, seen, &pkgs)
 			if len(tail) > shardScanCarryMax {
@@ -713,12 +718,47 @@ func shardPackagesFrom(r io.Reader) ([]string, error) {
 		}
 		if err != nil {
 			if errors.Is(err, io.EOF) {
+				if !end.closed() {
+					return pkgs, ErrShardTruncated
+				}
 				return pkgs, nil
 			}
 			return pkgs, err
 		}
 	}
 }
+
+// ErrShardTruncated reports a sitemap shard that ended before </urlset>.
+//
+// A gzip stream that is cut short fails on its own; one that is complete but
+// holds a document cut short does not, and parsed, it reads as a shard with
+// fewer apps. Nothing downstream can tell that from a catalog that shrank:
+// the sweep marked the shard done, and the missing ids surfaced weeks later
+// as removals. Every shard Google serves ends in </urlset>.
+var ErrShardTruncated = errors.New("sitemap shard ended before </urlset>")
+
+var urlsetClose = []byte("</urlset>")
+
+// shardEnd remembers the last bytes of a stream, enough to tell whether it
+// ended in </urlset> with nothing but whitespace after it.
+type shardEnd struct {
+	tail [64]byte
+	n    int
+}
+
+func (e *shardEnd) see(b []byte) {
+	if len(b) >= len(e.tail) {
+		e.n = copy(e.tail[:], b[len(b)-len(e.tail):])
+		return
+	}
+	keep := min(e.n, len(e.tail)-len(b))
+	copy(e.tail[:keep], e.tail[e.n-keep:e.n])
+	e.n = keep + copy(e.tail[keep:], b)
+}
+
+func (e *shardEnd) closed() bool { return shardClosed(e.tail[:e.n]) }
+
+func shardClosed(b []byte) bool { return bytes.HasSuffix(bytes.TrimSpace(b), urlsetClose) }
 
 // scanLocs consumes every complete <loc>…</loc> in buf, appending the app
 // package ids it finds, and returns the bytes it could not yet interpret.

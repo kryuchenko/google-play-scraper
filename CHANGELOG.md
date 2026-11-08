@@ -5,6 +5,17 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Fixed
+
+- A sitemap shard whose gzip stream was whole but whose document ended
+  before `</urlset>` parsed as a shard with fewer apps; the sweep marked it
+  done and the missing ids surfaced later as removals. It fails with
+  `ErrShardTruncated` now, so the sweep retries it and will not publish a
+  snapshot without it. Every shard Google serves ends in `</urlset>`.
+- `TestSearchPagination` failed whenever Google returned one page or fewer
+  for its query (17 on some days); it now checks that the continuation RPC
+  is sent and succeeds, which is what it was for.
+
 ### Added
 
 - `gpscrape`: an error caused by Claude Code's sandbox on macOS -- where Go
