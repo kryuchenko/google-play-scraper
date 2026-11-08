@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"sort"
 	"strings"
 	"testing"
 
@@ -1517,4 +1518,15 @@ func TestWriteGenreLinesLeavesNoTmpBehind(t *testing.T) {
 	if len(table) != 2 {
 		t.Errorf("table has %d rows, want the 2 the failed write must not have touched", len(table))
 	}
+}
+
+// saveGenres writes a whole genre map, for tests that set up a catalog
+// directory. The command itself writes deltas (saveGenresDelta).
+func saveGenres(path string, genres map[string]string) error {
+	ids := make([]string, 0, len(genres))
+	for id := range genres {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	return writeGenreLines(path, ids, func(id string) string { return genres[id] })
 }

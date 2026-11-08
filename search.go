@@ -512,10 +512,6 @@ var qnKhObRowPaths = rowPaths{
 	urlPathOnly:     true,
 }
 
-func parseSearchResult(item any) SearchResult {
-	return decodeResultRow(item, qnKhObRowPaths)
-}
-
 // enrichSearchResults replaces each result with full app details.
 //
 // This used to fetch one HTML page per result, in parallel: for a listing of
