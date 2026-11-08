@@ -236,3 +236,45 @@ func TestOpenTableMissing(t *testing.T) {
 	}
 	prev.close()
 }
+
+// The table is checked before any request, so an unsorted one is reported
+// without a single record printed; a missing one is fine.
+func TestCheckTableSorted(t *testing.T) {
+	dir := t.TempDir()
+	if err := checkTableSorted(filepath.Join(dir, "missing.tsv")); err != nil {
+		t.Errorf("missing table: %v", err)
+	}
+	for name, c := range map[string]struct {
+		rows []string
+		ok   bool
+	}{
+		"sorted":          {[]string{"a\tX", "b\tY"}, true},
+		"unsorted":        {[]string{"b\tY", "a\tX"}, false},
+		"duplicate":       {[]string{"a\tX", "a\tY"}, false},
+		"duplicate empty": {[]string{"\tX", "\tY"}, false},
+	} {
+		path := filepath.Join(dir, name+".tsv")
+		writeTable(t, path, c.rows...)
+		if err := checkTableSorted(path); (err == nil) != c.ok {
+			t.Errorf("%s: %v", name, err)
+		}
+	}
+}
+
+// An id with a tab in it -- a TSV passed as -ids -- is refused rather than
+// split into an id and a genre in the first-pass file.
+func TestTableMergeRefusesATabInAnID(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "genres.tsv")
+	prev, err := openTable(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, err := newTableMerge(prev, path+".merge")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer m.abandon()
+	if _, _, err := m.lookup("com.a\tTOOLS"); err == nil {
+		t.Error("an id with a tab was accepted")
+	}
+}

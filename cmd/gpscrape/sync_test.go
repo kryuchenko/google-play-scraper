@@ -1835,28 +1835,27 @@ func TestSweepWritesStateBeforeTheFirstShard(t *testing.T) {
 	}
 }
 
-// A kill after the delta but before the manifest leaves the resume state,
-// and the next run finishes again; the manifest is never written ahead of
-// the delta it implies.
+// The manifest is the last thing written: when the delta cannot be written,
+// the sweep fails with no manifest, and the resume state is still there for
+// the next run to finish from.
 func TestSweepWritesTheManifestAfterTheDelta(t *testing.T) {
 	_, f, dir := newSweepFixture(t)
 	if _, _, err := runVerb(t, cmdSync, "-dir", dir, "-concurrency", "2"); err != nil {
 		t.Fatal(err)
 	}
 	f.roll(t, fixtureGenB, fourShards())
-	if _, _, err := runVerb(t, cmdSync, "-dir", dir, "-concurrency", "2"); err != nil {
+	// A directory where the delta goes makes writing it fail.
+	if err := os.MkdirAll(filepath.Join(dir, deltaName(fixtureGenA, fixtureGenB), "x"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	man, err := os.Stat(filepath.Join(dir, "manifest-"+fixtureGenB.ID()+".json"))
-	if err != nil {
-		t.Fatal(err)
+	if _, _, err := runVerb(t, cmdSync, "-dir", dir, "-concurrency", "2"); err == nil {
+		t.Fatal("the sweep succeeded although its delta could not be written")
 	}
-	del, err := os.Stat(filepath.Join(dir, deltaName(fixtureGenA, fixtureGenB)))
-	if err != nil {
-		t.Fatalf("no delta: %v", err)
+	if _, err := os.Stat(filepath.Join(dir, "manifest-"+fixtureGenB.ID()+".json")); err == nil {
+		t.Error("a manifest was written although the delta was not")
 	}
-	if man.ModTime().Before(del.ModTime()) {
-		t.Errorf("manifest %v written before delta %v", man.ModTime(), del.ModTime())
+	if _, err := os.Stat(filepath.Join(dir, "state.json")); err != nil {
+		t.Error("the resume state is gone, so nothing can finish the generation")
 	}
 }
 

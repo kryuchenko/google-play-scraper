@@ -226,6 +226,12 @@ func scaleChild(t *testing.T, dir, which string) {
 	elapsed := time.Since(start)
 	close(stop)
 	<-sampled
+	// One last sample: a short run can finish between two ticks.
+	var ms runtime.MemStats
+	runtime.ReadMemStats(&ms)
+	if ms.HeapInuse > peak.Load() {
+		peak.Store(ms.HeapInuse)
+	}
 
 	var ru syscall.Rusage
 	_ = syscall.Getrusage(syscall.RUSAGE_SELF, &ru)
@@ -233,7 +239,7 @@ func scaleChild(t *testing.T, dir, which string) {
 	if runtime.GOOS != "darwin" {
 		rss *= 1024
 	}
-	t.Logf("peak=%.0fMB HeapInuse, maxrss %.0fMB, %s, %s", float64(peak.Load())/1e6, rss/1e6, which, elapsed.Round(time.Millisecond))
+	t.Logf("peak=%.1fMB HeapInuse, maxrss %.0fMB, %s, %s", float64(peak.Load())/1e6, rss/1e6, which, elapsed.Round(time.Millisecond))
 }
 
 // scaleGenresMerge is the genre pass without the network: the new snapshot's
@@ -280,6 +286,9 @@ func scaleGenresMerge(dir string) error {
 		if err != nil {
 			return err
 		}
+	}
+	if err := lines.sc.Err(); err != nil {
+		return err
 	}
 	if err := m.finish(); err != nil {
 		return err

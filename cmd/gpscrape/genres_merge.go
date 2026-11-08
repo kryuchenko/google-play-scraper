@@ -52,6 +52,7 @@ type tableCursor struct {
 	path      string
 	id, genre string
 	ok        bool
+	read      bool // a row has been read, so id is the one before the next
 	bad       error
 }
 
@@ -76,7 +77,7 @@ func (t *tableCursor) next() {
 	if t.sc == nil || t.bad != nil {
 		return
 	}
-	prev, had := t.id, t.id != ""
+	prev, had := t.id, t.read
 	for t.sc.Scan() {
 		id, genre, ok := strings.Cut(t.sc.Text(), "\t")
 		if !ok {
@@ -88,9 +89,25 @@ func (t *tableCursor) next() {
 				t.path, id, prev)
 			return
 		}
-		t.id, t.genre, t.ok = id, genre, true
+		t.id, t.genre, t.ok, t.read = id, genre, true, true
 		return
 	}
+}
+
+// checkTableSorted reads the table once, before any request, and fails if it
+// is not sorted and duplicate-free: the walk would find out only when it got
+// there, after records naming apps first_seen had already been printed. A
+// missing table is fine.
+func checkTableSorted(path string) error {
+	t, err := openTable(path)
+	if err != nil {
+		return err
+	}
+	defer t.close()
+	for t.ok {
+		t.next()
+	}
+	return t.err()
 }
 
 func (t *tableCursor) err() error {
@@ -141,6 +158,11 @@ func (m *tableMerge) row(id, genre, mark string) error {
 // marked as unmatched. Ids must arrive in strictly ascending order: that is
 // what makes the table's next row the answer.
 func (m *tableMerge) lookup(id string) (was string, known bool, err error) {
+	if strings.ContainsAny(id, "\t\n") {
+		// The first-pass file is tab-separated; an id carrying a tab -- a
+		// TSV passed as -ids -- would split into an id and a genre.
+		return "", false, fmt.Errorf("app id %q contains a tab or newline", id)
+	}
 	if m.started && id <= m.last {
 		return "", false, fmt.Errorf("ids out of order: %q after %q; the genre pass needs a sorted, "+
 			"duplicate-free list", id, m.last)

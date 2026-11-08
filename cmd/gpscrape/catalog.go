@@ -260,6 +260,9 @@ func catalogGenres(args []string) error {
 	// same reasoning the sweep applies to failed shards: quietly wrong deltas
 	// are worse than admitting the pass was incomplete.
 	prevPath := genresPath(*dir)
+	if err := checkTableSorted(prevPath); err != nil {
+		return err
+	}
 	prev, err := openTable(prevPath)
 	if err != nil {
 		return err
@@ -269,7 +272,7 @@ func catalogGenres(args []string) error {
 	if err != nil {
 		return err
 	}
-	defer merge.abandon() // a no-op once settleTable has published
+	defer merge.abandon() // removes the first-pass file, whichever way this returns
 
 	e := newEmitter(os.Stdout)
 	defer func() { _ = e.flush() }()
