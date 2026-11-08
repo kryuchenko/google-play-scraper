@@ -7,6 +7,14 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- Tests that hold the parsers to allocation budgets and `ReviewsSeq` to a
+  memory ceiling (`alloc_budget_test.go`, run in CI without `-race`). A
+  parser that starts allocating 10% more, or a streaming path that starts
+  keeping what it read, fails a test instead of going unnoticed.
+- CI: govulncheck scans all four modules (`lightfeed` and `apidoc` were not
+  scanned) on every pull request and weekly; CodeQL builds `mcp`; pull
+  requests fuzz each target for 10 s instead of 30 s, and a weekly
+  `fuzz.yml` fuzzes each for 10 minutes, keeping its corpus between runs.
 - `gpscrape`: an error caused by Claude Code's sandbox on macOS -- where Go
   cannot reach the system trust service and every request fails with
   `x509: OSStatus -26276` -- carries a `hint` naming the setting that fixes

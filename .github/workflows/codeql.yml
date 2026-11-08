@@ -45,6 +45,39 @@ jobs:
           GOWORK=off go build ./...
           (cd apidoc && GOWORK=off go build ./...)
           (cd lightfeed && GOWORK=off go build ./...)
+          (cd mcp && GOWORK=off go build ./...)
 
       - name: Analyze
         uses: github/codeql-action/analyze@33d7b85da1a04171e211befe2c739303b9a4c066 # v4
+
+  # Known vulnerabilities in every module's dependencies and in the standard
+  # library. Each module has its own go.mod and its own dependencies -- the
+  # root none, mcp the go-sdk, lightfeed chromedp, apidoc the OpenAPI
+  # tooling -- so each is scanned on its own, without the workspace. The
+  # weekly run is the one that matters most: a new entry in the database
+  # fails it with no change to the code, which is the signal to cut a patch
+  # release of binaries already published.
+  govulncheck:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        dir: ['.', mcp, lightfeed, apidoc]
+    env:
+      GOWORK: 'off'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Setup Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version: stable
+
+      # Pinned, and the pin has to move with the toolchain: govulncheck
+      # v1.1.4 builds on golang.org/x/tools v0.29.0, whose SSA builder
+      # predates Go 1.27 and panics on it. v1.7.0 carries x/tools v0.49.0.
+      # When `stable` moves to a Go release this cannot parse, this is the
+      # line to bump.
+      - name: govulncheck
+        working-directory: ${{ matrix.dir }}
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.7.0 ./...
