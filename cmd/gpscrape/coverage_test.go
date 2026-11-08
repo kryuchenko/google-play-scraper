@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"bufio"
 
@@ -346,6 +347,23 @@ func TestLongVerbsDefaultToAdaptive(t *testing.T) {
 		want := name != "catalog size"
 		if got := described.Lookup("adaptive").DefValue == "true"; got != want {
 			t.Errorf("%s: -adaptive default %v, want %v", name, got, want)
+		}
+	}
+}
+
+// -adaptive-min lowers the controller's floor below -throttle only when it
+// is lower; otherwise the floor is -throttle.
+func TestProbeFloor(t *testing.T) {
+	for _, c := range []struct {
+		throttle, min, want time.Duration
+	}{
+		{200 * time.Millisecond, 0, 200 * time.Millisecond},
+		{200 * time.Millisecond, 40 * time.Millisecond, 40 * time.Millisecond},
+		{200 * time.Millisecond, 500 * time.Millisecond, 200 * time.Millisecond},
+	} {
+		cm := &common{throttle: c.throttle, adaptiveMin: c.min}
+		if got := cm.probeFloor(); got != c.want {
+			t.Errorf("throttle %v, -adaptive-min %v: floor %v, want %v", c.throttle, c.min, got, c.want)
 		}
 	}
 }

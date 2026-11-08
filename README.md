@@ -262,6 +262,11 @@ previous snapshot cannot be read, the manifest says why in `delta_error`.
 of requests a fixed interval turns one long `Retry-After` into a failed shard.
 The adaptive client slows down and waits instead, and stops after three
 refused probes. `-adaptive=false` restores the fixed interval.
+`-adaptive` never goes faster than `-throttle` unless `-adaptive-min` allows it:
+`-adaptive-min 40ms` lets it probe for a faster rate, slowly. Each refusal is
+remembered for 30 minutes, and the rate settles at 80% of the median refused
+rate instead of hitting it again. Probing means meeting Google's limit, so it
+is opt-in.
 
 After a sweep, run `catalog size -dir ./catalog` to check the snapshot against
 an independent estimate (`snapshot_ids`, `snapshot_agrees`). It is the only

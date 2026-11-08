@@ -50,15 +50,21 @@ type Client struct {
 	adaptive     *AdaptivePolicy
 	rttWindow    [32]time.Duration
 	rttNext      int
-	cleanRun     int
-	slowRun      int
-	brk          breaker // guarded by throttleLock; see breaker.go
-	retry        RetryPolicy
-	budgetLock   sync.Mutex
-	budgetTokens float64
-	hooks        Hooks
-	logger       *slog.Logger
-	reqIDSeq     int64 // monotonic counter for batchexecute _reqid (see nextReqID)
+	// startThrottle is the interval the adaptive controller began at; steps
+	// faster than it are probes and move on ProbeWindow. cuts are the
+	// intervals the last refusals arrived at (see AdaptivePolicy.CutMemory).
+	startThrottle time.Duration
+	cuts          [5]cut
+	cutNext       int
+	cleanRun      int
+	slowRun       int
+	brk           breaker // guarded by throttleLock; see breaker.go
+	retry         RetryPolicy
+	budgetLock    sync.Mutex
+	budgetTokens  float64
+	hooks         Hooks
+	logger        *slog.Logger
+	reqIDSeq      int64 // monotonic counter for batchexecute _reqid (see nextReqID)
 }
 
 // ClientOption configures the client
@@ -274,4 +280,10 @@ func (c *Client) post(ctx context.Context, url string, contentType string, body 
 		req.Header.Set("Accept", "*/*")
 		return req, nil
 	}, validateRPC)
+}
+
+// cut is one refusal: the interval it arrived at and when.
+type cut struct {
+	interval time.Duration
+	at       time.Time
 }

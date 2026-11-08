@@ -14,6 +14,12 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- `-adaptive-min` lets the adaptive throttle probe faster than `-throttle`,
+  for finding the rate Google actually allows. The controller remembers the
+  interval of each refusal for 30 minutes and settles at 80% of the median
+  refused rate, and probes past the caller's interval five times more slowly
+  than it recovers to it (`AdaptivePolicy.ProbeWindow`, `CutMemory`,
+  `Headroom`).
 - `gpscrape catalog size -dir` checks its estimate against the complete
   snapshot of the same generation (`snapshot_ids`, `snapshot_agrees`, and a
   warning when they disagree). It is the one check that notices ids lost

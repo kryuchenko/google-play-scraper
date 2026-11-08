@@ -299,6 +299,7 @@ type common struct {
 	country     string
 	throttle    time.Duration
 	adaptive    bool
+	adaptiveMin time.Duration
 	concurrency int
 	cached      *googleplayscraper.Client
 	timeout     time.Duration
@@ -356,9 +357,24 @@ func newCommon(name string) *common {
 	c.fs.DurationVar(&c.throttle, "throttle", 200*time.Millisecond, "minimum interval between request starts")
 	c.fs.BoolVar(&c.adaptive, "adaptive", false,
 		"find a safe request rate instead of using -throttle as a fixed interval")
+	c.fs.DurationVar(&c.adaptiveMin, "adaptive-min", 0,
+		"with -adaptive, let the rate probe faster than -throttle, down to this interval (0 = no faster than -throttle)")
 	c.fs.IntVar(&c.concurrency, "concurrency", 4, "parallel requests where supported")
 	c.fs.DurationVar(&c.timeout, "timeout", 0, "overall deadline (0 = none)")
 	return c
+}
+
+// probeFloor is the shortest interval -adaptive may reach: -throttle unless
+// -adaptive-min asks it to probe faster. Probing past -throttle is opt-in
+// because finding a ceiling means meeting it, and a refusal is a signal
+// about this address that Google remembers; the controller settles below
+// the refusals it has seen (AdaptivePolicy.CutMemory) rather than looking
+// for them.
+func (c *common) probeFloor() time.Duration {
+	if c.adaptiveMin > 0 && c.adaptiveMin < c.throttle {
+		return c.adaptiveMin
+	}
+	return c.throttle
 }
 
 // adaptiveByDefault turns -adaptive on unless the caller says otherwise, for
@@ -430,7 +446,7 @@ func (c *common) client() *googleplayscraper.Client {
 		// docs/adr/0001-soft-blocks-and-cooldown.md).
 		opts = append(opts,
 			googleplayscraper.WithAdaptiveThrottle(googleplayscraper.AdaptivePolicy{
-				Min: c.throttle, Max: 2 * time.Second, Cooldown: 30 * time.Second,
+				Min: c.probeFloor(), Max: 2 * time.Second, Cooldown: 30 * time.Second,
 			}),
 			googleplayscraper.WithHooks(googleplayscraper.Hooks{OnBreaker: c.onBreaker}),
 		)

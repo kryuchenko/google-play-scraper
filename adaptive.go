@@ -92,6 +92,35 @@ type AdaptivePolicy struct {
 	// Below 1. Default 0.9, which reaches Min from Max in about 30 windows.
 	Speedup float64
 
+	// ProbeWindow is how many consecutive clean responses justify a step
+	// faster than the interval the controller started at, where Window
+	// governs steps back up to it. Default 5 x Window. Going faster than the
+	// caller's own number is a probe for the server's ceiling, and a probe
+	// that moves every twenty responses measures what a burst survives, not
+	// what a sustained rate does: an endpoint here took 12 rps in a burst and
+	// refused after ~700 requests at that pace.
+	ProbeWindow int
+
+	// CutMemory is how long a refusal is remembered as evidence of the
+	// ceiling. Default 30 minutes.
+	//
+	// The interval at each refusal is kept (the last five). The controller
+	// will not speed up past the median of those cuts plus Headroom, so it
+	// settles below the rate that was refused instead of finding it again
+	// every few minutes -- the plateau CUBIC keeps around its last loss point
+	// (Ha, Rhee & Xu 2008). A median, because one refusal can be somebody
+	// else's traffic on a shared CDN. A cut older than CutMemory is
+	// forgotten, which is the re-probe: limits change, and a rate refused an
+	// hour ago may be fine now.
+	CutMemory time.Duration
+
+	// Headroom is how much slower than the remembered ceiling the controller
+	// settles. Default 0.25: an interval 25% longer than the median cut,
+	// which is 80% of the refused rate. Overshooting costs a refusal and
+	// possibly a block; undershooting costs time, and the two are not the
+	// same price.
+	Headroom float64
+
 	// Slowdown is the factor applied when the server says no -- 429, or 503.
 	// Above 1. Default 2, the classic multiplicative decrease: give back much
 	// more than was gained, because the cost of being wrong is asymmetric.
@@ -188,6 +217,15 @@ func WithAdaptiveThrottle(p AdaptivePolicy) ClientOption {
 	if p.Window <= 0 {
 		p.Window = 20
 	}
+	if p.ProbeWindow <= 0 {
+		p.ProbeWindow = 5 * p.Window
+	}
+	if p.CutMemory <= 0 {
+		p.CutMemory = 30 * time.Minute
+	}
+	if p.Headroom <= 0 {
+		p.Headroom = 0.25
+	}
 	if p.LatencyRatio <= 1 {
 		p.LatencyRatio = 2
 	}
@@ -219,8 +257,12 @@ func WithAdaptiveThrottle(p AdaptivePolicy) ClientOption {
 			// starting point regardless of option order.
 			c.throttle = min(max(c.throttle, p.Min), p.Max)
 		default:
+			// No number from the caller: nothing to probe past, so every
+			// step moves on Window.
 			c.throttle = p.Max
+			return
 		}
+		c.startThrottle = c.throttle
 	}
 }
 
@@ -290,6 +332,7 @@ func (c *Client) adjust(o outcome) string {
 	switch o.signal() {
 	case signalRefusal:
 		c.cleanRun, c.slowRun = 0, 0
+		c.noteCut(c.throttle)
 		c.slower(p.Slowdown, p.Max)
 		return "refused"
 
@@ -314,7 +357,11 @@ func (c *Client) adjust(o outcome) string {
 
 	c.slowRun = 0
 	c.cleanRun++
-	if c.cleanRun < p.Window {
+	window := p.Window
+	if c.throttle <= c.startThrottle {
+		window = p.ProbeWindow // past the caller's own number: probe slowly
+	}
+	if c.cleanRun < window {
 		return ""
 	}
 	c.cleanRun = 0
@@ -322,8 +369,38 @@ func (c *Client) adjust(o outcome) string {
 	if next < p.Min {
 		next = p.Min
 	}
+	if floor := c.cutFloor(); next < floor {
+		next = max(floor, c.throttle) // settle below the ceiling, never jump past it
+		if next == c.throttle {
+			return ""
+		}
+	}
 	c.throttle = next
 	return "clean"
+}
+
+// noteCut remembers the interval a refusal arrived at. Callers hold
+// throttleLock.
+func (c *Client) noteCut(at time.Duration) {
+	c.cuts[c.cutNext%len(c.cuts)] = cut{interval: at, at: time.Now()}
+	c.cutNext++
+}
+
+// cutFloor is the shortest interval the remembered refusals allow: the
+// median of the cuts younger than CutMemory, plus Headroom. Zero when none is
+// remembered. Callers hold throttleLock.
+func (c *Client) cutFloor() time.Duration {
+	var live []time.Duration
+	for _, k := range c.cuts {
+		if k.interval > 0 && time.Since(k.at) < c.adaptive.CutMemory {
+			live = append(live, k.interval)
+		}
+	}
+	if len(live) == 0 {
+		return 0
+	}
+	slices.Sort(live)
+	return time.Duration(float64(live[len(live)/2]) * (1 + c.adaptive.Headroom))
 }
 
 // slower multiplies the interval, clamped to max. Callers hold throttleLock.

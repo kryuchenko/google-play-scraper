@@ -363,3 +363,76 @@ func TestAdaptiveStillSlowsOnARealSlowdown(t *testing.T) {
 		t.Errorf("throttle %v after a sustained 4x slowdown, was %v", got, before)
 	}
 }
+
+func probingClient(memory time.Duration) *Client {
+	return NewClient(WithThrottle(200*time.Millisecond), WithAdaptiveThrottle(AdaptivePolicy{
+		Min: 20 * time.Millisecond, Max: 2 * time.Second, Window: 2, ProbeWindow: 4, CutMemory: memory,
+	}))
+}
+
+func clean(c *Client, n int) {
+	for range n {
+		c.observe(context.Background(), http.StatusOK, 50*time.Millisecond)
+	}
+}
+
+// After a refusal the controller recovers to 25% above the interval it was
+// refused at -- 80% of that rate -- and stays there, rather than climbing
+// back into the same refusal.
+func TestAdaptiveSettlesBelowTheRememberedCut(t *testing.T) {
+	c := probingClient(time.Hour)
+	clean(c, 400) // probe down from 200ms
+	at := c.CurrentThrottle()
+	c.observe(context.Background(), http.StatusTooManyRequests, 50*time.Millisecond)
+	clean(c, 2000)
+	want := time.Duration(float64(at) * 1.25)
+	if got := c.CurrentThrottle(); got < want || got > want*11/10 {
+		t.Errorf("settled at %v after a cut at %v; want about %v", got, at, want)
+	}
+}
+
+// The ceiling is the median of the remembered cuts: one refusal at an
+// unusually slow interval -- somebody else's traffic -- does not drag it.
+func TestAdaptiveCeilingIsTheMedianOfCuts(t *testing.T) {
+	c := probingClient(time.Hour)
+	c.throttleLock.Lock()
+	for _, d := range []time.Duration{100, 100, 400} {
+		c.noteCut(d * time.Millisecond)
+	}
+	floor := c.cutFloor()
+	c.throttleLock.Unlock()
+	if floor != 125*time.Millisecond {
+		t.Errorf("floor = %v from cuts 100,100,400ms; want the median plus headroom, 125ms", floor)
+	}
+}
+
+// A cut older than CutMemory is forgotten, so the controller probes again.
+func TestAdaptiveForgetsOldCuts(t *testing.T) {
+	c := probingClient(50 * time.Millisecond)
+	c.throttleLock.Lock()
+	c.noteCut(100 * time.Millisecond)
+	if c.cutFloor() == 0 {
+		t.Fatal("a fresh cut gave no floor")
+	}
+	c.throttleLock.Unlock()
+	time.Sleep(80 * time.Millisecond)
+	c.throttleLock.Lock()
+	defer c.throttleLock.Unlock()
+	if f := c.cutFloor(); f != 0 {
+		t.Errorf("floor %v from a cut older than CutMemory", f)
+	}
+}
+
+// Faster than the caller's own interval, each step waits ProbeWindow clean
+// responses instead of Window.
+func TestAdaptiveProbesSlowlyPastTheCallersInterval(t *testing.T) {
+	c := probingClient(time.Hour)
+	clean(c, 3) // Window is 2, ProbeWindow 4: not yet
+	if got := c.CurrentThrottle(); got != 200*time.Millisecond {
+		t.Errorf("throttle %v after 3 clean responses; the first step past 200ms needs 4", got)
+	}
+	clean(c, 1)
+	if got := c.CurrentThrottle(); got >= 200*time.Millisecond {
+		t.Errorf("throttle %v after 4 clean responses; want a step below 200ms", got)
+	}
+}
