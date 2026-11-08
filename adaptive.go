@@ -223,16 +223,6 @@ func WithAdaptiveThrottle(p AdaptivePolicy) ClientOption {
 	}
 }
 
-// observe feeds one response back into the controller. It is called from the
-// request pipeline for every attempt, successful or not.
-//
-// All of it runs under throttleLock, the same lock waitThrottle takes to
-// reserve a slot: the interval is read on every request and written here, and
-// a mutable field read without a lock is a race whether or not it looks benign.
-func (c *Client) observe(ctx context.Context, status int, rtt time.Duration, err error) {
-	c.record(ctx, nil, outcome{status: status, rtt: rtt, err: err})
-}
-
 // record applies one attempt's outcome to the interval and to the breaker in a
 // single critical section, so the pause and the interval are decided together.
 // t is the attempt's admission ticket; nil feeds the interval only.

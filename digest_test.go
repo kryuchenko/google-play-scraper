@@ -563,7 +563,7 @@ func TestParseDigestShapes(t *testing.T) {
 		{name: "answer for another app", payload: sparseEchoOther, wantErr: "com.other"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			got, err := parseDigest(tc.payload, "com.x", []int{80})
+			got, err := parseDigest(tc.payload, "com.x")
 			if tc.wantErr != "" {
 				if err == nil {
 					t.Fatalf("parseDigest = %+v, want an error naming %q", got, tc.wantErr)
@@ -588,7 +588,7 @@ func TestParseDigestShapes(t *testing.T) {
 	// An answer for another app must not be reported with the asked-for id
 	// attached: that is the one failure mode a batch has and a single call
 	// does not.
-	if _, err := parseDigest(sparseEchoOther, "com.x", []int{80}); err == nil ||
+	if _, err := parseDigest(sparseEchoOther, "com.x"); err == nil ||
 		!strings.Contains(err.Error(), "com.x") {
 		t.Errorf("the mispairing error does not name the slot it landed in: %v", err)
 	}

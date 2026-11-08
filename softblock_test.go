@@ -70,7 +70,7 @@ func TestValidators(t *testing.T) {
 // search an empty result rather than an error.
 func TestClassifySearchPageFixtures(t *testing.T) {
 	zero := readFixture(t, "search_zero_results.html")
-	results, _, _ := parseSearchPage(zero, 20)
+	results, _, _ := parseSearchPage(zero)
 	if len(results) != 0 {
 		t.Fatalf("zero-results fixture parsed to %d results", len(results))
 	}
@@ -79,7 +79,7 @@ func TestClassifySearchPageFixtures(t *testing.T) {
 	}
 
 	full := readFixture(t, "search_page.html")
-	results, _, _ = parseSearchPage(full, 20)
+	results, _, _ = parseSearchPage(full)
 	if v, _ := classifySearchPage(full, results); v != VerdictOK {
 		t.Errorf("populated search = %s, want ok", v)
 	}

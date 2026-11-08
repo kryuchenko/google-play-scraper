@@ -95,7 +95,7 @@ func TestLoggerReportsThrottleChanges(t *testing.T) {
 		WithLogger(debugLogger(&buf, slog.LevelDebug)),
 	)
 
-	c.observe(context.Background(), http.StatusTooManyRequests, time.Millisecond, nil)
+	c.observe(context.Background(), http.StatusTooManyRequests, time.Millisecond)
 	log := buf.String()
 	for _, want := range []string{"msg=throttle", "from=100ms", "to=200ms", "reason=refused"} {
 		if !strings.Contains(log, want) {
@@ -106,7 +106,7 @@ func TestLoggerReportsThrottleChanges(t *testing.T) {
 	// Already at the ceiling: the controller decides to slow down and the
 	// interval does not move, so there is nothing to report.
 	buf.Reset()
-	c.observe(context.Background(), http.StatusTooManyRequests, time.Millisecond, nil)
+	c.observe(context.Background(), http.StatusTooManyRequests, time.Millisecond)
 	if buf.Len() != 0 {
 		t.Errorf("a decision that changed nothing was logged:\n%s", buf.String())
 	}

@@ -134,7 +134,7 @@ func TestParseAppPageGameFixture(t *testing.T) {
 }
 
 func TestParseSearchPageFixture(t *testing.T) {
-	results, _, err := parseSearchPage(readFixture(t, "search_page.html"), 20)
+	results, _, err := parseSearchPage(readFixture(t, "search_page.html"))
 	if err != nil {
 		t.Fatalf("parseSearchPage: %v", err)
 	}
@@ -151,7 +151,7 @@ func TestParseSearchPageFixture(t *testing.T) {
 // The search fixture ("minecraft") shows Minecraft as a featured card above the
 // grid. It must come first and appear once.
 func TestParseSearchPageFixtureFeatured(t *testing.T) {
-	results, _, err := parseSearchPage(readFixture(t, "search_page.html"), 20)
+	results, _, err := parseSearchPage(readFixture(t, "search_page.html"))
 	if err != nil {
 		t.Fatalf("parseSearchPage: %v", err)
 	}
@@ -319,10 +319,7 @@ func TestParseReviewsFixture(t *testing.T) {
 func TestParseDeveloperPageFixture(t *testing.T) {
 	// The fixture uses a numeric developer ID, so Google serves the
 	// /store/apps/dev layout (isNumericID == true).
-	results, err := parseDeveloperPage(readFixture(t, "developer_page.html"), true, 60)
-	if err != nil {
-		t.Fatalf("parseDeveloperPage: %v", err)
-	}
+	results := parseDeveloperPage(readFixture(t, "developer_page.html"), true, 60)
 	if len(results) < 5 {
 		t.Fatalf("got %d apps, want >= 5", len(results))
 	}
@@ -334,10 +331,7 @@ func TestParseDeveloperPageFixture(t *testing.T) {
 }
 
 func TestParseSimilarPageFixture(t *testing.T) {
-	results, err := parseSimilarPage(readFixture(t, "similar_page.html"))
-	if err != nil {
-		t.Fatalf("parseSimilarPage: %v", err)
-	}
+	results := parseSimilarPage(readFixture(t, "similar_page.html"))
 	if len(results) < 5 {
 		t.Fatalf("got %d apps, want >= 5", len(results))
 	}

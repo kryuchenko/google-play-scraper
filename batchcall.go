@@ -89,25 +89,6 @@ func jsonString(s string) []byte {
 	return b
 }
 
-// batchCall sends calls as a single POST and returns their payloads, indexed to
-// match calls. An RPC that produced no frame gets an empty string; the caller
-// decides whether that is an error for its own shape of data.
-//
-// It does not chunk: callers hold the list they want split, and splitting it
-// here would hide the request count from the throttle accounting the caller can
-// see. Use chunked() for that.
-func (c *Client) batchCall(ctx context.Context, lang, country string, calls []rpcCall) ([]string, error) {
-	got, err := c.batchCallFrames(ctx, lang, country, calls)
-	if err != nil {
-		return nil, err
-	}
-	out := make([]string, len(got))
-	for i, f := range got {
-		out[i] = f.Payload
-	}
-	return out, nil
-}
-
 // rpcFrame is one call's answer, keeping apart the two things an empty payload
 // can mean.
 //
@@ -126,7 +107,12 @@ type rpcFrame struct {
 	Present bool
 }
 
-// batchCallFrames is batchCall keeping the present/absent distinction.
+// batchCallFrames sends calls as a single POST and returns one frame per
+// call, indexed to match calls, keeping the present/absent distinction.
+//
+// It does not chunk: callers hold the list they want split, and splitting it
+// here would hide the request count from the throttle accounting the caller can
+// see. Use chunked() for that.
 func (c *Client) batchCallFrames(ctx context.Context, lang, country string, calls []rpcCall) ([]rpcFrame, error) {
 	if len(calls) == 0 {
 		return nil, nil

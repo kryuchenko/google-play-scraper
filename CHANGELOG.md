@@ -17,6 +17,19 @@ All notable changes to this project are documented here. The format is based on
 
 - `gpscrape search -num` above 50 warns that it is clamped instead of
   silently returning at most 50.
+### Fixed
+
+- `gpscrape-mcp`: a batch entry whose error wrapped an already-explained
+  error made `play_get_apps` panic on a type assertion; it now keeps the
+  code. Found by errorlint.
+
+### Changed
+
+- CI lints with six more linters: unparam, errorlint, nilerr, wastedassign,
+  makezero and mirror. Their findings are fixed: three parsers that could
+  not fail lose their always-nil error, unused parameters go
+  (`parseSearchPage`'s `num`, `parseDigest`'s `fields`), and two functions
+  only tests called (`observe`, `batchCall`) move into the tests.
 
 ### Added
 

@@ -35,13 +35,13 @@ func TestAdaptiveSpeedsUpAfterACleanWindow(t *testing.T) {
 	})
 
 	for range 4 {
-		c.observe(context.Background(), http.StatusOK, time.Millisecond, nil)
+		c.observe(context.Background(), http.StatusOK, time.Millisecond)
 	}
 	if got := c.CurrentThrottle(); got != time.Second {
 		t.Errorf("throttle moved to %v before the window closed", got)
 	}
 
-	c.observe(context.Background(), http.StatusOK, time.Millisecond, nil)
+	c.observe(context.Background(), http.StatusOK, time.Millisecond)
 	if got := c.CurrentThrottle(); got != 500*time.Millisecond {
 		t.Errorf("throttle = %v after a clean window, want 500ms", got)
 	}
@@ -57,13 +57,13 @@ func TestAdaptiveBacksOffHardOnRejection(t *testing.T) {
 			Min: 10 * time.Millisecond, Max: time.Second, Window: 1, Speedup: 0.5, Slowdown: 4,
 		})
 		// Two clean windows: 1s -> 500ms -> 250ms.
-		c.observe(context.Background(), http.StatusOK, time.Millisecond, nil)
-		c.observe(context.Background(), http.StatusOK, time.Millisecond, nil)
+		c.observe(context.Background(), http.StatusOK, time.Millisecond)
+		c.observe(context.Background(), http.StatusOK, time.Millisecond)
 		if got := c.CurrentThrottle(); got != 250*time.Millisecond {
 			t.Fatalf("setup: throttle = %v, want 250ms", got)
 		}
 
-		c.observe(context.Background(), status, time.Millisecond, nil)
+		c.observe(context.Background(), status, time.Millisecond)
 		if got := c.CurrentThrottle(); got != time.Second {
 			t.Errorf("status %d: throttle = %v, want it back at Max", status, got)
 		}
@@ -83,28 +83,28 @@ func TestAdaptiveNeedsAStreakBeforeActingOnLatency(t *testing.T) {
 	// Fill the window so the baseline means something. Until it is half full
 	// the controller deliberately ignores latency entirely.
 	for range 20 {
-		c.observe(context.Background(), http.StatusOK, 100*time.Millisecond, nil)
+		c.observe(context.Background(), http.StatusOK, 100*time.Millisecond)
 	}
 	before := c.CurrentThrottle()
 
 	// Four slow responses in a row: suggestive, not yet evidence.
 	for range 4 {
-		c.observe(context.Background(), http.StatusOK, 300*time.Millisecond, nil)
+		c.observe(context.Background(), http.StatusOK, 300*time.Millisecond)
 	}
 	if got := c.CurrentThrottle(); got != before {
 		t.Errorf("throttle moved to %v after four slow responses; want a full streak first", got)
 	}
 
 	// The fifth completes the streak.
-	c.observe(context.Background(), http.StatusOK, 300*time.Millisecond, nil)
+	c.observe(context.Background(), http.StatusOK, 300*time.Millisecond)
 	if got := c.CurrentThrottle(); got <= before {
 		t.Errorf("throttle = %v after a streak of slow responses, want slower than %v", got, before)
 	}
 
 	// A single slow response after a healthy one starts the count over.
-	c.observe(context.Background(), http.StatusOK, 100*time.Millisecond, nil)
+	c.observe(context.Background(), http.StatusOK, 100*time.Millisecond)
 	now := c.CurrentThrottle()
-	c.observe(context.Background(), http.StatusOK, 300*time.Millisecond, nil)
+	c.observe(context.Background(), http.StatusOK, 300*time.Millisecond)
 	if got := c.CurrentThrottle(); got != now {
 		t.Errorf("throttle = %v; one slow response after a healthy one acted immediately", got)
 	}
@@ -123,20 +123,20 @@ func TestAdaptiveGradesTheSignal(t *testing.T) {
 	}
 
 	hard := newClient()
-	hard.observe(context.Background(), http.StatusTooManyRequests, time.Millisecond, nil)
+	hard.observe(context.Background(), http.StatusTooManyRequests, time.Millisecond)
 	if got := hard.CurrentThrottle(); got != 400*time.Millisecond {
 		t.Errorf("429: throttle = %v, want the full 4x decrease", got)
 	}
 
 	soft := newClient()
-	soft.observe(context.Background(), 500, time.Millisecond, nil)
+	soft.observe(context.Background(), 500, time.Millisecond)
 	if got := soft.CurrentThrottle(); got != 200*time.Millisecond {
 		t.Errorf("500: throttle = %v, want the gentler 2x", got)
 	}
 
 	// 503 is explicit overload, so it counts as a refusal rather than a fault.
 	unavailable := newClient()
-	unavailable.observe(context.Background(), http.StatusServiceUnavailable, time.Millisecond, nil)
+	unavailable.observe(context.Background(), http.StatusServiceUnavailable, time.Millisecond)
 	if got := unavailable.CurrentThrottle(); got != 400*time.Millisecond {
 		t.Errorf("503: throttle = %v, want the full 4x decrease", got)
 	}
@@ -150,13 +150,13 @@ func TestAdaptiveRespectsBounds(t *testing.T) {
 	})
 
 	for range 50 {
-		c.observe(context.Background(), http.StatusOK, time.Millisecond, nil)
+		c.observe(context.Background(), http.StatusOK, time.Millisecond)
 	}
 	if got := c.CurrentThrottle(); got < 100*time.Millisecond {
 		t.Errorf("throttle = %v, went below Min", got)
 	}
 	for range 50 {
-		c.observe(context.Background(), http.StatusTooManyRequests, time.Millisecond, nil)
+		c.observe(context.Background(), http.StatusTooManyRequests, time.Millisecond)
 	}
 	if got := c.CurrentThrottle(); got > 200*time.Millisecond {
 		t.Errorf("throttle = %v, went above Max", got)
@@ -171,7 +171,7 @@ func TestAdaptiveHonoursRetryAfter(t *testing.T) {
 		Min: time.Millisecond, Max: 30 * time.Second, Window: 1, Speedup: 0.01,
 	})
 	// One clean window takes 30s down to 300ms.
-	c.observe(context.Background(), http.StatusOK, time.Millisecond, nil)
+	c.observe(context.Background(), http.StatusOK, time.Millisecond)
 	if got := c.CurrentThrottle(); got != 300*time.Millisecond {
 		t.Fatalf("setup: throttle = %v, want 300ms", got)
 	}
@@ -232,8 +232,8 @@ func TestAdaptiveIsOptIn(t *testing.T) {
 	c := newMockClient(t, routePath("/x", []byte("ok")))
 	WithThrottle(250 * time.Millisecond)(c)
 
-	c.observe(context.Background(), http.StatusTooManyRequests, time.Second, nil)
-	c.observe(context.Background(), http.StatusOK, time.Microsecond, nil)
+	c.observe(context.Background(), http.StatusTooManyRequests, time.Second)
+	c.observe(context.Background(), http.StatusOK, time.Microsecond)
 
 	if got := c.CurrentThrottle(); got != 250*time.Millisecond {
 		t.Errorf("throttle = %v, want the fixed 250ms untouched", got)
@@ -321,4 +321,10 @@ func TestAdaptiveBoundsHoldAtConstruction(t *testing.T) {
 			}
 		})
 	}
+}
+
+// observe feeds one response into the controller the way the pipeline's
+// record does, without an admission ticket: the interval only, no breaker.
+func (c *Client) observe(ctx context.Context, status int, rtt time.Duration) {
+	c.record(ctx, nil, outcome{status: status, rtt: rtt})
 }

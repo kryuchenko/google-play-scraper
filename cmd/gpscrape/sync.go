@@ -1252,7 +1252,7 @@ func sortStrings(a []string) []string {
 		return a
 	}
 
-	count, _ := radixPartition(a, 0)
+	count := radixPartition(a, 0)
 
 	// Buckets are disjoint slices of a, so they need no synchronisation.
 	sem := make(chan struct{}, workers)
@@ -1302,7 +1302,7 @@ func radixSort(a []string, depth int) {
 		slices.Sort(a)
 		return
 	}
-	count, _ := radixPartition(a, depth)
+	count := radixPartition(a, depth)
 	pos := count[0]
 	for i := 1; i < radixBuckets; i++ {
 		if count[i] > 1 {
@@ -1314,7 +1314,8 @@ func radixSort(a []string, depth int) {
 
 // radixPartition rearranges a in place so that entries sharing a byte at the
 // given depth are contiguous, and returns the bucket sizes.
-func radixPartition(a []string, depth int) (count, offset [radixBuckets]int) {
+func radixPartition(a []string, depth int) (count [radixBuckets]int) {
+	var offset [radixBuckets]int
 	for _, s := range a {
 		count[byteAt(s, depth)]++
 	}
@@ -1345,7 +1346,7 @@ func radixPartition(a []string, depth int) (count, offset [radixBuckets]int) {
 			next[i]++
 		}
 	}
-	return count, offset
+	return count
 }
 
 // byteAt returns 0 for the end of a string and byte+1 otherwise, so that a

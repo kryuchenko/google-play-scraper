@@ -110,7 +110,7 @@ func (c *Client) Search(ctx context.Context, opts SearchOptions) ([]SearchResult
 	var results []SearchResult
 	var token string
 	_, err := c.getPage(ctx, searchURL, func(body []byte) (Verdict, string) {
-		results, token, _ = parseSearchPage(body, opts.Num)
+		results, token, _ = parseSearchPage(body)
 		return classifySearchPage(body, results)
 	})
 	if err != nil {
@@ -258,7 +258,7 @@ func (c *Client) searchRPC(ctx context.Context, opts SearchOptions) ([]SearchRes
 	return results, err
 }
 
-func parseSearchPage(body []byte, num int) ([]SearchResult, string, error) {
+func parseSearchPage(body []byte) ([]SearchResult, string, error) {
 	dataBlocks := parseDataBlocks(body)
 	return extractSearchResults(dataBlocks)
 }
