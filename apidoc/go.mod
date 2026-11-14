@@ -4,7 +4,7 @@ go 1.27
 
 require (
 	github.com/kryuchenko/google-play-scraper v1.7.0
-	github.com/pb33f/libopenapi v0.42.3
+	github.com/pb33f/libopenapi v0.42.4
 	github.com/pb33f/libopenapi-validator v0.16.2
 	github.com/swaggo/swag/v2 v2.0.0-rc6
 	gopkg.in/yaml.v3 v3.0.1
